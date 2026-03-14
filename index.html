@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Proyecto Arboreo UNAM 475 â Legado Verde</title>
+  <title>Proyecto Arboreo UNAM 475 — Legado Verde</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -39,7 +39,7 @@
     .login-box p{color:var(--gp);font-size:.9rem;margin-bottom:2rem}
     .login-badge{display:inline-block;background:linear-gradient(90deg,var(--gold),var(--gol));color:var(--gd);font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:.3rem 1rem;border-radius:99px;margin-bottom:1.2rem}
     .form-group{margin-bottom:1rem;text-align:left}
-    .form-group label{display:block;mont-size:.8rem;font-weight:600;color:var(--gp);margin-bottom:.3rem}
+    .form-group label{display:block;lent-size:.8rem;font-weight:600;color:var(--gp);margin-bottom:.3rem}
     .form-group input{width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s}
     .form-group input:focus{border-color:var(--gold)}
     .form-group input::placeholder{color:rgba(255,255,255,.3)}
@@ -224,12 +224,12 @@
 </head>
 <body>
 
-<!-- âââ LOGIN âââ -->
+<!-- ═══ LOGIN ═══ -->
 <div id="loginScreen">
   <div class="login-box">
     <div class="tree-icon">&#127807;</div>
     <div class="login-badge">&#127807; UNAM 475 Aniversario</div>
-    <h1>Proyecto Ãrbol UNAM 475</h1>
+    <h1>Proyecto Árbol UNAM 475</h1>
     <p>Plataforma de cuidado arboreo institucional.<br>Accede con tu cuenta autorizada.</p>
     <div class="login-error" id="loginError"></div>
     <div class="form-group">
@@ -238,14 +238,14 @@
     </div>
     <div class="form-group">
       <label>Contrasena asignada</label>
-      <input type="password" id="loginPass" placeholder="â¢â¢â¢â¢â¢â¢â¢â¢" autocomplete="current-password"/>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
     </div>
     <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">Iniciar sesion</button>
     <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin-top:1rem">Acceso restringido a cuentas @unam.mx y @ikusi.com autorizadas por el administrador.</p>
   </div>
 </div>
 
-<!-- âââ APP âââ -->
+<!-- ═══ APP ═══ -->
 <div id="app">
 
 <nav>
@@ -259,14 +259,14 @@
       <text x="22" y="40" text-anchor="middle" font-size="6" fill="#fff" font-weight="bold">UNAM</text>
     </svg>
     <div class="brand-text">
-      <strong>Proyecto Ãrbol UNAM 475 &middot; UNAM 475</strong>
+      <strong>Proyecto Árbol UNAM 475 &middot; UNAM 475</strong>
       <span>Plataforma de Cuidado Arboreo</span>
     </div>
   </div>
   <div class="nav-links">
     <a href="#cuidados" class="nh">Cuidados</a>
     <a href="#metas" class="nh">Metas</a>
-    <a href="#plan30" class="nh">Plan 30 AÃ±os</a>
+    <a href="#plan30" class="nh">Plan 30 Años</a>
     <a href="#asesoria" class="nh">Asesoria IA</a>
     <div class="user-chip"><div class="user-dot"></div><span id="userEmail">...</span></div>
     <button class="btn btn-outline btn-sm" onclick="doLogout()">Salir</button>
@@ -303,8 +303,8 @@
   </svg>
   <div class="hero-content">
     <div class="hero-badge">&#127807; 475 Aniversario UNAM &middot; 1551 &ndash; 2026</div>
-    <h1>Cuida <span>tu Ã¡rbol</span>,<br>cuida el futuro</h1>
-    <p>Monitorea, registra y recibe asesorÃ­a experta para el crecimiento de tu arbol durante los proximos 30 aÃ±os.</p>
+    <h1>Cuida <span>tu árbol</span>,<br>cuida el futuro</h1>
+    <p>Monitorea, registra y recibe asesoría experta para el crecimiento de tu arbol durante los proximos 30 años.</p>
     <div class="hero-cta">
       <a href="#dashboard" class="btn btn-primary">&#128202; Ver mi panel</a>
       <a href="#metas" class="btn btn-gold">&#127919; Mis metas</a>
@@ -314,36 +314,36 @@
 </section>
 
 <div class="stats-strip">
-  <div class="stat-item"><div class="num">475</div><div class="lbl">AÃ±os UNAM</div></div>
-  <div class="stat-item"><div class="num" id="ctr">0</div><div class="lbl">Ãrboles Registrados</div></div>
-  <div class="stat-item"><div class="num">30</div><div class="lbl">AÃ±os de seguimiento</div></div>
+  <div class="stat-item"><div class="num">475</div><div class="lbl">Años UNAM</div></div>
+  <div class="stat-item"><div class="num" id="ctr">0</div><div class="lbl">Árboles Registrados</div></div>
+  <div class="stat-item"><div class="num">30</div><div class="lbl">Años de seguimiento</div></div>
   <div class="stat-item"><div class="num">12</div><div class="lbl">Especialistas UNAM</div></div>
 </div>
 
 <div class="page-wrap">
 
-<!-- MISIÃN -->
+<!-- MISIÓN -->
 <section id="mision" style="background:linear-gradient(135deg,rgba(26,74,46,.95),rgba(45,122,79,.85));border-radius:18px;padding:2.5rem 2rem;margin:0 0 2.5rem;border:1.5px solid var(--gold);position:relative;overflow:hidden">
-  <div style="position:absolute;top:-30px;right:-30px;font-size:9rem;opacity:.06">ð</div>
+  <div style="position:absolute;top:-30px;right:-30px;font-size:9rem;opacity:.06">🌍</div>
   <div style="display:flex;align-items:flex-start;gap:1.2rem">
-    <div style="font-size:2.8rem;flex-shrink:0">ð¿</div>
+    <div style="font-size:2.8rem;flex-shrink:0">🌿</div>
     <div>
-      <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 Â· 1551 â 2026</div>
+      <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 · 1551 – 2026</div>
       <h2 style="font-size:1.45rem;color:#fff;font-weight:800;margin-bottom:.85rem;line-height:1.3">Un legado vivo para la humanidad</h2>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional AutÃ³noma de MÃ©xico</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar Ã¡rboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
+        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional Autónoma de México</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar árboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
       </p>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        La selecciÃ³n de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada Ã¡rbol o arbusto serÃ¡ elegido con base en las <strong style="color:var(--gol)">especies nativas y caracterÃ­sticas ecolÃ³gicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
+        La selección de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada árbol o arbusto será elegido con base en las <strong style="color:var(--gol)">especies nativas y características ecológicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
       </p>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem">
-        Cada Ã¡rbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 aÃ±os, estos Ã¡rboles serÃ¡n el testimonio vivo de que la UNAM, al cumplir medio milenio, eligiÃ³ dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
+        Cada árbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 años, estos árboles serán el testimonio vivo de que la UNAM, al cumplir medio milenio, eligió dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
       </p>
       <div style="display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.2rem">
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð³ Especies nativas CU</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð Patrimonio UNESCO</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð« Captura de COâ</span>
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð¦ Biodiversidad local</span>
+        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌳 Especies nativas CU</span>
+        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌍 Patrimonio UNESCO</span>
+        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🫁 Captura de CO₂</span>
+        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🦋 Biodiversidad local</span>
       </div>
     </div>
   </div>
@@ -352,13 +352,13 @@
 
 <!-- CUIDADOS -->
 <section id="cuidados">
-  <div class="section-title">GuÃ­a de Cuidados</div>
-  <p class="section-sub">Sigue estas recomendaciones para garantizar el desarrollo Ã³ptimo de tu Ã¡rbol.</p>
+  <div class="section-title">Guía de Cuidados</div>
+  <p class="section-sub">Sigue estas recomendaciones para garantizar el desarrollo óptimo de tu árbol.</p>
   <div class="cuidados-grid">
     <div class="cuidado-card"><div class="cuidado-img agua">&#128167;</div><div class="cuidado-body"><h4>Riego</h4><p>Primeros 6 meses: 2-3 veces/semana. Despues: 1 vez/semana en temporada seca.</p><span class="freq-tag">2-3x semana</span></div></div>
     <div class="cuidado-card"><div class="cuidado-img sol">&#9728;</div><div class="cuidado-body"><h4>Luz solar</h4><p>6-8 horas de sol directo. Exposicion plena o semisombra segun la ubicacion.</p><span class="freq-tag">6-8 hrs/dia</span></div></div>
     <div class="cuidado-card"><div class="cuidado-img tierra">&#127807;</div><div class="cuidado-body"><h4>Suelo</h4><p>Bien drenado, arcilloso o arenoso. pH entre 6 y 8. Sustrato permeable.</p><span class="freq-tag">pH 6-8</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img poda">&#9988;</div><div class="cuidado-body"><h4>Poda</h4><p>Formativa los primeros 3 aÃ±os. Retirar ramas secas o enfermas en cualquier epoca.</p><span class="freq-tag">Anual</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img poda">&#9988;</div><div class="cuidado-body"><h4>Poda</h4><p>Formativa los primeros 3 años. Retirar ramas secas o enfermas en cualquier epoca.</p><span class="freq-tag">Anual</span></div></div>
     <div class="cuidado-card"><div class="cuidado-img abono">&#127808;</div><div class="cuidado-body"><h4>Fertilizacion</h4><p>Compost organico al inicio de lluvias. Evitar fertilizantes con alto nitrogeno.</p><span class="freq-tag">Cada 6 meses</span></div></div>
     <div class="cuidado-card"><div class="cuidado-img plaga">&#128269;</div><div class="cuidado-body"><h4>Plagas</h4><p>Revision semanal de hojas y tronco. Jabon potasico como primera medida preventiva.</p><span class="freq-tag">Revision semanal</span></div></div>
   </div>
@@ -367,7 +367,7 @@
 <!-- DASHBOARD -->
 <section id="dashboard">
   <div class="section-title">Mi Panel de Seguimiento</div>
-  <p class="section-sub">Estado actual de tu Ã¡rbol y registro de actividades.</p>
+  <p class="section-sub">Estado actual de tu árbol y registro de actividades.</p>
   <div class="dashboard-header">
     <div style="display:flex;align-items:center;gap:1.1rem">
       <div class="tree-avatar">&#127807;</div>
@@ -385,8 +385,8 @@
   </div>
   <div class="cards">
     <div class="card" style="cursor:pointer" onclick="logCare('riego')"><div class="card-icon g">&#128167;</div><h3>Registrar Riego</h3><p>Documenta el riego de hoy con cantidad de agua y condicion del suelo.</p></div>
-    <div class="card" style="cursor:pointer" onclick="openFotoModal()"><div class="card-icon o">&#128248;</div><h3>Subir FotografÃ­a</h3><p>Documenta el crecimiento con una foto semanal para seguimiento visual.</p></div>
-    <div class="card" style="cursor:pointer" onclick="openMedicionModal()"><div class="card-icon t">&#128207;</div><h3>Registrar Medidas</h3><p>Anota altura y diÃ¡metro del tronco para el historial de crecimiento.</p></div>
+    <div class="card" style="cursor:pointer" onclick="openFotoModal()"><div class="card-icon o">&#128248;</div><h3>Subir Fotografía</h3><p>Documenta el crecimiento con una foto semanal para seguimiento visual.</p></div>
+    <div class="card" style="cursor:pointer" onclick="openMedicionModal()"><div class="card-icon t">&#128207;</div><h3>Registrar Medidas</h3><p>Anota altura y diámetro del tronco para el historial de crecimiento.</p></div>
     <div class="card" style="cursor:pointer" onclick="document.getElementById('asesoria').scrollIntoView({behavior:'smooth'})"><div class="card-icon b">&#9888;</div><h3>Reportar Problema</h3><p>Consulta a la IA o contacta a un especialista si notas algo inusual.</p></div>
   </div>
   <div style="margin-top:1.5rem">
@@ -400,7 +400,7 @@
 <!-- METAS -->
 <section id="metas">
   <div class="section-title">Metas de Cuidado</div>
-  <p class="section-sub">Plan estructurado de actividades para el primer aÃ±o de vida de tu Ã¡rbol.</p>
+  <p class="section-sub">Plan estructurado de actividades para el primer año de vida de tu árbol.</p>
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab(this,'tw')">&#128197; Semanas</button>
     <button class="tab-btn" onclick="switchTab(this,'tm')">&#128198; Meses</button>
@@ -460,16 +460,16 @@
   </div>
 </section>
 
-<!-- PLAN 30 AÃOS -->
+<!-- PLAN 30 AÑOS -->
 <section id="plan30">
-  <div class="section-title">Plan de Crecimiento a 30 AÃ±os</div>
+  <div class="section-title">Plan de Crecimiento a 30 Años</div>
   <p class="section-sub">Desde la plantacion en 2026 hasta convertirse en arbol patrimonial en 2056.</p>
   <div class="plan-grid">
     <div class="plan-card y1"><div class="plan-year">1 <span>ano</span></div><div class="plan-height">~1.5 m</div><p>Establecimiento radicular. Primer aniversario del proyecto.</p></div>
-    <div class="plan-card y5"><div class="plan-year">5 <span>aÃ±os</span></div><div class="plan-height">~5-6 m</div><p>Copa amplia. Primeras flores amarillas. Reduccion del riego.</p></div>
-    <div class="plan-card y10"><div class="plan-year">10 <span>aÃ±os</span></div><div class="plan-height">~10 m</div><p>Arbol maduro joven. Copa 6-8 m. Floracion anual abundante.</p></div>
-    <div class="plan-card y20"><div class="plan-year">20 <span>aÃ±os</span></div><div class="plan-height">~15 m</div><p>Arbol robusto. Tronco >30 cm. Fauna asociada establecida.</p></div>
-    <div class="plan-card y30"><div class="plan-year">30 <span>aÃ±os</span></div><div class="plan-height">~18-22 m</div><p>&#127942; Arbol patrimonial. Legado vivo UNAM 475. 660 kg CO2 capturado.</p></div>
+    <div clas="plan-card y5"><div class="plan-year">5 <span>años</span></div><div class="plan-height">~5-6 m</div><p>Copa amplia. Primeras flores amarillas. Reduccion del riego.</p></div>
+    <div class="plan-card y10"><div class="plan-year">10 <span>años</span></div><div class="plan-height">~10 m</div><p>Arbol maduro joven. Copa 6-8 m. Floracion anual abundante.</p></div>
+    <div cl,ass="plan-card y20"><div class="plan-year">20 <span>años</span></div><div class="plan-height">~15 m</div><p>Arbol robusto. Tronco >30 cm. Fauna asociada establecida.</p></div>
+    <div class="plan-card y30"><div class="plan-year">30 <span>años</span></div><div class="plan-height">~18-22 m</div><p>&#127942; Arbol patrimonial. Legado vivo UNAM 475. 660 kg CO2 capturado.</p></div>
   </div>
 </section>
 
@@ -481,11 +481,11 @@
     <div class="chat-box">
       <div class="chat-header">
         <div class="ai-avatar">&#129302;</div>
-        <div><h4>Asistente Ãrbol IA</h4><p>Experto en cuidado de Acacia &middot; UNAM 475</p></div>
+        <div><h4>Asistente Árbol IA</h4><p>Experto en cuidado de Acacia &middot; UNAM 475</p></div>
         <div class="online-dot"></div>
       </div>
       <div class="chat-msgs" id="chatMsgs">
-        <div class="msg bot"><div class="msg-bubble">Hola! Soy el asistente IA del Proyecto Ãrbol UNAM 475 475. Puedo ayudarte con riegos, plagas, suelo, poda y cualquier duda. En que puedo apoyarte?</div><div class="msg-time">Ahora</div></div>
+        <div class="msg bot"><div class="msg-bubble">Hola! Soy el asistente IA del Proyecto Árbol UNAM 475 475. Puedo ayudarte con riegos, plagas, suelo, poda y cualquier duda. En que puedo apoyarte?</div><div class="msg-time">Ahora</div></div>
       </div>
       <div class="quick-btns">
         <button class="quick-btn" onclick="qm('Con que frecuencia riego?')">&#128167; Riego</button>
@@ -500,16 +500,16 @@
     </div>
     <div class="specialist-box">
       <h3>&#128105;&#8205;&#128300; Especialistas UNAM</h3>
-      <p>Si la IA no puede resolver tu problema, nuestros biÃ³logos y ecÃ³logos estÃ¡n disponibles. Contamos con especialistas de la Facultad de Ciencias y ecÃ³logos de <strong style="color:var(--gol)">FES Iztacala</strong>.</p>
+      <p>Si la IA no puede resolver tu problema, nuestros biólogos y ecólogos están disponibles. Contamos con especialistas de la Facultad de Ciencias y ecólogos de <strong style="color:var(--gol)">FES Iztacala</strong>.</p>
       <div class="specialist-profiles">
-        <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">ð¿ EcÃ³logos Â· FES Iztacala</div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Claudia Morales</h4><p>EcologÃ­a Vegetal &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Claudia Morales')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. HÃ©ctor SÃ¡nchez</h4><p>EcologÃ­a Urbana &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dr. HÃ©ctor SÃ¡nchez')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av g" style="background:linear-gradient(135deg,#4caf7d,#2d7a4f)">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Fernanda RÃ­os</h4><p>RestauraciÃ³n EcolÃ³gica &middot; FES Iztacala</p><span class="avail">&#9679; Disponible maÃ±ana</span></div><button class="btn-contact" onclick="openModal('M.C. Fernanda RÃ­os')">Contactar</button></div>
-        <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin:1rem 0 .5rem">ð¬ Especialistas Â· Facultad de Ciencias</div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. SofÃ­a RamÃ­rez</h4><p>EcologÃ­a y BotÃ¡nica &middot; FC-UNAM</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. SofÃ­a RamÃ­rez')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Alejandro Torres</h4><p>FitopatologÃ­a &middot; FES Iztacala</p><span class="avail">&#9679; Disponible maÃ±ana</span></div><button class="btn-contact" onclick="openModal('Dr. Alejandro Torres')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Valeria Mendoza</h4><p>Suelos y NutriciÃ³n &middot; FES CuautitlÃ¡n</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('M.C. Valeria Mendoza')">Contactar</button></div>
+        <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">🌿 Ecólogos · FES Iztacala</div>
+        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Claudia Morales</h4><p>Ecología Vegetal &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Claudia Morales')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Héctor Sánchez</h4><p>Ecología Urbana &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dr. Héctor Sánchez')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g" style="background:linear-gradient(135deg,#4caf7d,#2d7a4f)">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Fernanda Ríos</h4><p>Restauración Ecológica &middot; FES Iztacala</p><span class="avail">&#9679; Disponible mañana</span></div><button class="btn-contact" onclick="openModal('M.C. Fernanda Ríos')">Contactar</button></div>
+        <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin:1rem 0 .5rem">🔬 Especialistas · Facultad de Ciencias</div>
+        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Sofía Ramírez</h4><p>Ecología y Botánica &middot; FC-UNAM</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Sofía Ramírez')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Alejandro Torres</h4><p>Fitopatología &middot; FES Iztacala</p><span class="avail">&#9679; Disponible mañana</span></div><button class="btn-contact" onclick="openModal('Dr. Alejandro Torres')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Valeria Mendoza</h4><p>Suelos y Nutrición &middot; FES Cuautitlán</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('M.C. Valeria Mendoza')">Contactar</button></div>
       </div>
       <div class="alert-trigger"><div class="alert-icon">&#9889;</div><p>Si tu arbol muestra sintomas urgentes usa <strong>Alerta Urgente</strong> para contacto inmediato.</p></div>
       <button class="btn btn-gold btn-block" onclick="notify('&#128680; Alerta enviada','Un especialista te contactara en menos de 2 horas.')">&#128680; Alerta Urgente</button>
@@ -522,35 +522,35 @@
 <footer>
   <div class="page-wrap">
 
-<!-- MISIÃN -->
+<!-- MISIÓN -->
 <section id="mision" style="background:linear-gradient(135deg,rgba(26,74,46,.95),rgba(45,122,79,.85));border-radius:18px;padding:2.5rem 2rem;margin:0 0 2.5rem;border:1.5px solid var(--gold);position:relative;overflow:hidden">
-  <div style="position:absolute;top:-30px;right:-30px;font-size:9rem;opacity:.06">ð</div>
+  <div style="position:absolute;top:-30px;right:-30px;font-size:9rem;opacity:.06">🌍</div>
   <div style="display:flex;align-items:flex-start;gap:1.2rem">
-    <div style="font-size:2.8rem;flex-shrink:0">ð¿</div>
+    <div style="font-size:2.8rem;flex-shrink:0">🌿</div>
     <div>
-      <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 Â· 1551 â 2026</div>
+      <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 · 1551 – 2026</div>
       <h2 style="font-size:1.45rem;color:#fff;font-weight:800;margin-bottom:.85rem;line-height:1.3">Un legado vivo para la humanidad</h2>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional AutÃ³noma de MÃ©xico</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar Ã¡rboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
+        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional Autónoma de México</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar árboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
       </p>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        La selecciÃ³n de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada Ã¡rbol o arbusto serÃ¡ elegido con base en las <strong style="color:var(--gol)">especies nativas y caracterÃ­sticas ecolÃ³gicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
+        La selección de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada árbol o arbusto será elegido con base en las <strong style="color:var(--gol)">especies nativas y características ecológicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
       </p>
       <p style="color:var(--gp);line-height:1.75;font-size:.95rem">
-        Cada Ã¡rbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 aÃ±os, estos Ã¡rboles serÃ¡n el testimonio vivo de que la UNAM, al cumplir medio milenio, eligiÃ³ dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
+        Cada árbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 años, estos árboles serán el testimonio vivo de que la UNAM, al cumplir medio milenio, eligió dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
       </p>
       <div style="display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.2rem">
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð³ Especies nativas CU</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð Patrimonio UNESCO</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð« Captura de COâ</span>
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">ð¦ Biodiversidad local</span>
+        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌳 Especies nativas CU</span>
+        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌍 Patrimonio UNESCO</span>
+        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🫁 Captura de CO₂</span>
+        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🦋 Biodiversidad local</span>
       </div>
     </div>
   </div>
 </section>
 <div class="fi">
     <div style="font-size:2.2rem">&#127795;</div>
-    <h4>Proyecto Ãrbol UNAM 475 &middot; UNAM 475 Aniversario</h4>
+    <h4>Proyecto Árbol UNAM 475 &middot; UNAM 475 Aniversario</h4>
     <p>Universidad Nacional Autonoma de Mexico &middot; 2026. Sembrando conocimiento y vida para las proximas generaciones.</p>
     <div class="fl"><a href="#">Privacidad</a><a href="#">Preguntas frecuentes</a><a href="#">Contacto UNAM</a><a href="https://unam.mx">www.unam.mx</a></div>
     <p style="font-size:.73rem;color:rgba(255,255,255,.2);margin-top:.5rem">&copy; 2026 UNAM &middot; Todos los derechos reservados</p>
@@ -558,13 +558,13 @@
 </footer>
 
 
-<!-- MODAL FOTOGRAFÃA -->
+<!-- MODAL FOTOGRAFÍA -->
 <div class="modal-overlay" id="mo-foto" style="display:none;align-items:center;justify-content:center">
   <div class="modal">
     <button class="modal-close" onclick="closeFotoModal()">&#10005;</button>
-    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">ð¸</div>
-    <h3 style="text-align:center;color:#fff;margin-bottom:.4rem">Subir FotografÃ­a</h3>
-    <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Documenta el crecimiento semanal de tu Ã¡rbol</p>
+    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">📸</div>
+    <h3 style="text-align:center;color:#fff;margin-bottom:.4rem">Subir Fotografía</h3>
+    <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Documenta el crecimiento semanal de tu árbol</p>
     <div id="fotoPreviewWrap" style="display:none;margin-bottom:1rem;text-align:center">
       <img id="fotoPreview" style="max-width:100%;max-height:200px;border-radius:10px;border:2px solid var(--gl)"/>
       <p id="fotoFileName" style="color:var(--gp);font-size:.78rem;margin-top:.4rem"></p>
@@ -573,16 +573,16 @@
            onmouseover="this.style.background='rgba(76,175,125,.25)'" 
            onmouseout="this.style.background='rgba(76,175,125,.15)'"
            for="fotoInput">
-      <div style="font-size:2rem;margin-bottom:.4rem">ð</div>
-      <p style="color:#fff;font-size:.9rem;font-weight:700">Selecciona una fotografÃ­a</p>
-      <p style="color:var(--gp);font-size:.78rem">JPG, PNG o HEIC Â· MÃ¡x. 10 MB</p>
+      <div style="font-size:2rem;margin-bottom:.4rem">📁</div>
+      <p style="color:#fff;font-size:.9rem;font-weight:700">Selecciona una fotografía</p>
+      <p style="color:var(--gp);font-size:.78rem">JPG, PNG o HEIC · Máx. 10 MB</p>
     </label>
     <input type="file" id="fotoInput" accept="image/*" style="display:none" onchange="previewFoto(this)"/>
     <div class="form-group" style="margin-top:1rem">
       <label style="color:var(--gp);font-size:.85rem">Nota (opcional)</label>
       <input type="text" id="fotoNota" placeholder="Ej. Brotes nuevos en rama norte" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.88rem;outline:none;width:100%"/>
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:1rem" onclick="submitFoto()">ð¤ Registrar fotografÃ­a</button>
+    <button class="btn btn-primary btn-block" style="margin-top:1rem" onclick="submitFoto()">📤 Registrar fotografía</button>
   </div>
 </div>
 
@@ -590,26 +590,26 @@
 <div class="modal-overlay" id="mo-medicion" style="display:none;align-items:center;justify-content:center">
   <div class="modal">
     <button class="modal-close" onclick="closeMedicionModal()">&#10005;</button>
-    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">ð</div>
+    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">📏</div>
     <h3 style="text-align:center;color:#fff;margin-bottom:.4rem">Registrar Medidas</h3>
-    <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Anota las medidas actuales de tu Ã¡rbol</p>
+    <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Anota las medidas actuales de tu árbol</p>
     <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">ð¿ Altura total (cm)</label>
+      <label style="color:var(--gp);font-size:.85rem">🌿 Altura total (cm)</label>
       <input type="number" id="medAltura" placeholder="Ej. 45" min="0" max="3000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
     </div>
     <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">ðµ DiÃ¡metro del tronco (cm)</label>
+      <label style="color:var(--gp);font-size:.85rem">🔵 Diámetro del tronco (cm)</label>
       <input type="number" id="medDiametro" placeholder="Ej. 3.5" min="0" max="500" step="0.1" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
     </div>
     <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">ð³ DiÃ¡metro de copa (cm) â opcional</label>
+      <label style="color:var(--gp);font-size:.85rem">🌳 Diámetro de copa (cm) — opcional</label>
       <input type="number" id="medCopa" placeholder="Ej. 60" min="0" max="2000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
     </div>
     <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">ð Observaciones (opcional)</label>
+      <label style="color:var(--gp);font-size:.85rem">📝 Observaciones (opcional)</label>
       <input type="text" id="medNota" placeholder="Ej. Crecimiento uniforme, hojas verdes" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.88rem;outline:none;width:100%"/>
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:.5rem" onclick="submitMedicion()">ð Guardar medidas</button>
+    <button class="btn btn-primary btn-block" style="margin-top:.5rem" onclick="submitMedicion()">📊 Guardar medidas</button>
   </div>
 </div>
 </div><!-- /app -->
@@ -631,13 +631,13 @@
 <div class="notif" id="notif"><strong id="ntitle">Listo</strong><span id="nmsg"></span></div>
 
 <script>
-// ââ SUPABASE CONFIG ââââââââââââââââââââââââââââââââââââââââââ
+// ── SUPABASE CONFIG ──────────────────────────────────────────
 const SUPABASE_URL = 'https://hambscfdiaymowskislw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_s91fShtd7-qov8lVIvpVXQ_xrNANUme';
 const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ââ AUTH ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── AUTH ──────────────────────────────────────────────────────
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const pass  = document.getElementById('loginPass').value;
@@ -685,7 +685,7 @@ window.addEventListener('load', async () => {
   });
 });
 
-// ââ CARE LOGS ââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── CARE LOGS ──────────────────────────────────────────────────
 async function logCare(type) {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
@@ -728,7 +728,7 @@ async function loadCareLogs() {
     </div>`).join('');
 }
 
-// ââ SPECIALIST REQUESTS ââââââââââââââââââââââââââââââââââââââââ
+// ── SPECIALIST REQUESTS ────────────────────────────────────────
 async function submitConsulta() {
   const { data: { user } } = await sb.auth.getUser();
   const name = document.getElementById('specName').value;
@@ -740,7 +740,7 @@ async function submitConsulta() {
   notify('&#9993; Consulta enviada','El especialista revisara tu caso en 24 hrs.');
 }
 
-// ââ UI HELPERS âââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── UI HELPERS ─────────────────────────────────────────────────
 function switchTab(btn, id) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -771,7 +771,7 @@ function animateCounter() {
   setTimeout(s, 600);
 }
 
-// ââ AI CHAT ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── AI CHAT ────────────────────────────────────────────────────
 const aiR = {
   riego: "Para una Acacia recien plantada: 2-3 veces por semana los primeros 6 meses (2-3 L cada vez). Despues: una vez por semana en temporada seca. Verifica que el suelo no este encharcado antes de regar.",
   amarill: "Las hojas amarillas pueden indicar: (1) exceso de riego, (2) deficiencia de hierro, o (3) encharcamiento. Revisa el drenaje del suelo y espacia mas los riegos. Si es severo, contacta a un especialista.",
@@ -807,7 +807,7 @@ function sendMsg() {
 }
 function qm(t) { document.getElementById('chatIn').value = t; sendMsg(); }
 
-// ââ FOTO MODAL âââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── FOTO MODAL ─────────────────────────────────────────────────
 function openFotoModal() {
   const m = document.getElementById('mo-foto');
   m.style.display = 'flex';
@@ -834,7 +834,7 @@ async function submitFoto() {
   const input = document.getElementById('fotoInput');
   const nota = document.getElementById('fotoNota').value;
   if (!input.files || !input.files[0]) {
-    notify('â ï¸ Sin foto', 'Selecciona una imagen antes de continuar.'); return;
+    notify('⚠️ Sin foto', 'Selecciona una imagen antes de continuar.'); return;
   }
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
@@ -853,19 +853,19 @@ async function submitFoto() {
   } catch(e) {}
   const { error } = await sb.from('care_logs').insert({
     tree_id: treeId, user_id: user.id, log_type: 'foto',
-    notes: nota || ('FotografÃ­a: ' + file.name),
+    notes: nota || ('Fotografía: ' + file.name),
     photo_url: photoUrl
   });
   closeFotoModal();
   if (!error) {
-    notify('ð¸ FotografÃ­a registrada', photoUrl ? 'Imagen subida correctamente.' : 'Registro guardado (configura bucket para almacenar imÃ¡genes).');
+    notify('📸 Fotografía registrada', photoUrl ? 'Imagen subida correctamente.' : 'Registro guardado (configura bucket para almacenar imágenes).');
     loadCareLogs();
   } else {
-    notify('â ï¸ Error', 'No se pudo guardar el registro.');
+    notify('⚠️ Error', 'No se pudo guardar el registro.');
   }
 }
 
-// ââ MEDICION MODAL âââââââââââââââââââââââââââââââââââââââââââââ
+// ── MEDICION MODAL ─────────────────────────────────────────────
 function openMedicionModal() {
   const m = document.getElementById('mo-medicion');
   m.style.display = 'flex';
@@ -880,7 +880,7 @@ async function submitMedicion() {
   const copa = document.getElementById('medCopa').value;
   const nota = document.getElementById('medNota').value;
   if (!altura && !diametro) {
-    notify('â ï¸ Datos incompletos', 'Ingresa al menos la altura o el diÃ¡metro.'); return;
+    notify('⚠️ Datos incompletos', 'Ingresa al menos la altura o el diámetro.'); return;
   }
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
@@ -888,21 +888,21 @@ async function submitMedicion() {
   const treeId = trees && trees.length > 0 ? trees[0].id : null;
   let notesArr = [];
   if (altura) notesArr.push('Altura: ' + altura + ' cm');
-  if (diametro) notesArr.push('DiÃ¡metro tronco: ' + diametro + ' cm');
+  if (diametro) notesArr.push('Diámetro tronco: ' + diametro + ' cm');
   if (copa) notesArr.push('Copa: ' + copa + ' cm');
   if (nota) notesArr.push(nota);
   const { error } = await sb.from('care_logs').insert({
     tree_id: treeId, user_id: user.id, log_type: 'medicion',
     height_cm: altura ? parseFloat(altura) : null,
     trunk_diameter_cm: diametro ? parseFloat(diametro) : null,
-    notes: notesArr.join(' Â· ')
+    notes: notesArr.join(' · ')
   });
   closeMedicionModal();
   if (!error) {
-    notify('ð Medidas registradas', notesArr.slice(0,2).join(', '));
+    notify('📏 Medidas registradas', notesArr.slice(0,2).join(', '));
     loadCareLogs();
   } else {
-    notify('â ï¸ Error', 'No se pudieron guardar las medidas.');
+    notify('⚠️ Error', 'No se pudieron guardar las medidas.');
   }
 }
 
