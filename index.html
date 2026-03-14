@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Proyecto Acacia UNAM 475</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --gd:#1a4a2e;--gm:#2d7a4f;--gl:#4caf7d;--gp:#a8d5b5;
+      --gold:#c8a84b;--gol:#f0d080;--blue:#003366;
+      --w:#fff;--shadow:0 4px 24px rgba(26,74,46,.18);--r:14px;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#0d2b1a 0%,#1a4a2e 40%,#2d7a4f 100%);min-height:100vh;color:#1a2e1a}
+    /* NAV */
+    nav{background:rgba(0,0,0,.55);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:64px;border-bottom:2px solid var(--gold)}
+    .nav-brand{display:flex;align-items:center;gap:12px}
+    .brand-text strong{display:block;font-size:1rem;color:#fff;letter-spacing:.04em}
+    .brand-text span{font-size:.72rem;color:var(--gol);letter-spacing:.06em;text-transform:uppercase}
+    .nav-links{display:flex;gap:1.2rem;align-items:center}
+    .nav-links a{color:var(--gp);text-decoration:none;font-size:.88rem;font-weight:600;transition:color .2s}
+    .nav-links a:hover{color:var(--gol)}
+    /* BUTTONS */
+    .btn{padding:.7rem 1.8rem;border-radius:99px;font-size:.92rem;font-weight:700;cursor:pointer;border:none;transition:all .22s;text-decoration:none;display:inline-block}
+    .btn-primary{background:linear-gradient(135deg,var(--gl),var(--gm));color:#fff;box-shadow:0 4px 18px rgba(45,122,79,.4)}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(45,122,79,.6)}
+    .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gol));color:var(--gd)}
+    .btn-gold:hover{transform:translateY(-2px)}
+    .btn-outline{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.4)}
+    .btn-block{width:100%;padding:.9rem;font-size:1rem;border-radius:12px;margin-top:.5rem}
+    .btn-sm{padding:.4rem 1rem;font-size:.82rem}
+    /* LOGIN SCREEN */
+    #loginScreen{position:fixed;inset:0;z-index:200;background:linear-gradient(160deg,#071a0f,#1a4a2e);display:flex;align-items:center;justify-content:center}
+    .login-box{background:rgba(255,255,255,.08);backdrop-filter:blur(16px);border:1px solid rgba(200,168,75,.35);border-radius:24px;padding:2.8rem;max-width:420px;width:90%;box-shadow:0 12px 48px rgba(0,0,0,.4);text-align:center}
+    .login-box .tree-icon{font-size:3.5rem;margin-bottom:.8rem}
+    .login-box h1{color:#fff;font-size:1.5rem;font-weight:800;margin-bottom:.3rem}
+    .login-box p{color:var(--gp);font-size:.9rem;margin-bottom:2rem}
+    .login-badge{display:inline-block;background:linear-gradient(90deg,var(--gold),var(--gol));color:var(--gd);font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:.3rem 1rem;border-radius:99px;margin-bottom:1.2rem}
+    .form-group{margin-bottom:1rem;text-align:left}
+    .form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--gp);margin-bottom:.3rem}
+    .form-group input{width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s}
+    .form-group input:focus{border-color:var(--gold)}
+    .form-group input::placeholder{color:rgba(255,255,255,.3)}
+    .login-error{background:rgba(220,50,50,.15);border:1px solid rgba(220,50,50,.35);border-radius:10px;padding:.75rem 1rem;color:#ff8a8a;font-size:.85rem;margin-bottom:1rem;display:none}
+    /* MAIN APP */
+    #app{display:none}
+    /* HERO */
+    .hero{position:relative;overflow:hidden;min-height:480px;display:flex;align-items:center;justify-content:center}
+    .hero-svg{position:absolute;inset:0;width:100%;height:100%}
+    .hero-content{position:relative;z-index:2;text-align:center;padding:3rem 2rem}
+    .hero-badge{display:inline-block;background:linear-gradient(90deg,var(--gold),var(--gol));color:var(--gd);font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:.35rem 1.2rem;border-radius:99px;margin-bottom:1.2rem}
+    .hero h1{font-size:clamp(1.8rem,4vw,3rem);font-weight:900;color:#fff;line-height:1.15;margin-bottom:.7rem;text-shadow:0 2px 18px rgba(0,0,0,.55)}
+    .hero h1 span{color:var(--gol)}
+    .hero p{color:var(--gp);font-size:1rem;max-width:560px;margin:0 auto 2rem;line-height:1.6}
+    .hero-cta{display:inline-flex;gap:1rem;flex-wrap:wrap;justify-content:center}
+    /* STATS */
+    .stats-strip{background:rgba(0,0,0,.4);backdrop-filter:blur(8px);border-top:1px solid rgba(200,168,75,.25);border-bottom:1px solid rgba(200,168,75,.25);display:flex;justify-content:center;flex-wrap:wrap}
+    .stat-item{padding:1.1rem 2rem;text-align:center;border-right:1px solid rgba(255,255,255,.08)}
+    .stat-item:last-child{border-right:none}
+    .stat-item .num{font-size:1.7rem;font-weight:900;color:var(--gol);line-height:1}
+    .stat-item .lbl{font-size:.7rem;color:var(--gp);text-transform:uppercase;letter-spacing:.08em;margin-top:.15rem}
+    /* LAYOUT */
+    .page-wrap{max-width:1140px;margin:0 auto;padding:0 1.5rem}
+    section{padding:3.5rem 0}
+    .section-title{font-size:1.55rem;font-weight:800;color:#fff;margin-bottom:.5rem;display:flex;align-items:center;gap:.6rem}
+    .section-title::before{content:'';display:block;width:5px;height:26px;background:linear-gradient(to bottom,var(--gold),var(--gl));border-radius:3px}
+    .section-sub{color:var(--gp);margin-bottom:2rem;font-size:.93rem;line-height:1.6}
+    /* CARDS */
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1.4rem}
+    .card{background:rgba(255,255,255,.07);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:1.5rem;transition:all .25s}
+    .card:hover{transform:translateY(-4px);background:rgba(255,255,255,.12);border-color:var(--gold)}
+    .card-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:.9rem}
+    .card-icon.g{background:linear-gradient(135deg,var(--gm),var(--gl))}
+    .card-icon.o{background:linear-gradient(135deg,#a0732a,var(--gold))}
+    .card-icon.b{background:linear-gradient(135deg,var(--blue),#0057b3)}
+    .card-icon.t{background:linear-gradient(135deg,#00695c,#26a69a)}
+    .card h3{font-size:1rem;font-weight:700;color:#fff;margin-bottom:.4rem}
+    .card p{font-size:.86rem;color:var(--gp);line-height:1.5}
+    /* DASHBOARD */
+    .dashboard-header{background:rgba(0,0,0,.3);border:1px solid rgba(200,168,75,.2);border-radius:18px;padding:1.4rem 1.8rem;margin-bottom:1.8rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+    .tree-avatar{width:68px;height:68px;border-radius:14px;background:linear-gradient(135deg,var(--gm),var(--gd));display:flex;align-items:center;justify-content:center;font-size:2.4rem;border:2px solid var(--gold);animation:float 4s ease-in-out infinite}
+    .tree-info h3{color:#fff;font-size:1.1rem;font-weight:700}
+    .tree-info p{color:var(--gp);font-size:.83rem;margin-top:.12rem}
+    .health-badge{background:linear-gradient(90deg,var(--gm),var(--gl));color:#fff;font-size:.76rem;font-weight:700;padding:.25rem .75rem;border-radius:99px;display:inline-block;margin-top:.35rem}
+    .progress-bars{display:flex;flex-direction:column;gap:.65rem;min-width:240px}
+    .prog-label{display:flex;justify-content:space-between;font-size:.78rem;color:var(--gp);margin-bottom:.18rem}
+    .prog-track{background:rgba(255,255,255,.1);border-radius:99px;height:7px;overflow:hidden}
+    .prog-fill{height:100%;border-radius:99px}
+    .prog-fill.g{background:linear-gradient(90deg,var(--gm),#66bb6a)}
+    .prog-fill.o{background:linear-gradient(90deg,#a07030,var(--gol))}
+    .prog-fill.b{background:linear-gradient(90deg,var(--blue),#4472c4)}
+    /* TABS */
+    .tabs{display:flex;gap:.5rem;margin-bottom:1.8rem;flex-wrap:wrap}
+    .tab-btn{padding:.5rem 1.3rem;border-radius:99px;border:none;cursor:pointer;font-size:.86rem;font-weight:700;transition:all .2s;background:rgba(255,255,255,.08);color:var(--gp)}
+    .tab-btn.active{background:linear-gradient(135deg,var(--gold),var(--gol));color:var(--gd)}
+    .tab-content{display:none}
+    .tab-content.active{display:block}
+    /* TIMELINE */
+    .timeline{position:relative;padding-left:2.4rem}
+    .timeline::before{content:'';position:absolute;left:.65rem;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--gold),var(--gl))}
+    .timeline-item{position:relative;margin-bottom:1.6rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.1rem 1.3rem;transition:all .2s}
+    .timeline-item:hover{background:rgba(255,255,255,.11)}
+    .timeline-item::before{content:'';position:absolute;left:-1.95rem;top:1.2rem;width:13px;height:13px;border-radius:50%;background:var(--gold);border:3px solid var(--gd)}
+    .timeline-item.done::before{background:var(--gl)}
+    .timeline-week{font-size:.73rem;color:var(--gol);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem}
+    .timeline-item h4{color:#fff;font-size:.97rem;margin-bottom:.35rem}
+    .timeline-item p{color:var(--gp);font-size:.84rem;line-height:1.5}
+    .task-list{margin-top:.7rem;display:flex;flex-direction:column;gap:.35rem}
+    .task-item{display:flex;align-items:center;gap:.65rem;font-size:.85rem;color:var(--gp)}
+    .task-check{width:19px;height:19px;border-radius:5px;border:2px solid rgba(255,255,255,.25);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:.68rem}
+    .task-check.checked{background:var(--gl);border-color:var(--gl);color:#fff}
+    /* PLAN 30 */
+    .plan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:1.1rem}
+    .plan-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.2rem;text-align:center;transition:all .2s;position:relative;overflow:hidden}
+    .plan-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+    .plan-card.y1::after{background:linear-gradient(90deg,#81c784,#a5d6a7)}
+    .plan-card.y5::after{background:linear-gradient(90deg,var(--gl),#66bb6a)}
+    .plan-card.y10::after{background:linear-gradient(90deg,var(--gm),#43a047)}
+    .plan-card.y20::after{background:linear-gradient(90deg,var(--gd),var(--gm))}
+    .plan-card.y30::after{background:linear-gradient(90deg,var(--gold),var(--gol))}
+    .plan-card:hover{transform:translateY(-4px);background:rgba(255,255,255,.11)}
+    .plan-year{font-size:1.9rem;font-weight:900;color:var(--gol);line-height:1}
+    .plan-year span{font-size:.78rem;color:var(--gp)}
+    .plan-height{font-size:1rem;color:#fff;font-weight:700;margin:.35rem 0 .18rem}
+    .plan-card p{font-size:.8rem;color:var(--gp);line-height:1.5}
+    /* CHAT */
+    .asesoria-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.8rem}
+    .chat-box{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:480px}
+    .chat-header{padding:.9rem 1.3rem;background:rgba(45,122,79,.35);border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:.75rem}
+    .ai-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gm),var(--gl));display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+    .chat-header h4{color:#fff;font-size:.92rem;font-weight:700}
+    .chat-header p{color:var(--gp);font-size:.73rem}
+    .online-dot{width:7px;height:7px;border-radius:50%;background:#4caf7d;margin-left:auto;box-shadow:0 0 5px #4caf7d;flex-shrink:0}
+    .chat-msgs{flex:1;overflow-y:auto;padding:1.1rem;display:flex;flex-direction:column;gap:.85rem}
+    .msg{max-width:85%}
+    .msg.bot{align-self:flex-start}
+    .msg.user{align-self:flex-end}
+    .msg-bubble{padding:.7rem .95rem;border-radius:12px;font-size:.85rem;line-height:1.55}
+    .msg.bot .msg-bubble{background:rgba(45,122,79,.4);color:#fff;border-radius:4px 12px 12px 12px}
+    .msg.user .msg-bubble{background:linear-gradient(135deg,var(--gm),var(--gl));color:#fff;border-radius:12px 4px 12px 12px}
+    .msg-time{font-size:.68rem;color:rgba(255,255,255,.3);margin-top:.18rem}
+    .msg.user .msg-time{text-align:right}
+    .chat-input-row{padding:.85rem 1.1rem;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:.55rem}
+    .chat-input{flex:1;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);border-radius:9px;padding:.6rem .95rem;color:#fff;font-size:.88rem;outline:none}
+    .chat-input:focus{border-color:var(--gl)}
+    .chat-input::placeholder{color:rgba(255,255,255,.3)}
+    .btn-send{width:40px;height:40px;border-radius:9px;border:none;cursor:pointer;background:linear-gradient(135deg,var(--gm),var(--gl));color:#fff;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+    .btn-send:hover{transform:scale(1.08)}
+    .quick-btns{display:flex;flex-wrap:wrap;gap:.45rem;padding:0 1.1rem .85rem}
+    .quick-btn{background:rgba(45,122,79,.25);border:1px solid rgba(76,175,125,.3);color:var(--gp);font-size:.75rem;padding:.28rem .75rem;border-radius:99px;cursor:pointer;transition:all .2s}
+    .quick-btn:hover{background:rgba(45,122,79,.5);color:#fff}
+    /* SPECIALIST */
+    .specialist-box{background:rgba(0,51,102,.2);border:1px solid rgba(0,87,179,.25);border-radius:18px;padding:1.6rem;display:flex;flex-direction:column;gap:1.1rem}
+    .specialist-box h3{color:#fff;font-size:1.05rem;font-weight:700}
+    .specialist-box>p{color:var(--gp);font-size:.88rem;line-height:1.6}
+    .specialist-profiles{display:flex;flex-direction:column;gap:.9rem}
+    .spec-card{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:.95rem 1.1rem;display:flex;align-items:center;gap:.9rem}
+    .spec-av{width:48px;height:48px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;border:2px solid var(--gold)}
+    .spec-av.g{background:linear-gradient(135deg,var(--gd),var(--gm))}
+    .spec-av.b{background:linear-gradient(135deg,var(--blue),#004080)}
+    .spec-info h4{color:#fff;font-size:.9rem;font-weight:700}
+    .spec-info p{color:var(--gp);font-size:.76rem;margin:.12rem 0}
+    .avail{color:#81c784!important;font-weight:600!important}
+    .btn-contact{margin-left:auto;padding:.42rem .9rem;border-radius:99px;border:none;cursor:pointer;font-size:.78rem;font-weight:700;background:linear-gradient(90deg,var(--gm),var(--gl));color:#fff;white-space:nowrap;transition:all .2s;flex-shrink:0}
+    .btn-contact:hover{transform:scale(1.05)}
+    .alert-trigger{background:rgba(255,160,0,.1);border:1px solid rgba(255,160,0,.35);border-radius:10px;padding:.9rem 1.1rem;display:flex;align-items:flex-start;gap:.65rem}
+    .alert-icon{font-size:1.3rem;flex-shrink:0}
+    .alert-trigger p{color:#ffd54f;font-size:.83rem;line-height:1.5}
+    /* MODAL */
+    .modal-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);align-items:center;justify-content:center}
+    .modal-overlay.open{display:flex}
+    .modal{background:linear-gradient(160deg,#1a4a2e,#0d2b1a);border:1px solid var(--gold);border-radius:20px;padding:2.3rem;max-width:420px;width:90%;position:relative;animation:modalIn .3s ease}
+    @keyframes modalIn{from{opacity:0;transform:scale(.92) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    .modal-close{position:absolute;top:.9rem;right:.9rem;background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.95rem}
+    .modal h3{color:var(--gol);font-size:1.15rem;margin-bottom:.55rem}
+    .modal p{color:var(--gp);font-size:.88rem;line-height:1.6;margin-bottom:1.1rem}
+    /* NOTIFICATION */
+    .notif{position:fixed;bottom:1.5rem;right:1.5rem;background:linear-gradient(135deg,var(--gd),var(--gm));border:1px solid var(--gold);border-radius:12px;padding:.95rem 1.3rem;color:#fff;font-size:.88rem;z-index:300;max-width:300px;line-height:1.4;transform:translateX(140%);transition:transform .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+    .notif.show{transform:translateX(0)}
+    .notif strong{color:var(--gol);display:block;margin-bottom:.18rem}
+    /* USER INFO */
+    .user-chip{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:99px;padding:.3rem .9rem;color:var(--gp);font-size:.8rem}
+    .user-dot{width:8px;height:8px;border-radius:50%;background:var(--gl);box-shadow:0 0 5px var(--gl)}
+    /* CUIDADOS */
+    .cuidados-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.3rem}
+    .cuidado-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:14px;overflow:hidden;transition:all .25s}
+    .cuidado-card:hover{transform:translateY(-4px);border-color:var(--gold)}
+    .cuidado-img{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:3rem}
+    .cuidado-img.agua{background:linear-gradient(135deg,#0288d1,#29b6f6)}
+    .cuidado-img.sol{background:linear-gradient(135deg,#f57f17,#ffca28)}
+    .cuidado-img.tierra{background:linear-gradient(135deg,#5d4037,#8d6e63)}
+    .cuidado-img.poda{background:linear-gradient(135deg,#2e7d32,#66bb6a)}
+    .cuidado-img.abono{background:linear-gradient(135deg,#33691e,#8bc34a)}
+    .cuidado-img.plaga{background:linear-gradient(135deg,#b71c1c,#e57373)}
+    .cuidado-body{padding:1rem}
+    .cuidado-body h4{color:#fff;font-size:.94rem;font-weight:700;margin-bottom:.3rem}
+    .cuidado-body p{color:var(--gp);font-size:.82rem;line-height:1.5}
+    .freq-tag{display:inline-block;margin-top:.5rem;background:rgba(76,175,125,.2);border:1px solid rgba(76,175,125,.3);color:var(--gl);font-size:.7rem;font-weight:700;padding:.18rem .65rem;border-radius:99px}
+    /* FOOTER */
+    footer{background:rgba(0,0,0,.5);border-top:2px solid var(--gold);padding:2rem 0;margin-top:2rem;text-align:center}
+    footer .fi{display:flex;flex-direction:column;align-items:center;gap:.6rem}
+    footer h4{color:var(--gol);font-size:.97rem}
+    footer p{color:var(--gp);font-size:.8rem;max-width:440px;line-height:1.5}
+    footer .fl{display:flex;gap:1.4rem;margin-top:.45rem;flex-wrap:wrap;justify-content:center}
+    footer .fl a{color:var(--gp);font-size:.8rem;text-decoration:none}
+    footer .fl a:hover{color:var(--gol)}
+    /* ANIMATIONS */
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    ::-webkit-scrollbar{width:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--gm);border-radius:3px}
+    @media(max-width:760px){
+      .asesoria-grid{grid-template-columns:1fr}
+      .nav-links .nh{display:none}
+    }
+    @media(max-width:560px){
+      nav{padding:0 1rem}
+      .stat-item{padding:.9rem 1rem}
+      .plan-grid{grid-template-columns:repeat(2,1fr)}
+    }
+  </style>
+</head>
+<body>
+
+<!-- âââ LOGIN âââ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="tree-icon">&#127807;</div>
+    <div class="login-badge">&#127807; UNAM 475 Aniversario</div>
+    <h1>Proyecto Acacia</h1>
+    <p>Plataforma de cuidado arboreo institucional.<br>Accede con tu cuenta autorizada.</p>
+    <div class="login-error" id="loginError"></div>
+    <div class="form-group">
+      <label>Correo institucional</label>
+      <input type="email" id="loginEmail" placeholder="usuario@unam.mx" autocomplete="email"/>
+    </div>
+    <div class="form-group">
+      <label>Contrasena asignada</label>
+      <input type="password" id="loginPass" placeholder="â¢â¢â¢â¢â¢â¢â¢â¢" autocomplete="current-password"/>
+    </div>
+    <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">Iniciar sesion</button>
+    <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin-top:1rem">Acceso restringido a cuentas @unam.mx y @ikusi.com autorizadas por el administrador.</p>
+  </div>
+</div>
+
+<!-- âââ APP âââ -->
+<div id="app">
+
+<nav>
+  <div class="nav-brand">
+    <svg width="40" height="46" viewBox="0 0 44 50" style="flex-shrink:0">
+      <rect width="44" height="50" rx="5" fill="#003366"/>
+      <rect x="2" y="2" width="40" height="46" rx="4" fill="none" stroke="#c8a84b" stroke-width="2"/>
+      <rect x="6" y="6" width="14" height="20" rx="2" fill="#4caf7d" opacity=".85"/>
+      <rect x="24" y="6" width="14" height="20" rx="2" fill="#c8a84b" opacity=".85"/>
+      <rect x="6" y="28" width="32" height="14" rx="2" fill="#2d7a4f" opacity=".85"/>
+      <text x="22" y="40" text-anchor="middle" font-size="6" fill="#fff" font-weight="bold">UNAM</text>
+    </svg>
+    <div class="brand-text">
+      <strong>Proyecto Acacia &middot; UNAM 475</strong>
+      <span>Plataforma de Cuidado Arboreo</span>
+    </div>
+  </div>
+  <div class="nav-links">
+    <a href="#cuidados" class="nh">Cuidados</a>
+    <a href="#metas" class="nh">Metas</a>
+    <a href="#plan30" class="nh">Plan 30 Anos</a>
+    <a href="#asesoria" class="nh">Asesoria IA</a>
+    <div class="user-chip"><div class="user-dot"></div><span id="userEmail">...</span></div>
+    <button class="btn btn-outline btn-sm" onclick="doLogout()">Salir</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <svg class="hero-svg" viewBox="0 0 1200 480" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#071a0f"/><stop offset="0.6" stop-color="#1a4a2e"/><stop offset="1" stop-color="#2d7a4f"/>
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="480" fill="url(#sky)"/>
+    <circle cx="960" cy="80" r="48" fill="#f0d080" opacity=".14"/>
+    <circle cx="960" cy="80" r="30" fill="#f0d080" opacity=".22"/>
+    <polygon points="0,320 150,210 300,280 450,185 600,255 750,200 900,265 1050,165 1200,240 1200,380 0,380" fill="#1a4a2e" opacity=".8"/>
+    <ellipse cx="600" cy="465" rx="700" ry="65" fill="#2d7a4f" opacity=".6"/>
+    <g transform="translate(530,60)">
+      <rect x="50" y="270" width="20" height="140" rx="7" fill="#5d4037"/>
+      <ellipse cx="60" cy="252" rx="120" ry="34" fill="#1b5e20" opacity=".92"/>
+      <ellipse cx="60" cy="230" rx="98" ry="30" fill="#2e7d32" opacity=".92"/>
+      <ellipse cx="60" cy="208" rx="76" ry="27" fill="#388e3c" opacity=".9"/>
+      <ellipse cx="60" cy="187" rx="56" ry="23" fill="#43a047" opacity=".88"/>
+      <ellipse cx="60" cy="168" rx="40" ry="19" fill="#66bb6a" opacity=".86"/>
+      <ellipse cx="60" cy="150" rx="27" ry="15" fill="#81c784" opacity=".82"/>
+      <circle cx="20" cy="183" r="8" fill="#ffeb3b" opacity=".7"/>
+      <circle cx="98" cy="178" r="7" fill="#ffeb3b" opacity=".65"/>
+      <circle cx="55" cy="143" r="6" fill="#fdd835" opacity=".6"/>
+    </g>
+    <path d="M250 95 q6-6 12 0 q6-6 12 0" stroke="#a5d6a7" stroke-width="2" fill="none" opacity=".6"/>
+    <path d="M850 85 q5-5 10 0 q5-5 10 0" stroke="#a5d6a7" stroke-width="2" fill="none" opacity=".55"/>
+  </svg>
+  <div class="hero-content">
+    <div class="hero-badge">&#127807; 475 Aniversario UNAM &middot; 1551 &ndash; 2026</div>
+    <h1>Cuida <span>tu Acacia</span>,<br>cuida el futuro</h1>
+    <p>Monitorea, registra y recibe asesoria experta para el crecimiento de tu arbol durante los proximos 30 anos.</p>
+    <div class="hero-cta">
+      <a href="#dashboard" class="btn btn-primary">&#128202; Ver mi panel</a>
+      <a href="#metas" class="btn btn-gold">&#127919; Mis metas</a>
+      <a href="#asesoria" class="btn btn-outline">&#129302; Consultar IA</a>
+    </div>
+  </div>
+</section>
+
+<div class="stats-strip">
+  <div class="stat-item"><div class="num">475</div><div class="lbl">Anos UNAM</div></div>
+  <div class="stat-item"><div class="num" id="ctr">0</div><div class="lbl">Arboles Registrados</div></div>
+  <div class="stat-item"><div class="num">30</div><div class="lbl">Anos de seguimiento</div></div>
+  <div class="stat-item"><div class="num">12</div><div class="lbl">Especialistas UNAM</div></div>
+</div>
+
+<div class="page-wrap">
+
+<!-- CUIDADOS -->
+<section id="cuidados">
+  <div class="section-title">Guia de Cuidados</div>
+  <p class="section-sub">Sigue estas recomendaciones para garantizar el desarrollo optimo de tu Acacia.</p>
+  <div class="cuidados-grid">
+    <div class="cuidado-card"><div class="cuidado-img agua">&#128167;</div><div class="cuidado-body"><h4>Riego</h4><p>Primeros 6 meses: 2-3 veces/semana. Despues: 1 vez/semana en temporada seca.</p><span class="freq-tag">2-3x semana</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img sol">&#9728;</div><div class="cuidado-body"><h4>Luz solar</h4><p>6-8 horas de sol directo. Exposicion plena o semisombra segun la ubicacion.</p><span class="freq-tag">6-8 hrs/dia</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img tierra">&#127807;</div><div class="cuidado-body"><h4>Suelo</h4><p>Bien drenado, arcilloso o arenoso. pH entre 6 y 8. Sustrato permeable.</p><span class="freq-tag">pH 6-8</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img poda">&#9988;</div><div class="cuidado-body"><h4>Poda</h4><p>Formativa los primeros 3 anos. Retirar ramas secas o enfermas en cualquier epoca.</p><span class="freq-tag">Anual</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img abono">&#127808;</div><div class="cuidado-body"><h4>Fertilizacion</h4><p>Compost organico al inicio de lluvias. Evitar fertilizantes con alto nitrogeno.</p><span class="freq-tag">Cada 6 meses</span></div></div>
+    <div class="cuidado-card"><div class="cuidado-img plaga">&#128269;</div><div class="cuidado-body"><h4>Plagas</h4><p>Revision semanal de hojas y tronco. Jabon potasico como primera medida preventiva.</p><span class="freq-tag">Revision semanal</span></div></div>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<section id="dashboard">
+  <div class="section-title">Mi Panel de Seguimiento</div>
+  <p class="section-sub">Estado actual de tu arbol y registro de actividades.</p>
+  <div class="dashboard-header">
+    <div style="display:flex;align-items:center;gap:1.1rem">
+      <div class="tree-avatar">&#127807;</div>
+      <div class="tree-info">
+        <h3 id="treeCode">Acacia #UNAM-0475</h3>
+        <p id="treeLocation">&#128205; Ciudad Universitaria, CDMX</p>
+        <div class="health-badge">&#10003; Salud: Excelente</div>
+      </div>
+    </div>
+    <div class="progress-bars">
+      <div><div class="prog-label"><span>&#128167; Hidratacion</span><span>82%</span></div><div class="prog-track"><div class="prog-fill g" style="width:82%"></div></div></div>
+      <div><div class="prog-label"><span>&#127807; Crecimiento</span><span>65%</span></div><div class="prog-track"><div class="prog-fill o" style="width:65%"></div></div></div>
+      <div><div class="prog-label"><span>&#128203; Metas</span><span id="metasPct">47%</span></div><div class="prog-track"><div class="prog-fill b" style="width:47%" id="metasBar"></div></div></div>
+    </div>
+  </div>
+  <div class="cards">
+    <div class="card" style="cursor:pointer" onclick="logCare('riego')"><div class="card-icon g">&#128167;</div><h3>Registrar Riego</h3><p>Documenta el riego de hoy con cantidad de agua y condicion del suelo.</p></div>
+    <div class="card" style="cursor:pointer" onclick="logCare('foto')"><div class="card-icon o">&#128248;</div><h3>Subir Fotografia</h3><p>Documenta el crecimiento con una foto semanal para seguimiento visual.</p></div>
+    <div class="card" style="cursor:pointer" onclick="logCare('medicion')"><div class="card-icon t">&#128207;</div><h3>Registrar Medidas</h3><p>Anota altura y diametro del tronco para el historial de crecimiento.</p></div>
+    <div class="card" style="cursor:pointer" onclick="document.getElementById('asesoria').scrollIntoView({behavior:'smooth'})"><div class="card-icon b">&#9888;</div><h3>Reportar Problema</h3><p>Consulta a la IA o contacta a un especialista si notas algo inusual.</p></div>
+  </div>
+  <div style="margin-top:1.5rem">
+    <div class="section-title" style="font-size:1.1rem;margin-bottom:1rem">&#128203; Ultimos registros</div>
+    <div id="careLogsList" style="display:flex;flex-direction:column;gap:.7rem">
+      <p style="color:var(--gp);font-size:.88rem">Cargando registros...</p>
+    </div>
+  </div>
+</section>
+
+<!-- METAS -->
+<section id="metas">
+  <div class="section-title">Metas de Cuidado</div>
+  <p class="section-sub">Plan estructurado de actividades para el primer ano de vida de tu Acacia.</p>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'tw')">&#128197; Semanas</button>
+    <button class="tab-btn" onclick="switchTab(this,'tm')">&#128198; Meses</button>
+  </div>
+  <div id="tw" class="tab-content active">
+    <div class="timeline">
+      <div class="timeline-item done">
+        <div class="timeline-week">Semana 1 &middot; Mar 14-20</div>
+        <h4>&#127807; Plantacion y adaptacion inicial</h4>
+        <p>Asegura el correcto trasplante y condiciones optimas de instalacion.</p>
+        <div class="task-list">
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Preparar hoyo 60x60x60 cm con sustrato mezclado</span></div>
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Plantar y colocar tutor de madera</span></div>
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Primer riego abundante (5-7 litros)</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Fotografiar y registrar medidas iniciales</span></div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Semana 2 &middot; Mar 21-27</div>
+        <h4>&#128167; Riego regular</h4>
+        <p>Observa absorcion del agua y estado de hojas para detectar estres hidrico.</p>
+        <div class="task-list">
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Riegos lunes, miercoles y viernes (2-3 L)</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Revisar humedad antes de cada riego</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Fotografia comparativa del follaje</span></div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Semanas 3-4 &middot; Mar 28 - Abr 10</div>
+        <h4>&#128269; Primera inspeccion de plagas</h4>
+        <p>Examen de hojas, tallo y zona basal para detectar problemas temprano.</p>
+        <div class="task-list">
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Inspeccion visual completa (hojas, tronco, raices)</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Aplicar jabon potasico preventivo si hay pulgones</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Consultar IA si se detecta algo anormal</span></div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-week">Semanas 5-8 &middot; Abr 11 - May 7</div>
+        <h4>&#127808; Primera fertilizacion organica</h4>
+        <p>Compost en zona de raices para impulsar crecimiento en temporada de lluvias.</p>
+        <div class="task-list">
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Aplicar 2 kg de composta o vermicomposta</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Medir altura y registrar en plataforma</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Reforzar tutores si hay vientos fuertes</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="tm" class="tab-content">
+    <div class="timeline">
+      <div class="timeline-item"><div class="timeline-week">Mes 1 &middot; Marzo 2026</div><h4>&#127807; Establecimiento</h4><p>Meta: supervivencia 100%, primeras hojas nuevas visibles, crecimiento minimo 2 cm.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 2-3 &middot; Abr-May 2026</div><h4>&#127808; Crecimiento inicial</h4><p>Meta: altura 50-60 cm, follaje denso. Primera fertilizacion completada.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 4-6 &middot; Jun-Ago 2026</div><h4>&#127795; Expansion radicular</h4><p>Meta: arbol autosoportado, 80-100 cm, primeros indicios de ramificacion.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 7-12 &middot; Sep 2026 - Feb 2027</div><h4>&#127942; Primer ano completado</h4><p>Meta anual: 1.5 m altura, 3 cm diametro tronco, sistema radicular establecido.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAN 30 ANOS -->
+<section id="plan30">
+  <div class="section-title">Plan de Crecimiento a 30 Anos</div>
+  <p class="section-sub">Desde la plantacion en 2026 hasta convertirse en arbol patrimonial en 2056.</p>
+  <div class="plan-grid">
+    <div class="plan-card y1"><div class="plan-year">1 <span>ano</span></div><div class="plan-height">~1.5 m</div><p>Establecimiento radicular. Primer aniversario del proyecto.</p></div>
+    <div class="plan-card y5"><div class="plan-year">5 <span>anos</span></div><div class="plan-height">~5-6 m</div><p>Copa amplia. Primeras flores amarillas. Reduccion del riego.</p></div>
+    <div class="plan-card y10"><div class="plan-year">10 <span>anos</span></div><div class="plan-height">~10 m</div><p>Arbol maduro joven. Copa 6-8 m. Floracion anual abundante.</p></div>
+    <div class="plan-card y20"><div class="plan-year">20 <span>anos</span></div><div class="plan-height">~15 m</div><p>Arbol robusto. Tronco >30 cm. Fauna asociada establecida.</p></div>
+    <div class="plan-card y30"><div class="plan-year">30 <span>anos</span></div><div class="plan-height">~18-22 m</div><p>&#127942; Arbol patrimonial. Legado vivo UNAM 475. 660 kg CO2 capturado.</p></div>
+  </div>
+</section>
+
+<!-- ASESORIA IA -->
+<section id="asesoria">
+  <div class="section-title">Asesoria y Soporte</div>
+  <p class="section-sub">Consulta a la IA o conectate con especialistas de la UNAM.</p>
+  <div class="asesoria-grid">
+    <div class="chat-box">
+      <div class="chat-header">
+        <div class="ai-avatar">&#129302;</div>
+        <div><h4>Asistente Acacia IA</h4><p>Experto en cuidado de Acacia &middot; UNAM 475</p></div>
+        <div class="online-dot"></div>
+      </div>
+      <div class="chat-msgs" id="chatMsgs">
+        <div class="msg bot"><div class="msg-bubble">Hola! Soy el asistente IA del Proyecto Acacia 475. Puedo ayudarte con riegos, plagas, suelo, poda y cualquier duda. En que puedo apoyarte?</div><div class="msg-time">Ahora</div></div>
+      </div>
+      <div class="quick-btns">
+        <button class="quick-btn" onclick="qm('Con que frecuencia riego?')">&#128167; Riego</button>
+        <button class="quick-btn" onclick="qm('Hojas amarillas')">&#127810; Amarillamiento</button>
+        <button class="quick-btn" onclick="qm('Cuando fertilizar?')">&#127808; Fertilizacion</button>
+        <button class="quick-btn" onclick="qm('Vi insectos en ramas')">&#128027; Plagas</button>
+      </div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chatIn" type="text" placeholder="Escribe tu consulta..." onkeydown="if(event.key==='Enter')sendMsg()"/>
+        <button class="btn-send" onclick="sendMsg()">&#10148;</button>
+      </div>
+    </div>
+    <div class="specialist-box">
+      <h3>&#128105;&#8205;&#128300; Especialistas UNAM</h3>
+      <p>Si la IA no puede resolver tu problema, nuestros biologos y ecologos de la Facultad de Ciencias estan disponibles.</p>
+      <div class="specialist-profiles">
+        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Sofia Ramirez</h4><p>Ecologia y Botanica &middot; FC-UNAM</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Sofia Ramirez')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Alejandro Torres</h4><p>Fitopatologia &middot; FES Iztacala</p><span class="avail">&#9679; Disponible manana</span></div><button class="btn-contact" onclick="openModal('Dr. Alejandro Torres')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Valeria Mendoza</h4><p>Suelos y Nutricion &middot; FES Cuautitlan</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('M.C. Valeria Mendoza')">Contactar</button></div>
+      </div>
+      <div class="alert-trigger"><div class="alert-icon">&#9889;</div><p>Si tu arbol muestra sintomas urgentes usa <strong>Alerta Urgente</strong> para contacto inmediato.</p></div>
+      <button class="btn btn-gold btn-block" onclick="notify('&#128680; Alerta enviada','Un especialista te contactara en menos de 2 horas.')">&#128680; Alerta Urgente</button>
+    </div>
+  </div>
+</section>
+
+</div><!-- /page-wrap -->
+
+<footer>
+  <div class="page-wrap"><div class="fi">
+    <div style="font-size:2.2rem">&#127795;</div>
+    <h4>Proyecto Acacia &middot; UNAM 475 Aniversario</h4>
+    <p>Universidad Nacional Autonoma de Mexico &middot; 2026. Sembrando conocimiento y vida para las proximas generaciones.</p>
+    <div class="fl"><a href="#">Privacidad</a><a href="#">Preguntas frecuentes</a><a href="#">Contacto UNAM</a><a href="https://unam.mx">www.unam.mx</a></div>
+    <p style="font-size:.73rem;color:rgba(255,255,255,.2);margin-top:.5rem">&copy; 2026 UNAM &middot; Todos los derechos reservados</p>
+  </div></div>
+</footer>
+
+</div><!-- /app -->
+
+<!-- MODAL ESPECIALISTA -->
+<div class="modal-overlay" id="mo">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">&#128105;&#8205;&#128300;</div>
+    <h3 id="modalTitle" style="text-align:center">Contactar</h3>
+    <p>Describe el problema de tu arbol. El especialista respondera en 24 horas.</p>
+    <div class="form-group"><label>Tu nombre</label><input type="text" id="specName" placeholder="Nombre completo"/></div>
+    <div class="form-group"><label>Descripcion del problema</label><textarea id="specDesc" rows="3" style="width:100%;padding:.7rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.9rem;outline:none;resize:vertical;font-family:inherit" placeholder="Describe los sintomas que observas..."></textarea></div>
+    <button class="btn btn-primary btn-block" onclick="submitConsulta()">&#128228; Enviar consulta</button>
+  </div>
+</div>
+
+<!-- NOTIFICATION -->
+<div class="notif" id="notif"><strong id="ntitle">Listo</strong><span id="nmsg"></span></div>
+
+<script>
+// ââ SUPABASE CONFIG ââââââââââââââââââââââââââââââââââââââââââ
+const SUPABASE_URL = 'https://hambscfdiaymowskislw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_s91fShtd7-qov8lVIvpVXQ_xrNANUme';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ââ AUTH ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  const btn   = document.getElementById('loginBtn');
+  errEl.style.display = 'none';
+  // Validate allowed domains
+  if (!email.endsWith('@unam.mx') && !email.endsWith('@ikusi.com')) {
+    errEl.textContent = 'Solo se permiten correos @unam.mx o @ikusi.com';
+    errEl.style.display = 'block'; return;
+  }
+  btn.textContent = 'Iniciando sesion...'; btn.disabled = true;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  btn.textContent = 'Iniciar sesion'; btn.disabled = false;
+  if (error) {
+    errEl.textContent = 'Credenciales incorrectas. Verifica tu correo y contrasena.';
+    errEl.style.display = 'block';
+  } else {
+    showApp(data.user);
+  }
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+function showApp(user) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('userEmail').textContent = user.email;
+  loadCareLogs();
+  animateCounter();
+}
+
+// Check session on load
+window.addEventListener('load', async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) showApp(session.user);
+  document.getElementById('loginPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+
+// ââ CARE LOGS ââââââââââââââââââââââââââââââââââââââââââââââââââ
+async function logCare(type) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  // Get user's tree
+  const { data: trees } = await sb.from('trees').select('id,tree_code').eq('owner_id', user.id).limit(1);
+  const treeId = trees && trees.length > 0 ? trees[0].id : null;
+  const labels = { riego:'Riego registrado', foto:'Foto documentada', medicion:'Medida registrada' };
+  const msgs   = { riego:'Se registro riego de 2L correctamente.', foto:'Fotografia almacenada en el sistema.', medicion:'Altura y diametro actualizados.' };
+  const { error } = await sb.from('care_logs').insert({
+    tree_id: treeId, user_id: user.id, log_type: type,
+    water_liters: type === 'riego' ? 2 : null,
+    notes: type + ' registrado desde plataforma'
+  });
+  if (!error) {
+    notify('&#10003; ' + labels[type], msgs[type]);
+    loadCareLogs();
+  } else {
+    notify('&#9888; Error', 'No se pudo guardar el registro.');
+  }
+}
+
+async function loadCareLogs() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const { data: logs } = await sb.from('care_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(5);
+  const el = document.getElementById('careLogsList');
+  if (!logs || logs.length === 0) {
+    el.innerHTML = '<p style="color:var(--gp);font-size:.88rem">No hay registros aun. Usa los botones de arriba para empezar.</p>';
+    return;
+  }
+  const icons = { riego:'&#128167;', foto:'&#128248;', medicion:'&#128207;', poda:'&#9988;', fertilizacion:'&#127808;', inspeccion:'&#128269;', otro:'&#128221;' };
+  el.innerHTML = logs.map(l => `
+    <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;gap:.8rem">
+      <span style="font-size:1.4rem">${icons[l.log_type]||'&#128221;'}</span>
+      <div>
+        <strong style="color:#fff;font-size:.88rem;text-transform:capitalize">${l.log_type}</strong>
+        ${l.water_liters ? `<span style="color:var(--gp);font-size:.78rem"> &middot; ${l.water_liters}L</span>` : ''}
+        <p style="color:var(--gp);font-size:.78rem;margin-top:.1rem">${new Date(l.logged_at).toLocaleString('es-MX')}</p>
+      </div>
+    </div>`).join('');
+}
+
+// ââ SPECIALIST REQUESTS ââââââââââââââââââââââââââââââââââââââââ
+async function submitConsulta() {
+  const { data: { user } } = await sb.auth.getUser();
+  const name = document.getElementById('specName').value;
+  const desc = document.getElementById('specDesc').value;
+  const specialist = document.getElementById('modalTitle').textContent.replace('Contactar: ','');
+  if (!desc) { notify('&#9888; Falta descripcion','Escribe el problema de tu arbol.'); return; }
+  await sb.from('specialist_requests').insert({ user_id: user?.id, specialist_name: specialist, problem_desc: desc, urgency: 'normal' });
+  closeModal();
+  notify('&#9993; Consulta enviada','El especialista revisara tu caso en 24 hrs.');
+}
+
+// ââ UI HELPERS âââââââââââââââââââââââââââââââââââââââââââââââââ
+function switchTab(btn, id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+function toggleCheck(el) {
+  el.classList.toggle('checked');
+  el.innerHTML = el.classList.contains('checked') ? '&#10003;' : '';
+}
+function notify(title, msg) {
+  document.getElementById('ntitle').innerHTML = title;
+  document.getElementById('nmsg').textContent = msg;
+  const n = document.getElementById('notif');
+  n.classList.add('show');
+  setTimeout(() => n.classList.remove('show'), 3800);
+}
+function openModal(name) {
+  document.getElementById('modalTitle').textContent = 'Contactar: ' + name;
+  document.getElementById('mo').classList.add('open');
+}
+function closeModal() { document.getElementById('mo').classList.remove('open'); }
+document.getElementById('mo').addEventListener('click', e => { if (e.target === document.getElementById('mo')) closeModal(); });
+
+function animateCounter() {
+  let t = 0; const el = document.getElementById('ctr'); const target = 847;
+  const s = () => { t += Math.ceil((target - t) / 12); if (t >= target) { el.textContent = target; return; } el.textContent = t; requestAnimationFrame(s); };
+  setTimeout(s, 600);
+}
+
+// ââ AI CHAT ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+const aiR = {
+  riego: "Para una Acacia recien plantada: 2-3 veces por semana los primeros 6 meses (2-3 L cada vez). Despues: una vez por semana en temporada seca. Verifica que el suelo no este encharcado antes de regar.",
+  amarill: "Las hojas amarillas pueden indicar: (1) exceso de riego, (2) deficiencia de hierro, o (3) encharcamiento. Revisa el drenaje del suelo y espacia mas los riegos. Si es severo, contacta a un especialista.",
+  fertiliz: "Aplica fertilizante organico (composta o vermicomposta) al inicio de la temporada de lluvias (mayo-junio). Usa 1-2 kg por arbol. Evita fertilizantes con alto nitrogeno.",
+  insecto: "Los insectos mas comunes en Acacia son pulgones y cochinillas. Primera medida: jabon potasico diluido (5 ml/L) en hojas afectadas. Si persiste mas de 5 dias, reporta a un especialista.",
+  plaga: "Revision preventiva semanal (envez de hojas incluido). Mantien el area limpia de hojas caidas. Si detectas hongos o infestacion severa, contacta al Dr. Torres (Fitopatologia).",
+  def: "Gracias por tu consulta. Te recomiendo documentar los sintomas con una fotografia y registrarlos en el panel. Si el problema persiste, contacta a un especialista UNAM desde esta misma seccion. Tienes algun detalle adicional?"
+};
+function getBotReply(m) {
+  m = m.toLowerCase();
+  if (m.includes('rieg') || m.includes('agua') || m.includes('frec')) return aiR.riego;
+  if (m.includes('amarill') || m.includes('hoja')) return aiR.amarill;
+  if (m.includes('fertiliz') || m.includes('abono')) return aiR.fertiliz;
+  if (m.includes('insecto') || m.includes('bicho')) return aiR.insecto;
+  if (m.includes('plaga') || m.includes('pulg') || m.includes('hongo')) return aiR.plaga;
+  return aiR.def;
+}
+function addMsg(text, role) {
+  const c = document.getElementById('chatMsgs');
+  const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  const d = document.createElement('div'); d.className = 'msg ' + role;
+  d.innerHTML = `<div class="msg-bubble">${text}</div><div class="msg-time">${now}</div>`;
+  c.appendChild(d); c.scrollTop = c.scrollHeight;
+}
+function sendMsg() {
+  const inp = document.getElementById('chatIn');
+  const text = inp.value.trim(); if (!text) return;
+  addMsg(text, 'user'); inp.value = '';
+  setTimeout(() => {
+    const r = getBotReply(text); addMsg(r, 'bot');
+    if (r === aiR.def) setTimeout(() => addMsg('Si deseas, usa el boton <strong>Contactar</strong> en la seccion de especialistas para hablar con un ecologo de la UNAM.', 'bot'), 900);
+  }, 600 + Math.random() * 400);
+}
+function qm(t) { document.getElementById('chatIn').value = t; sendMsg(); }
+</script>
+</body>
+</html>
