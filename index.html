@@ -4839,6 +4839,7 @@ async function unlinkTelegram() {
 function handlePhotoUpload() {
   const fileInput = document.getElementById('pumai-photo');
   const previewContainer = document.getElementById('photo-preview');
+  const uploadArea = document.getElementById('pumai-upload-area');
 
   if (!fileInput.files || fileInput.files.length === 0) return;
 
@@ -4848,9 +4849,15 @@ function handlePhotoUpload() {
   const reader = new FileReader();
   reader.onload = function(e) {
     if (!previewContainer) return;
+    previewContainer.classList.remove('hidden');
+    previewContainer.style.display = 'block';
     previewContainer.innerHTML = `<img src="${e.target.result}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0;">`;
+    // Hide upload area, show preview instead
+    if (uploadArea) uploadArea.style.display = 'none';
   };
   reader.readAsDataURL(file);
+
+  showToast('Foto cargada. Haz clic en "Analizar" para enviar a PUM-AI', 'success');
 }
 
 /**
@@ -5051,19 +5058,69 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Photo upload
+  // Photo upload - file input change handler
   const photoInput = document.getElementById('pumai-photo');
   if (photoInput) {
     photoInput.addEventListener('change', handlePhotoUpload);
   }
 
-  // PUM-AI chat
+  // Upload area click -> trigger file input
+  const pumaiUploadArea = document.getElementById('pumai-upload-area');
+  if (pumaiUploadArea && photoInput) {
+    pumaiUploadArea.addEventListener('click', function() {
+      photoInput.click();
+    });
+    // Drag and drop support
+    pumaiUploadArea.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      this.style.borderColor = 'var(--primary)';
+      this.style.background = 'rgba(45, 106, 79, 0.05)';
+    });
+    pumaiUploadArea.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      this.style.borderColor = '';
+      this.style.background = '';
+    });
+    pumaiUploadArea.addEventListener('drop', function(e) {
+      e.preventDefault();
+      this.style.borderColor = '';
+      this.style.background = '';
+      if (e.dataTransfer.files.length > 0) {
+        photoInput.files = e.dataTransfer.files;
+        handlePhotoUpload();
+      }
+    });
+  }
+
+  // "Otra Foto" button -> reset preview and trigger file input
+  const uploadAgainBtn = document.getElementById('uploadPhotoAgainBtn');
+  if (uploadAgainBtn && photoInput) {
+    uploadAgainBtn.addEventListener('click', function() {
+      // Reset preview and show upload area again
+      const preview = document.getElementById('photo-preview');
+      const uploadArea = document.getElementById('pumai-upload-area');
+      if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+      if (uploadArea) uploadArea.style.display = '';
+      photoInput.value = '';
+      photoInput.click();
+    });
+  }
+
+  // PUM-AI chat input (Enter key)
   const pumaiChatInput = document.getElementById('pumai-chat-input');
   if (pumaiChatInput) {
     pumaiChatInput.addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
         sendPumAIChat();
       }
+    });
+  }
+
+  // PUM-AI chat send button
+  const pumaiSendBtn = document.getElementById('sendBtn');
+  if (pumaiSendBtn) {
+    pumaiSendBtn.addEventListener('click', function() {
+      sendPumAIChat();
     });
   }
 
