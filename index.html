@@ -1633,7 +1633,12 @@
                 </div>
 
                 <div id="navbarNav" class="navbar-nav">
-                    <!-- Nav items will be populated by JS based on role -->
+                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol')"><i class="fas fa-tree"></i> Mi Árbol</a>
+                    <a href="#" class="nav-link" data-section="section-cuidados" onclick="showSection('section-cuidados')"><i class="fas fa-hands-helping"></i> Cuidados</a>
+                    <a href="#" class="nav-link" data-section="section-metas" onclick="showSection('section-metas')"><i class="fas fa-trophy"></i> Metas</a>
+                    <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai')"><i class="fas fa-robot"></i> PUM-AI</a>
+                    <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist')" style="display:none;"><i class="fas fa-user-md"></i> Especialista</a>
+                    <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin')" style="display:none;"><i class="fas fa-cog"></i> Admin</a>
                 </div>
 
                 <div class="navbar-user">
@@ -3205,21 +3210,21 @@ function showSection(sectionId) {
  * Setup navigation based on user role
  */
 function setupRoleBasedNav(role) {
-  const navLinks = document.querySelectorAll('#navbar a');
-
+  const navLinks = document.querySelectorAll('.nav-link[data-section]');
   navLinks.forEach(link => {
     const section = link.dataset.section;
-    let visible = true;
-
-    if (section === 'section-admin' && role !== 'admin') {
-      visible = false;
+    if (section === 'section-admin') {
+      link.style.display = role === 'admin' ? 'inline-flex' : 'none';
+    } else if (section === 'section-specialist') {
+      link.style.display = ['specialist','admin'].includes(role) ? 'inline-flex' : 'none';
     }
-    if (section === 'section-specialist' && !['specialist', 'admin'].includes(role)) {
-      visible = false;
-    }
-
-    link.style.display = visible ? 'block' : 'none';
   });
+
+  // Update user name display
+  const userName = document.getElementById('userName');
+  if (userName && currentUserProfile) {
+    userName.textContent = currentUserProfile.full_name || currentUser.email;
+  }
 }
 
 // ============================================================================
