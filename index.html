@@ -1633,12 +1633,24 @@
                 </div>
 
                 <div id="navbarNav" class="navbar-nav">
-                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol')"><i class="fas fa-tree"></i> Mi Árbol</a>
-                    <a href="#" class="nav-link" data-section="section-cuidados" onclick="showSection('section-cuidados')"><i class="fas fa-hands-helping"></i> Cuidados</a>
-                    <a href="#" class="nav-link" data-section="section-metas" onclick="showSection('section-metas')"><i class="fas fa-trophy"></i> Metas</a>
-                    <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai')"><i class="fas fa-robot"></i> PUM-AI</a>
-                    <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist')" style="display:none;"><i class="fas fa-user-md"></i> Especialista</a>
-                    <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin')" style="display:none;"><i class="fas fa-cog"></i> Admin</a>
+                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol'); return false;">
+                        <i class="fas fa-tree"></i> Mi Árbol
+                    </a>
+                    <a href="#" class="nav-link" data-section="section-cuidados" onclick="showSection('section-cuidados'); return false;">
+                        <i class="fas fa-hand-holding-heart"></i> Cuidados
+                    </a>
+                    <a href="#" class="nav-link" data-section="section-metas" onclick="showSection('section-metas'); return false;">
+                        <i class="fas fa-bullseye"></i> Metas
+                    </a>
+                    <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai'); return false;">
+                        <i class="fas fa-robot"></i> PUM-AI
+                    </a>
+                    <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist'); return false;" style="display:none;">
+                        <i class="fas fa-user-md"></i> Especialista
+                    </a>
+                    <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin'); return false;" style="display:none;">
+                        <i class="fas fa-cogs"></i> Admin
+                    </a>
                 </div>
 
                 <div class="navbar-user">
@@ -3180,6 +3192,14 @@ function showSection(sectionId) {
     section.style.display = 'none';
   });
 
+  // Update active nav link
+  document.querySelectorAll('#navbarNav .nav-link').forEach(link => {
+    link.classList.remove('active');
+    if (link.dataset.section === sectionId) {
+      link.classList.add('active');
+    }
+  });
+
   // Show selected section
   const section = document.getElementById(sectionId);
   if (section) {
@@ -3210,20 +3230,28 @@ function showSection(sectionId) {
  * Setup navigation based on user role
  */
 function setupRoleBasedNav(role) {
-  const navLinks = document.querySelectorAll('.nav-link[data-section]');
+  const navLinks = document.querySelectorAll('#navbarNav .nav-link[data-section]');
+
   navLinks.forEach(link => {
     const section = link.dataset.section;
-    if (section === 'section-admin') {
-      link.style.display = role === 'admin' ? 'inline-flex' : 'none';
-    } else if (section === 'section-specialist') {
-      link.style.display = ['specialist','admin'].includes(role) ? 'inline-flex' : 'none';
+    let visible = true;
+
+    if (section === 'section-admin' && role !== 'admin') {
+      visible = false;
     }
+    if (section === 'section-specialist' && !['specialist', 'admin'].includes(role)) {
+      visible = false;
+    }
+
+    link.style.display = visible ? '' : 'none';
   });
 
-  // Update user name display
-  const userName = document.getElementById('userName');
-  if (userName && currentUserProfile) {
-    userName.textContent = currentUserProfile.full_name || currentUser.email;
+  // Update active link
+  const activeLink = document.querySelector('#navbarNav .nav-link.active');
+  if (activeLink && activeLink.style.display === 'none') {
+    activeLink.classList.remove('active');
+    const firstVisible = document.querySelector('#navbarNav .nav-link:not([style*="display: none"])');
+    if (firstVisible) firstVisible.classList.add('active');
   }
 }
 
