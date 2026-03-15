@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Proyecto Arboreo UNAM 475 — Legado Verde</title>
+  <title>Proyecto Árboreo UNAM 475 — Legado Verde</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -14,7 +16,6 @@
     }
     html{scroll-behavior:smooth}
     body{font-family:'Segoe UI',Arial,sans-serif;background:linear-gradient(160deg,#0d2b1a 0%,#1a4a2e 40%,#2d7a4f 100%);min-height:100vh;color:#1a2e1a}
-    /* NAV */
     nav{background:rgba(0,0,0,.55);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:64px;border-bottom:2px solid var(--gold)}
     .nav-brand{display:flex;align-items:center;gap:12px}
     .brand-text strong{display:block;font-size:1rem;color:#fff;letter-spacing:.04em}
@@ -22,7 +23,6 @@
     .nav-links{display:flex;gap:1.2rem;align-items:center}
     .nav-links a{color:var(--gp);text-decoration:none;font-size:.88rem;font-weight:600;transition:color .2s}
     .nav-links a:hover{color:var(--gol)}
-    /* BUTTONS */
     .btn{padding:.7rem 1.8rem;border-radius:99px;font-size:.92rem;font-weight:700;cursor:pointer;border:none;transition:all .22s;text-decoration:none;display:inline-block}
     .btn-primary{background:linear-gradient(135deg,var(--gl),var(--gm));color:#fff;box-shadow:0 4px 18px rgba(45,122,79,.4)}
     .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(45,122,79,.6)}
@@ -31,7 +31,6 @@
     .btn-outline{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.4)}
     .btn-block{width:100%;padding:.9rem;font-size:1rem;border-radius:12px;margin-top:.5rem}
     .btn-sm{padding:.4rem 1rem;font-size:.82rem}
-    /* LOGIN SCREEN */
     #loginScreen{position:fixed;inset:0;z-index:200;background:linear-gradient(160deg,#071a0f,#1a4a2e);display:flex;align-items:center;justify-content:center}
     .login-box{background:rgba(255,255,255,.08);backdrop-filter:blur(16px);border:1px solid rgba(200,168,75,.35);border-radius:24px;padding:2.8rem;max-width:420px;width:90%;box-shadow:0 12px 48px rgba(0,0,0,.4);text-align:center}
     .login-box .tree-icon{font-size:3.5rem;margin-bottom:.8rem}
@@ -39,14 +38,12 @@
     .login-box p{color:var(--gp);font-size:.9rem;margin-bottom:2rem}
     .login-badge{display:inline-block;background:linear-gradient(90deg,var(--gold),var(--gol));color:var(--gd);font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:.3rem 1rem;border-radius:99px;margin-bottom:1.2rem}
     .form-group{margin-bottom:1rem;text-align:left}
-    .form-group label{display:block;lent-size:.8rem;font-weight:600;color:var(--gp);margin-bottom:.3rem}
+    .form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--gp);margin-bottom:.3rem}
     .form-group input{width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s}
     .form-group input:focus{border-color:var(--gold)}
     .form-group input::placeholder{color:rgba(255,255,255,.3)}
     .login-error{background:rgba(220,50,50,.15);border:1px solid rgba(220,50,50,.35);border-radius:10px;padding:.75rem 1rem;color:#ff8a8a;font-size:.85rem;margin-bottom:1rem;display:none}
-    /* MAIN APP */
     #app{display:none}
-    /* HERO */
     .hero{position:relative;overflow:hidden;min-height:480px;display:flex;align-items:center;justify-content:center}
     .hero-svg{position:absolute;inset:0;width:100%;height:100%}
     .hero-content{position:relative;z-index:2;text-align:center;padding:3rem 2rem}
@@ -55,19 +52,16 @@
     .hero h1 span{color:var(--gol)}
     .hero p{color:var(--gp);font-size:1rem;max-width:560px;margin:0 auto 2rem;line-height:1.6}
     .hero-cta{display:inline-flex;gap:1rem;flex-wrap:wrap;justify-content:center}
-    /* STATS */
     .stats-strip{background:rgba(0,0,0,.4);backdrop-filter:blur(8px);border-top:1px solid rgba(200,168,75,.25);border-bottom:1px solid rgba(200,168,75,.25);display:flex;justify-content:center;flex-wrap:wrap}
     .stat-item{padding:1.1rem 2rem;text-align:center;border-right:1px solid rgba(255,255,255,.08)}
     .stat-item:last-child{border-right:none}
     .stat-item .num{font-size:1.7rem;font-weight:900;color:var(--gol);line-height:1}
     .stat-item .lbl{font-size:.7rem;color:var(--gp);text-transform:uppercase;letter-spacing:.08em;margin-top:.15rem}
-    /* LAYOUT */
     .page-wrap{max-width:1140px;margin:0 auto;padding:0 1.5rem}
     section{padding:3.5rem 0}
     .section-title{font-size:1.55rem;font-weight:800;color:#fff;margin-bottom:.5rem;display:flex;align-items:center;gap:.6rem}
     .section-title::before{content:'';display:block;width:5px;height:26px;background:linear-gradient(to bottom,var(--gold),var(--gl));border-radius:3px}
     .section-sub{color:var(--gp);margin-bottom:2rem;font-size:.93rem;line-height:1.6}
-    /* CARDS */
     .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1.4rem}
     .card{background:rgba(255,255,255,.07);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:1.5rem;transition:all .25s}
     .card:hover{transform:translateY(-4px);background:rgba(255,255,255,.12);border-color:var(--gold)}
@@ -78,7 +72,6 @@
     .card-icon.t{background:linear-gradient(135deg,#00695c,#26a69a)}
     .card h3{font-size:1rem;font-weight:700;color:#fff;margin-bottom:.4rem}
     .card p{font-size:.86rem;color:var(--gp);line-height:1.5}
-    /* DASHBOARD */
     .dashboard-header{background:rgba(0,0,0,.3);border:1px solid rgba(200,168,75,.2);border-radius:18px;padding:1.4rem 1.8rem;margin-bottom:1.8rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
     .tree-avatar{width:68px;height:68px;border-radius:14px;background:linear-gradient(135deg,var(--gm),var(--gd));display:flex;align-items:center;justify-content:center;font-size:2.4rem;border:2px solid var(--gold);animation:float 4s ease-in-out infinite}
     .tree-info h3{color:#fff;font-size:1.1rem;font-weight:700}
@@ -91,13 +84,11 @@
     .prog-fill.g{background:linear-gradient(90deg,var(--gm),#66bb6a)}
     .prog-fill.o{background:linear-gradient(90deg,#a07030,var(--gol))}
     .prog-fill.b{background:linear-gradient(90deg,var(--blue),#4472c4)}
-    /* TABS */
     .tabs{display:flex;gap:.5rem;margin-bottom:1.8rem;flex-wrap:wrap}
     .tab-btn{padding:.5rem 1.3rem;border-radius:99px;border:none;cursor:pointer;font-size:.86rem;font-weight:700;transition:all .2s;background:rgba(255,255,255,.08);color:var(--gp)}
     .tab-btn.active{background:linear-gradient(135deg,var(--gold),var(--gol));color:var(--gd)}
     .tab-content{display:none}
     .tab-content.active{display:block}
-    /* TIMELINE */
     .timeline{position:relative;padding-left:2.4rem}
     .timeline::before{content:'';position:absolute;left:.65rem;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--gold),var(--gl))}
     .timeline-item{position:relative;margin-bottom:1.6rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.1rem 1.3rem;transition:all .2s}
@@ -111,7 +102,6 @@
     .task-item{display:flex;align-items:center;gap:.65rem;font-size:.85rem;color:var(--gp)}
     .task-check{width:19px;height:19px;border-radius:5px;border:2px solid rgba(255,255,255,.25);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:.68rem}
     .task-check.checked{background:var(--gl);border-color:var(--gl);color:#fff}
-    /* PLAN 30 */
     .plan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:1.1rem}
     .plan-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.2rem;text-align:center;transition:all .2s;position:relative;overflow:hidden}
     .plan-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
@@ -125,9 +115,8 @@
     .plan-year span{font-size:.78rem;color:var(--gp)}
     .plan-height{font-size:1rem;color:#fff;font-weight:700;margin:.35rem 0 .18rem}
     .plan-card p{font-size:.8rem;color:var(--gp);line-height:1.5}
-    /* CHAT */
     .asesoria-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.8rem}
-    .chat-box{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:480px}
+    .chat-box{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:520px}
     .chat-header{padding:.9rem 1.3rem;background:rgba(45,122,79,.35);border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:.75rem}
     .ai-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gm),var(--gl));display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
     .chat-header h4{color:#fff;font-size:.92rem;font-weight:700}
@@ -151,7 +140,6 @@
     .quick-btns{display:flex;flex-wrap:wrap;gap:.45rem;padding:0 1.1rem .85rem}
     .quick-btn{background:rgba(45,122,79,.25);border:1px solid rgba(76,175,125,.3);color:var(--gp);font-size:.75rem;padding:.28rem .75rem;border-radius:99px;cursor:pointer;transition:all .2s}
     .quick-btn:hover{background:rgba(45,122,79,.5);color:#fff}
-    /* SPECIALIST */
     .specialist-box{background:rgba(0,51,102,.2);border:1px solid rgba(0,87,179,.25);border-radius:18px;padding:1.6rem;display:flex;flex-direction:column;gap:1.1rem}
     .specialist-box h3{color:#fff;font-size:1.05rem;font-weight:700}
     .specialist-box>p{color:var(--gp);font-size:.88rem;line-height:1.6}
@@ -168,23 +156,21 @@
     .alert-trigger{background:rgba(255,160,0,.1);border:1px solid rgba(255,160,0,.35);border-radius:10px;padding:.9rem 1.1rem;display:flex;align-items:flex-start;gap:.65rem}
     .alert-icon{font-size:1.3rem;flex-shrink:0}
     .alert-trigger p{color:#ffd54f;font-size:.83rem;line-height:1.5}
-    /* MODAL */
-    .modal-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);align-items:center;justify-content:center}
+    .modal-overlay{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);align-items:center;justify-content:center}
     .modal-overlay.open{display:flex}
-    .modal{background:linear-gradient(160deg,#1a4a2e,#0d2b1a);border:1px solid var(--gold);border-radius:20px;padding:2.3rem;max-width:420px;width:90%;position:relative;animation:modalIn .3s ease}
+    .modal{background:linear-gradient(160deg,#1a4a2e,#0d2b1a);border:1px solid var(--gold);border-radius:20px;padding:2.3rem;max-width:480px;width:90%;position:relative;animation:modalIn .3s ease;max-height:90vh;overflow-y:auto}
+    .modal-wide{max-width:720px}
     @keyframes modalIn{from{opacity:0;transform:scale(.92) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
     .modal-close{position:absolute;top:.9rem;right:.9rem;background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.95rem}
     .modal h3{color:var(--gol);font-size:1.15rem;margin-bottom:.55rem}
     .modal p{color:var(--gp);font-size:.88rem;line-height:1.6;margin-bottom:1.1rem}
-    /* NOTIFICATION */
-    .notif{position:fixed;bottom:1.5rem;right:1.5rem;background:linear-gradient(135deg,var(--gd),var(--gm));border:1px solid var(--gold);border-radius:12px;padding:.95rem 1.3rem;color:#fff;font-size:.88rem;z-index:300;max-width:300px;line-height:1.4;transform:translateX(140%);transition:transform .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+    .notif{position:fixed;bottom:1.5rem;right:1.5rem;background:linear-gradient(135deg,var(--gd),var(--gm));border:1px solid var(--gold);border-radius:12px;padding:.95rem 1.3rem;color:#fff;font-size:.88rem;z-index:400;max-width:300px;line-height:1.4;transform:translateX(140%);transition:transform .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(0,0,0,.4)}
     .notif.show{transform:translateX(0)}
     .notif strong{color:var(--gol);display:block;margin-bottom:.18rem}
-    /* USER INFO */
     .user-chip{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:99px;padding:.3rem .9rem;color:var(--gp);font-size:.8rem}
     .user-dot{width:8px;height:8px;border-radius:50%;background:var(--gl);box-shadow:0 0 5px var(--gl)}
-    /* CUIDADOS */
-    .cuidados-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.3rem}
+    /* CUIDADOS ENHANCED */
+    .cuidados-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1.3rem}
     .cuidado-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:14px;overflow:hidden;transition:all .25s}
     .cuidado-card:hover{transform:translateY(-4px);border-color:var(--gold)}
     .cuidado-img{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:3rem}
@@ -198,6 +184,46 @@
     .cuidado-body h4{color:#fff;font-size:.94rem;font-weight:700;margin-bottom:.3rem}
     .cuidado-body p{color:var(--gp);font-size:.82rem;line-height:1.5}
     .freq-tag{display:inline-block;margin-top:.5rem;background:rgba(76,175,125,.2);border:1px solid rgba(76,175,125,.3);color:var(--gl);font-size:.7rem;font-weight:700;padding:.18rem .65rem;border-radius:99px}
+    .cuidado-detail{margin-top:.7rem;font-size:.8rem;color:var(--gp);line-height:1.6;border-top:1px solid rgba(255,255,255,.08);padding-top:.7rem}
+    .cuidado-detail li{margin-left:1rem;margin-bottom:.25rem}
+    /* TREES CATALOG */
+    .trees-filter{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.5rem}
+    .filter-btn{padding:.4rem 1.1rem;border-radius:99px;border:1.5px solid rgba(200,168,75,.35);background:transparent;color:var(--gp);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .2s}
+    .filter-btn.active,.filter-btn:hover{background:var(--gold);color:var(--gd);border-color:var(--gold)}
+    .trees-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.4rem}
+    .tree-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden;transition:all .28s;cursor:pointer}
+    .tree-card:hover{transform:translateY(-5px);border-color:var(--gold);background:rgba(255,255,255,.12)}
+    .tree-photo{width:100%;height:140px;display:flex;align-items:center;justify-content:center;font-size:4.5rem;position:relative;overflow:hidden}
+    .tree-photo-label{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.6));padding:.4rem .7rem .5rem;font-size:.65rem;color:rgba(255,255,255,.7);font-style:italic}
+    .tree-card-body{padding:.9rem 1rem}
+    .tree-card-body h4{color:#fff;font-size:.96rem;font-weight:700}
+    .tree-card-body .sci{color:var(--gol);font-size:.75rem;font-style:italic;margin:.1rem 0 .5rem}
+    .tree-badges{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.55rem}
+    .badge{font-size:.68rem;font-weight:700;padding:.18rem .6rem;border-radius:99px}
+    .badge.native{background:rgba(76,175,125,.25);border:1px solid var(--gl);color:var(--gl)}
+    .badge.easy{background:rgba(100,200,100,.2);border:1px solid #81c784;color:#81c784}
+    .badge.med{background:rgba(255,193,7,.2);border:1px solid #ffc107;color:#ffc107}
+    .badge.hard{background:rgba(244,67,54,.2);border:1px solid #ef9a9a;color:#ef9a9a}
+    .tree-card-body p{color:var(--gp);font-size:.78rem;line-height:1.45}
+    .tree-co2{margin-top:.55rem;font-size:.73rem;color:var(--gol);font-weight:700}
+    .btn-tree-detail{width:100%;margin-top:.7rem;padding:.5rem;border-radius:8px;border:none;background:rgba(76,175,125,.25);color:var(--gl);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s}
+    .btn-tree-detail:hover{background:var(--gl);color:#fff}
+    /* TREE DETAIL MODAL */
+    .tree-detail-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.2rem}
+    .tree-detail-icon{font-size:4rem;line-height:1}
+    .tree-detail-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1.2rem;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:.8rem}
+    .dtab-btn{padding:.38rem .9rem;border-radius:8px;border:none;cursor:pointer;font-size:.78rem;font-weight:700;background:rgba(255,255,255,.07);color:var(--gp);transition:all .2s}
+    .dtab-btn.active{background:linear-gradient(135deg,var(--gm),var(--gl));color:#fff}
+    .dtab-content{display:none}
+    .dtab-content.active{display:block}
+    .care-rec{background:rgba(255,255,255,.06);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem}
+    .care-rec h5{color:#fff;font-size:.88rem;font-weight:700;margin-bottom:.35rem;display:flex;align-items:center;gap:.5rem}
+    .care-rec p{color:var(--gp);font-size:.82rem;line-height:1.55}
+    .care-rec ul{color:var(--gp);font-size:.82rem;line-height:1.7;padding-left:1.2rem}
+    /* MAP MODAL */
+    #mapContainer{width:100%;height:350px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.15)}
+    .map-info{background:rgba(255,255,255,.07);border-radius:10px;padding:.8rem 1rem;margin-top:.8rem;font-size:.83rem;color:var(--gp)}
+    .map-info strong{color:#fff}
     /* FOOTER */
     footer{background:rgba(0,0,0,.5);border-top:2px solid var(--gold);padding:2rem 0;margin-top:2rem;text-align:center}
     footer .fi{display:flex;flex-direction:column;align-items:center;gap:.6rem}
@@ -206,20 +232,55 @@
     footer .fl{display:flex;gap:1.4rem;margin-top:.45rem;flex-wrap:wrap;justify-content:center}
     footer .fl a{color:var(--gp);font-size:.8rem;text-decoration:none}
     footer .fl a:hover{color:var(--gol)}
-    /* ANIMATIONS */
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
     ::-webkit-scrollbar{width:5px}
     ::-webkit-scrollbar-track{background:transparent}
     ::-webkit-scrollbar-thumb{background:var(--gm);border-radius:3px}
-    @media(max-width:760px){
-      .asesoria-grid{grid-template-columns:1fr}
-      .nav-links .nh{display:none}
-    }
-    @media(max-width:560px){
-      nav{padding:0 1rem}
-      .stat-item{padding:.9rem 1rem}
-      .plan-grid{grid-template-columns:repeat(2,1fr)}
-    }
+    @media(max-width:760px){.asesoria-grid{grid-template-columns:1fr}.nav-links .nh{display:none}}
+    @media(max-width:560px){nav{padding:0 1rem}.stat-item{padding:.9rem 1rem}.plan-grid{grid-template-columns:repeat(2,1fr)}}
+    /* ── PUM-AI ─────────────────────────────────────────────── */
+    .ai-tabs{display:flex;gap:.5rem;margin-bottom:1rem;border-bottom:2px solid rgba(255,255,255,.1);padding-bottom:.5rem}
+    .ai-tab-btn{background:transparent;border:none;color:var(--gp);font-size:.88rem;font-weight:700;padding:.45rem 1rem;cursor:pointer;border-radius:8px 8px 0 0;transition:all .2s}
+    .ai-tab-btn.active{background:rgba(200,168,75,.15);color:var(--gol);border-bottom:2px solid var(--gold)}
+    .ai-tab-pane{display:none}
+    .ai-tab-pane.active{display:block}
+    .pumai-box{background:rgba(0,0,0,.35);border:1px solid rgba(200,168,75,.3);border-radius:18px;padding:1.4rem;display:flex;flex-direction:column;gap:1rem}
+    .pumai-header{display:flex;align-items:center;gap:.8rem;padding-bottom:.8rem;border-bottom:1px solid rgba(255,255,255,.1)}
+    .pumai-avatar{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#1565c0,#42a5f5);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0}
+    .pumai-title{color:#fff;font-size:.97rem;font-weight:800}
+    .pumai-sub{color:var(--gp);font-size:.74rem;margin-top:.1rem}
+    .pumai-upload-zone{border:2px dashed rgba(200,168,75,.4);border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;transition:all .25s;background:rgba(255,255,255,.03)}
+    .pumai-upload-zone:hover{border-color:var(--gold);background:rgba(200,168,75,.06)}
+    .pumai-upload-zone input[type=file]{display:none}
+    .pumai-preview{max-width:100%;max-height:220px;border-radius:10px;margin:0 auto;display:block;object-fit:contain}
+    .pumai-response{background:rgba(45,122,79,.15);border:1px solid rgba(76,175,125,.25);border-radius:12px;padding:1rem 1.1rem;font-size:.88rem;color:var(--gp);line-height:1.65;display:none}
+    .pumai-response strong{color:var(--gol)}
+    .pumai-response.visible{display:block}
+    .pumai-spinner{display:none;align-items:center;gap:.6rem;color:var(--gp);font-size:.85rem}
+    .pumai-spinner.visible{display:flex}
+    .spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.15);border-top-color:var(--gl);border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    /* ── ADMIN PANEL ─────────────────────────────────────────── */
+    #admin{display:none}
+    .admin-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem}
+    .admin-search{background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);border-radius:10px;padding:.55rem 1rem;color:#fff;font-size:.88rem;outline:none;width:240px}
+    .admin-search::placeholder{color:rgba(255,255,255,.3)}
+    .admin-table-wrap{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:16px;overflow:hidden}
+    .admin-table{width:100%;border-collapse:collapse;font-size:.85rem}
+    .admin-table th{background:rgba(200,168,75,.15);color:var(--gol);font-size:.75rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:.75rem 1rem;text-align:left}
+    .admin-table td{padding:.8rem 1rem;color:var(--gp);border-top:1px solid rgba(255,255,255,.06)}
+    .admin-table tr:hover td{background:rgba(255,255,255,.03)}
+    .role-badge{display:inline-block;font-size:.7rem;font-weight:700;padding:.2rem .6rem;border-radius:99px;text-transform:uppercase;letter-spacing:.06em}
+    .role-badge.admin{background:rgba(200,168,75,.2);color:var(--gol);border:1px solid rgba(200,168,75,.4)}
+    .role-badge.user{background:rgba(76,175,125,.15);color:var(--gl);border:1px solid rgba(76,175,125,.3)}
+    .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+    @media(max-width:640px){.admin-form-grid{grid-template-columns:1fr}}
+    .form-select{width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none}
+    .form-select option{background:#1a4a2e;color:#fff}
+    .btn-danger{background:rgba(220,50,50,.2);border:1px solid rgba(220,50,50,.4);color:#ff8a8a;padding:.35rem .75rem;border-radius:8px;font-size:.78rem;cursor:pointer;font-weight:700;transition:all .2s}
+    .btn-danger:hover{background:rgba(220,50,50,.4)}
+    .btn-edit{background:rgba(66,165,245,.15);border:1px solid rgba(66,165,245,.35);color:#90caf9;padding:.35rem .75rem;border-radius:8px;font-size:.78rem;cursor:pointer;font-weight:700;transition:all .2s;margin-right:.3rem}
+    .btn-edit:hover{background:rgba(66,165,245,.3)}
   </style>
 </head>
 <body>
@@ -227,10 +288,42 @@
 <!-- ═══ LOGIN ═══ -->
 <div id="loginScreen">
   <div class="login-box">
-    <div class="tree-icon">&#127807;</div>
-    <div class="login-badge">&#127807; UNAM 475 Aniversario</div>
+    <!-- UNAM Escudo SVG -->
+    <svg width="80" height="90" viewBox="0 0 80 90" style="margin:0 auto .8rem;display:block" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="shieldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#002060"/><stop offset="1" stop-color="#003da5"/></linearGradient>
+        <linearGradient id="shieldGold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c8a84b"/><stop offset="1" stop-color="#f0d080"/></linearGradient>
+      </defs>
+      <!-- Shield outline -->
+      <path d="M40 4 L76 18 L76 54 Q76 78 40 88 Q4 78 4 54 L4 18 Z" fill="url(#shieldBg)" stroke="url(#shieldGold)" stroke-width="2.5"/>
+      <!-- Eagle silhouette center -->
+      <ellipse cx="40" cy="44" rx="18" ry="20" fill="none" stroke="rgba(200,168,75,.3)" stroke-width="1"/>
+      <!-- Eagle body simplified -->
+      <path d="M40 28 C34 32 28 38 30 46 C32 54 38 58 40 60 C42 58 48 54 50 46 C52 38 46 32 40 28Z" fill="#c8a84b" opacity=".85"/>
+      <!-- Wings -->
+      <path d="M30 40 C22 36 14 42 16 48 C20 46 26 44 30 46Z" fill="#c8a84b" opacity=".7"/>
+      <path d="M50 40 C58 36 66 42 64 48 C60 46 54 44 50 46Z" fill="#c8a84b" opacity=".7"/>
+      <!-- Snake in beak -->
+      <path d="M38 30 Q40 26 42 30" stroke="#c8a84b" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <!-- Nopal cactus base -->
+      <ellipse cx="40" cy="62" rx="10" ry="4" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="36" cy="58" rx="5" ry="7" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="44" cy="57" rx="5" ry="7" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="40" cy="53" rx="5" ry="6" fill="#4caf7d" opacity=".9"/>
+      <!-- Red circles on cactus (tunas) -->
+      <circle cx="36" cy="52" r="2.5" fill="#e53935" opacity=".85"/>
+      <circle cx="44" cy="51" r="2.5" fill="#e53935" opacity=".85"/>
+      <circle cx="40" cy="48" r="2" fill="#e53935" opacity=".85"/>
+      <!-- Water (lake) base -->
+      <path d="M20 68 Q40 72 60 68 L60 74 Q40 78 20 74Z" fill="#0d47a1" opacity=".7"/>
+      <!-- UNAM text -->
+      <text x="40" y="84" text-anchor="middle" font-size="7.5" fill="url(#shieldGold)" font-weight="bold" letter-spacing="2">UNAM</text>
+      <!-- Border decoration -->
+      <path d="M40 4 L76 18 L76 54 Q76 78 40 88 Q4 78 4 54 L4 18 Z" fill="none" stroke="rgba(200,168,75,.5)" stroke-width="1" stroke-dasharray="3,2"/>
+    </svg>
+    <div class="login-badge">🌿 UNAM 475 Aniversario</div>
     <h1>Proyecto Árbol UNAM 475</h1>
-    <p>Plataforma de cuidado arboreo institucional.<br>Accede con tu cuenta autorizada.</p>
+    <p>Plataforma de cuidado arbóreo institucional.<br>Accede con tu cuenta autorizada.</p>
     <div class="login-error" id="loginError"></div>
     <div class="form-group">
       <label>Correo institucional</label>
@@ -241,7 +334,7 @@
       <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
     </div>
     <button class="btn btn-primary btn-block" id="loginBtn" onclick="doLogin()">Iniciar sesión</button>
-    <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin-top:1rem">Acceso restringido a cuentas @unam.mx y @ikusi.com autorizadas por el administrador.</p>
+    <p style="color:rgba(255,255,255,.3);font-size:.73rem;margin-top:1rem">Acceso restringido a cuentas @unam.mx y @ikusi.com autorizadas.</p>
   </div>
 </div>
 
@@ -250,24 +343,31 @@
 
 <nav>
   <div class="nav-brand">
-    <svg width="40" height="46" viewBox="0 0 44 50" style="flex-shrink:0">
-      <rect width="44" height="50" rx="5" fill="#003366"/>
-      <rect x="2" y="2" width="40" height="46" rx="4" fill="none" stroke="#c8a84b" stroke-width="2"/>
-      <rect x="6" y="6" width="14" height="20" rx="2" fill="#4caf7d" opacity=".85"/>
-      <rect x="24" y="6" width="14" height="20" rx="2" fill="#c8a84b" opacity=".85"/>
-      <rect x="6" y="28" width="32" height="14" rx="2" fill="#2d7a4f" opacity=".85"/>
-      <text x="22" y="40" text-anchor="middle" font-size="6" fill="#fff" font-weight="bold">UNAM</text>
+    <!-- UNAM Escudo en Navbar -->
+    <svg width="36" height="42" viewBox="0 0 80 90" style="flex-shrink:0" xmlns="http://www.w3.org/2000/svg">
+      <path d="M40 4 L76 18 L76 54 Q76 78 40 88 Q4 78 4 54 L4 18 Z" fill="#002060" stroke="#c8a84b" stroke-width="2.5"/>
+      <path d="M40 28 C34 32 28 38 30 46 C32 54 38 58 40 60 C42 58 48 54 50 46 C52 38 46 32 40 28Z" fill="#c8a84b" opacity=".85"/>
+      <path d="M30 40 C22 36 14 42 16 48 C20 46 26 44 30 46Z" fill="#c8a84b" opacity=".7"/>
+      <path d="M50 40 C58 36 66 42 64 48 C60 46 54 44 50 46Z" fill="#c8a84b" opacity=".7"/>
+      <ellipse cx="40" cy="62" rx="10" ry="4" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="36" cy="58" rx="5" ry="7" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="44" cy="57" rx="5" ry="7" fill="#2d7a4f" opacity=".9"/>
+      <ellipse cx="40" cy="53" rx="5" ry="6" fill="#4caf7d" opacity=".9"/>
+      <circle cx="36" cy="52" r="2.5" fill="#e53935" opacity=".85"/>
+      <circle cx="44" cy="51" r="2.5" fill="#e53935" opacity=".85"/>
+      <text x="40" y="84" text-anchor="middle" font-size="7.5" fill="#f0d080" font-weight="bold" letter-spacing="2">UNAM</text>
     </svg>
     <div class="brand-text">
-      <strong>Proyecto Árbol UNAM 475 &middot; UNAM 475</strong>
-      <span>Plataforma de Cuidado Arboreo</span>
+      <strong>Proyecto Árbol UNAM 475</strong>
+      <span>Plataforma de Cuidado Arbóreo</span>
     </div>
   </div>
   <div class="nav-links">
     <a href="#cuidados" class="nh">Cuidados</a>
+    <a href="#arboles" class="nh">Árboles</a>
     <a href="#metas" class="nh">Metas</a>
-    <a href="#plan30" class="nh">Plan 30 Años</a>
-    <a href="#asesoria" class="nh">Asesoria IA</a>
+    <a href="#asesoria" class="nh">Asesoría IA</a>
+    <a href="#admin" class="nh" id="adminLink" style="display:none;color:var(--gold);font-weight:800">⚙️ Admin</a>
     <div class="user-chip"><div class="user-dot"></div><span id="userEmail">...</span></div>
     <button class="btn btn-outline btn-sm" onclick="doLogout()">Salir</button>
   </div>
@@ -276,11 +376,7 @@
 <!-- HERO -->
 <section class="hero">
   <svg class="hero-svg" viewBox="0 0 1200 480" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#071a0f"/><stop offset="0.6" stop-color="#1a4a2e"/><stop offset="1" stop-color="#2d7a4f"/>
-      </linearGradient>
-    </defs>
+    <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#071a0f"/><stop offset="0.6" stop-color="#1a4a2e"/><stop offset="1" stop-color="#2d7a4f"/></linearGradient></defs>
     <rect width="1200" height="480" fill="url(#sky)"/>
     <circle cx="960" cy="80" r="48" fill="#f0d080" opacity=".14"/>
     <circle cx="960" cy="80" r="30" fill="#f0d080" opacity=".22"/>
@@ -296,19 +392,16 @@
       <ellipse cx="60" cy="150" rx="27" ry="15" fill="#81c784" opacity=".82"/>
       <circle cx="20" cy="183" r="8" fill="#ffeb3b" opacity=".7"/>
       <circle cx="98" cy="178" r="7" fill="#ffeb3b" opacity=".65"/>
-      <circle cx="55" cy="143" r="6" fill="#fdd835" opacity=".6"/>
     </g>
-    <path d="M250 95 q6-6 12 0 q6-6 12 0" stroke="#a5d6a7" stroke-width="2" fill="none" opacity=".6"/>
-    <path d="M850 85 q5-5 10 0 q5-5 10 0" stroke="#a5d6a7" stroke-width="2" fill="none" opacity=".55"/>
   </svg>
   <div class="hero-content">
-    <div class="hero-badge">&#127807; 475 Aniversario UNAM &middot; 1551 &ndash; 2026</div>
+    <div class="hero-badge">🌿 475 Aniversario UNAM &middot; 1551 &ndash; 2026</div>
     <h1>Cuida <span>tu árbol</span>,<br>cuida el futuro</h1>
     <p>Monitorea, registra y recibe asesoría experta para el crecimiento de tu árbol durante los próximos 30 años.</p>
     <div class="hero-cta">
-      <a href="#dashboard" class="btn btn-primary">&#128202; Ver mi panel</a>
-      <a href="#metas" class="btn btn-gold">&#127919; Mis metas</a>
-      <a href="#asesoria" class="btn btn-outline">&#129302; Consultar IA</a>
+      <a href="#dashboard" class="btn btn-primary">📊 Ver mi panel</a>
+      <a href="#arboles" class="btn btn-gold">🌳 Árboles Nativos</a>
+      <a href="#asesoria" class="btn btn-outline">🤖 Consultar IA</a>
     </div>
   </div>
 </section>
@@ -316,7 +409,8 @@
 <div class="stats-strip">
   <div class="stat-item"><div class="num">475</div><div class="lbl">Años UNAM</div></div>
   <div class="stat-item"><div class="num" id="ctr">0</div><div class="lbl">Árboles Registrados</div></div>
-  <div class="stat-item"><div class="num">30</div><div class="lbl">Años de seguimiento</div></div>
+  <div class="stat-item"><div class="num">10</div><div class="lbl">Especies Nativas</div></div>
+  <div class="stat-item"><div class="num">30</div><div class="lbl">Años de Seguimiento</div></div>
   <div class="stat-item"><div class="num">12</div><div class="lbl">Especialistas UNAM</div></div>
 </div>
 
@@ -330,15 +424,9 @@
     <div>
       <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 · 1551 – 2026</div>
       <h2 style="font-size:1.45rem;color:#fff;font-weight:800;margin-bottom:.85rem;line-height:1.3">Un legado vivo para la humanidad</h2>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional Autónoma de México</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar árboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
-      </p>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        La selección de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada árbol o arbusto será elegido con base en las <strong style="color:var(--gol)">especies nativas y características ecológicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
-      </p>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem">
-        Cada árbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 años, estos árboles serán el testimonio vivo de que la UNAM, al cumplir medio milenio, eligió dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
-      </p>
+      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional Autónoma de México</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar árboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.</p>
+      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">La selección de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada árbol o arbusto será elegido con base en las <strong style="color:var(--gol)">especies nativas y características ecológicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.</p>
+      <p style="color:var(--gp);line-height:1.75;font-size:.95rem">Cada árbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural.</p>
       <div style="display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.2rem">
         <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌳 Especies nativas CU</span>
         <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌍 Patrimonio UNESCO</span>
@@ -349,18 +437,115 @@
   </div>
 </section>
 
-
-<!-- CUIDADOS -->
+<!-- CUIDADOS ENHANCED -->
 <section id="cuidados">
   <div class="section-title">Guía de Cuidados</div>
-  <p class="section-sub">Sigue estas recomendaciones para garantizar el desarrollo óptimo de tu árbol.</p>
+  <p class="section-sub">Recomendaciones detalladas para garantizar el desarrollo óptimo de tu árbol.</p>
   <div class="cuidados-grid">
-    <div class="cuidado-card"><div class="cuidado-img agua">&#128167;</div><div class="cuidado-body"><h4>Riego</h4><p>Primeros 6 meses: 2-3 veces/semana. Despues: 1 vez/semana en temporada seca.</p><span class="freq-tag">2-3x semana</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img sol">&#9728;</div><div class="cuidado-body"><h4>Luz solar</h4><p>6-8 horas de sol directo. Exposicion plena o semisombra segun la ubicacion.</p><span class="freq-tag">6-8 hrs/dia</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img tierra">&#127807;</div><div class="cuidado-body"><h4>Suelo</h4><p>Bien drenado, arcilloso o arenoso. pH entre 6 y 8. Sustrato permeable.</p><span class="freq-tag">pH 6-8</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img poda">&#9988;</div><div class="cuidado-body"><h4>Poda</h4><p>Formativa los primeros 3 años. Retirar ramas secas o enfermas en cualquier epoca.</p><span class="freq-tag">Anual</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img abono">&#127808;</div><div class="cuidado-body"><h4>Fertilizacion</h4><p>Compost organico al inicio de lluvias. Evitar fertilizantes con alto nitrógeno.</p><span class="freq-tag">Cada 6 meses</span></div></div>
-    <div class="cuidado-card"><div class="cuidado-img plaga">&#128269;</div><div class="cuidado-body"><h4>Plagas</h4><p>Revision semanal de hojas y tronco. Jabon potasico como primera medida preventiva.</p><span class="freq-tag">Revision semanal</span></div></div>
+    <div class="cuidado-card">
+      <div class="cuidado-img agua">💧</div>
+      <div class="cuidado-body">
+        <h4>Riego</h4>
+        <p>Primeros 6 meses: 2-3 veces/semana (2-3 L). Después: 1 vez/semana en temporada seca.</p>
+        <span class="freq-tag">2-3x semana</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li>Riega al pie del árbol, nunca en las hojas</li>
+            <li>Verifica humedad antes de cada riego tocando el suelo 5 cm de profundidad</li>
+            <li>Usa agua a temperatura ambiente; evita agua muy fría</li>
+            <li>En temporada de lluvias (jun-sep) suspende el riego si llueve más de 10 mm</li>
+            <li>Riego por goteo es ideal para conservar humedad constante</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cuidado-card">
+      <div class="cuidado-img sol">☀️</div>
+      <div class="cuidado-body">
+        <h4>Luz Solar</h4>
+        <p>6-8 horas de sol directo. Exposición plena o semisombra según la ubicación y especie.</p>
+        <span class="freq-tag">6-8 hrs/día</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li>Las especies nativas de CU toleran sol pleno desde jóvenes</li>
+            <li>Evita zonas con sombra permanente de edificios en orientación norte</li>
+            <li>Si el árbol muestra inclinación hacia la luz, rota el tutor para corregir</li>
+            <li>Árboles recién trasplantados agradecen sombra parcial las primeras 2 semanas</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cuidado-card">
+      <div class="cuidado-img tierra">🌱</div>
+      <div class="cuidado-body">
+        <h4>Suelo</h4>
+        <p>Bien drenado, arcilloso o arenoso. pH entre 6 y 8. Sustrato permeable con materia orgánica.</p>
+        <span class="freq-tag">pH 6–8</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li>Mezcla: 60% tierra de hoja + 30% tezontle + 10% composta</li>
+            <li>Si el suelo es muy arcilloso, agrega arena de río para mejorar drenaje</li>
+            <li>Aplica 5-7 cm de mulch orgánico alrededor del tronco (sin tocar corteza)</li>
+            <li>Evita compactar el suelo alrededor; permite que las raíces respiren</li>
+            <li>Verifica pH con tiras reactivas una vez al año</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cuidado-card">
+      <div class="cuidado-img poda">✂️</div>
+      <div class="cuidado-body">
+        <h4>Poda</h4>
+        <p>Formativa los primeros 3 años. Retira ramas secas o enfermas en cualquier época del año.</p>
+        <span class="freq-tag">Anual</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li><strong style="color:#fff">Poda de formación</strong> (año 1-3): dirige la estructura principal eliminando brotes laterales débiles</li>
+            <li><strong style="color:#fff">Poda sanitaria</strong>: retira ramas muertas, cruzadas o con signos de enfermedad</li>
+            <li>Realiza cortes limpios con herramienta desinfectada (alcohol o cloro diluido)</li>
+            <li>La mejor época: finales de temporada seca (feb-mar), antes de lluvias</li>
+            <li>Aplica pasta cicatrizante en cortes mayores a 2 cm de diámetro</li>
+            <li>Nunca cortes más del 25% del follaje en una sola sesión</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cuidado-card">
+      <div class="cuidado-img abono">🌿</div>
+      <div class="cuidado-body">
+        <h4>Fertilización</h4>
+        <p>Composta orgánica al inicio de lluvias. Evita fertilizantes con alto nitrógeno en exceso.</p>
+        <span class="freq-tag">Cada 6 meses</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li>1ª aplicación: mayo-junio (inicio de lluvias) — 1-2 kg de composta</li>
+            <li>2ª aplicación: octubre (fin de lluvias) — 0.5-1 kg de vermicomposta</li>
+            <li>Distribuye en corona a 30-50 cm del tronco, no pegado a la base</li>
+            <li>Fertilizante foliar NPK 10-10-10 en spray para carencias detectadas</li>
+            <li>Si el árbol muestra hojas pálidas: aplica quelato de hierro (Fe EDTA)</li>
+            <li>Evita abonos químicos de liberación rápida que queman raíces</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="cuidado-card">
+      <div class="cuidado-img plaga">🔍</div>
+      <div class="cuidado-body">
+        <h4>Plagas y Enfermedades</h4>
+        <p>Revisión semanal de hojas y tronco. Jabón potásico como primera medida preventiva.</p>
+        <span class="freq-tag">Revisión semanal</span>
+        <div class="cuidado-detail">
+          <ul>
+            <li><strong style="color:#fff">Pulgones</strong>: jabón potásico 5ml/L, aplicar en envés de hojas 2x/semana</li>
+            <li><strong style="color:#fff">Cochinilla</strong>: paño húmedo + alcohol isopropílico al 70%</li>
+            <li><strong style="color:#fff">Hongos (manchas foliares)</strong>: reduce humedad foliar, aplica fungicida cúprico</li>
+            <li><strong style="color:#fff">Barrenadores</strong>: detecta serrín en la base; contacta al Dr. Torres (Fitopatología)</li>
+            <li>Fotografía los síntomas y sube al panel antes de consultar al especialista</li>
+            <li>Mantén el área libre de hojarasca acumulada (reservorio de hongos)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -370,78 +555,262 @@
   <p class="section-sub">Estado actual de tu árbol y registro de actividades.</p>
   <div class="dashboard-header">
     <div style="display:flex;align-items:center;gap:1.1rem">
-      <div class="tree-avatar">&#127807;</div>
+      <div class="tree-avatar">🌿</div>
       <div class="tree-info">
         <h3 id="treeCode">Acacia #UNAM-0475</h3>
-        <p id="treeLocation">&#128205; Ciudad Universitaria, CDMX</p>
-        <div class="health-badge">&#10003; Salud: Excelente</div>
+        <p id="treeLocation">📍 Ciudad Universitaria, CDMX</p>
+        <div class="health-badge">✓ Salud: Excelente</div>
       </div>
     </div>
     <div class="progress-bars">
-      <div><div class="prog-label"><span>&#128167; Hidratacion</span><span>82%</span></div><div class="prog-track"><div class="prog-fill g" style="width:82%"></div></div></div>
-      <div><div class="prog-label"><span>&#127807; Crecimiento</span><span>65%</span></div><div class="prog-track"><div class="prog-fill o" style="width:65%"></div></div></div>
-      <div><div class="prog-label"><span>&#128203; Metas</span><span id="metasPct">47%</span></div><div class="prog-track"><div class="prog-fill b" style="width:47%" id="metasBar"></div></div></div>
+      <div><div class="prog-label"><span>💧 Hidratación</span><span>82%</span></div><div class="prog-track"><div class="prog-fill g" style="width:82%"></div></div></div>
+      <div><div class="prog-label"><span>🌿 Crecimiento</span><span>65%</span></div><div class="prog-track"><div class="prog-fill o" style="width:65%"></div></div></div>
+      <div><div class="prog-label"><span>📋 Metas</span><span id="metasPct">47%</span></div><div class="prog-track"><div class="prog-fill b" style="width:47%" id="metasBar"></div></div></div>
     </div>
   </div>
   <div class="cards">
-    <div class="card" style="cursor:pointer" onclick="logCare('riego')"><div class="card-icon g">&#128167;</div><h3>Registrar Riego</h3><p>Documenta el riego de hoy con cantidad de agua y condicion del suelo.</p></div>
-    <div class="card" style="cursor:pointer" onclick="openFotoModal()"><div class="card-icon o">&#128248;</div><h3>Subir Fotografía</h3><p>Documenta el crecimiento con una foto semanal para seguimiento visual.</p></div>
-    <div class="card" style="cursor:pointer" onclick="openMedicionModal()"><div class="card-icon t">&#128207;</div><h3>Registrar Medidas</h3><p>Anota altura y diámetro del tronco para el historial de crecimiento.</p></div>
-    <div class="card" style="cursor:pointer" onclick="document.getElementById('asesoria').scrollIntoView({behavior:'smooth'})"><div class="card-icon b">&#9888;</div><h3>Reportar Problema</h3><p>Consulta a la IA o contacta a un especialista si notas algo inusual.</p></div>
+    <div class="card" style="cursor:pointer" onclick="logCare('riego')"><div class="card-icon g">💧</div><h3>Registrar Riego</h3><p>Documenta el riego de hoy con cantidad de agua y condición del suelo.</p></div>
+    <div class="card" style="cursor:pointer" onclick="openFotoModal()"><div class="card-icon o">📸</div><h3>Subir Fotografía</h3><p>Documenta el crecimiento con una foto semanal para seguimiento visual.</p></div>
+    <div class="card" style="cursor:pointer" onclick="openMedicionModal()"><div class="card-icon t">📏</div><h3>Registrar Medidas</h3><p>Anota altura y diámetro del tronco para el historial de crecimiento.</p></div>
+    <div class="card" style="cursor:pointer" onclick="document.getElementById('asesoria').scrollIntoView({behavior:'smooth'})"><div class="card-icon b">⚠️</div><h3>Reportar Problema</h3><p>Consulta a la IA o contacta a un especialista si notas algo inusual.</p></div>
   </div>
   <div style="margin-top:1.5rem">
-    <div class="section-title" style="font-size:1.1rem;margin-bottom:1rem">&#128203; Ultimos registros</div>
+    <div class="section-title" style="font-size:1.1rem;margin-bottom:1rem">📋 Últimos registros</div>
     <div id="careLogsList" style="display:flex;flex-direction:column;gap:.7rem">
       <p style="color:var(--gp);font-size:.88rem">Cargando registros...</p>
     </div>
   </div>
 </section>
 
+<!-- ÁRBOLES NATIVOS -->
+<section id="arboles">
+  <div class="section-title">Árboles Nativos de Ciudad Universitaria</div>
+  <p class="section-sub">Catálogo de 10 especies nativas recomendadas para el Proyecto UNAM 475. Haz clic en cualquier árbol para ver su guía de cuidado detallada y registrar su ubicación en el mapa.</p>
+  <div class="trees-filter">
+    <button class="filter-btn active" onclick="filterTrees('all',this)">🌳 Todos</button>
+    <button class="filter-btn" onclick="filterTrees('facil',this)">✅ Fácil cuidado</button>
+    <button class="filter-btn" onclick="filterTrees('medio',this)">⚡ Cuidado medio</button>
+    <button class="filter-btn" onclick="filterTrees('nativo',this)">🌍 Endémico CU</button>
+  </div>
+  <div class="trees-grid" id="treesGrid">
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(0)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#1b5e20,#388e3c)">🌲
+        <div class="tree-photo-label">Taxodium mucronatum</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Ahuehuete</h4>
+        <div class="sci">Taxodium mucronatum</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Árbol nacional de México. De crecimiento lento pero gran longevidad. Ideal para zonas con humedad.</p>
+        <div class="tree-co2">🌿 Captura: 400-600 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(1)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#2e7d32,#66bb6a)">🌳
+        <div class="tree-photo-label">Buddleja cordata</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Tepozán</h4>
+        <div class="sci">Buddleja cordata</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Arbusto-árbol de rápido crecimiento. Flores fragantes que atraen mariposas y colibríes. Muy resistente.</p>
+        <div class="tree-co2">🌿 Captura: 200-350 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(2)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#b71c1c,#ef5350)">🌺
+        <div class="tree-photo-label">Erythrina americana</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Colorín / Zompantle</h4>
+        <div class="sci">Erythrina americana</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Flores rojas espectaculares. Árbol de ornato y ecología. Fija nitrógeno en suelo. Muy resistente a sequía.</p>
+        <div class="tree-co2">🌿 Captura: 250-400 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="medio" data-nat="nativo" onclick="openTreeDetail(3)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#4a148c,#9c27b0)">🌸
+        <div class="tree-photo-label">Fraxinus uhdei</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Fresno Mexicano</h4>
+        <div class="sci">Fraxinus uhdei</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge med">Medio</span>
+        </div>
+        <p>Árbol urbano por excelencia de la CDMX. Copa frondosa, sombra densa. Semiperverde en CU.</p>
+        <div class="tree-co2">🌿 Captura: 500-700 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="medio" data-nat="nativo" onclick="openTreeDetail(4)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#5d4037,#8d6e63)">🌿
+        <div class="tree-photo-label">Quercus rugosa</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Encino / Roble</h4>
+        <div class="sci">Quercus rugosa</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge med">Medio</span>
+        </div>
+        <p>Parte del ecosistema original de CU. Soporte de gran biodiversidad. Bellotas como alimento para fauna.</p>
+        <div class="tree-co2">🌿 Captura: 600-900 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(5)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#00695c,#26a69a)">🌴
+        <div class="tree-photo-label">Ceiba aesculifolia</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Pochote / Ceiba</h4>
+        <div class="sci">Ceiba aesculifolia</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Árbol sagrado mesoamericano. Tronco espinoso. Muy resistente a sequía. Flores blancas nocturnas.</p>
+        <div class="tree-co2">🌿 Captura: 350-500 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(6)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#f57f17,#ffca28)">🍯
+        <div class="tree-photo-label">Eysenhardtia polystachya</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Palo Dulce</h4>
+        <div class="sci">Eysenhardtia polystachya</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Madera densa y aromática. Flores blancas medicinales. Fijador de nitrógeno. Excelente para zonas áridas.</p>
+        <div class="tree-co2">🌿 Captura: 180-280 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="facil" data-nat="nativo" onclick="openTreeDetail(7)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#e65100,#ff7043)">🍑
+        <div class="tree-photo-label">Prunus serotina</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Capulín</h4>
+        <div class="sci">Prunus serotina ssp. capuli</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge easy">Fácil</span>
+        </div>
+        <p>Fruto comestible apreciado en México. Florece en primavera. Atrae aves y polinizadores. Semiperverde.</p>
+        <div class="tree-co2">🌿 Captura: 300-450 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="medio" data-nat="nativo" onclick="openTreeDetail(8)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#0277bd,#29b6f6)">💙
+        <div class="tree-photo-label">Alnus acuminata</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Aile / Aliso</h4>
+        <div class="sci">Alnus acuminata</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge med">Medio</span>
+        </div>
+        <p>Árbol ripario. Fija nitrógeno. Estabiliza suelos en zonas húmedas. Hojarasca de alto valor nutritivo.</p>
+        <div class="tree-co2">🌿 Captura: 400-580 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+    <div class="tree-card" data-dif="medio" data-nat="nativo" onclick="openTreeDetail(9)">
+      <div class="tree-photo" style="background:linear-gradient(135deg,#37474f,#78909c)">🪨
+        <div class="tree-photo-label">Prosopis laevigata</div>
+      </div>
+      <div class="tree-card-body">
+        <h4>Mezquite</h4>
+        <div class="sci">Prosopis laevigata</div>
+        <div class="tree-badges">
+          <span class="badge native">Nativo</span>
+          <span class="badge med">Medio</span>
+        </div>
+        <p>Leguminosa nativa. Extremadamente resistente. Vainas comestibles. Fija nitrógeno. Raíces profundas.</p>
+        <div class="tree-co2">🌿 Captura: 220-380 kg CO₂/30 años</div>
+        <button class="btn-tree-detail">Ver guía completa + ubicación</button>
+      </div>
+    </div>
+
+  </div>
+</section>
 <!-- METAS -->
 <section id="metas">
   <div class="section-title">Metas de Cuidado</div>
   <p class="section-sub">Plan estructurado de actividades para el primer año de vida de tu árbol.</p>
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab(this,'tw')">&#128197; Semanas</button>
-    <button class="tab-btn" onclick="switchTab(this,'tm')">&#128198; Meses</button>
+    <button class="tab-btn active" onclick="switchTab(this,'tw')">📅 Semanas</button>
+    <button class="tab-btn" onclick="switchTab(this,'tm')">📆 Meses</button>
   </div>
   <div id="tw" class="tab-content active">
     <div class="timeline">
       <div class="timeline-item done">
-        <div class="timeline-week">Semana 1 &middot; Mar 14-20</div>
-        <h4>&#127807; Plantacion y adaptacion inicial</h4>
-        <p>Asegura el correcto trasplante y condiciones optimas de instalacion.</p>
+        <div class="timeline-week">Semana 1 · Mar 14-20</div>
+        <h4>🌿 Plantación y adaptación inicial</h4>
+        <p>Asegura el correcto trasplante y condiciones óptimas de instalación.</p>
         <div class="task-list">
-          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Preparar hoyo 60x60x60 cm con sustrato mezclado</span></div>
-          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Plantar y colocar tutor de madera</span></div>
-          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">&#10003;</div><span>Primer riego abundante (5-7 litros)</span></div>
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">✓</div><span>Preparar hoyo 60×60×60 cm con sustrato mezclado</span></div>
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">✓</div><span>Plantar y colocar tutor de madera</span></div>
+          <div class="task-item"><div class="task-check checked" onclick="toggleCheck(this)">✓</div><span>Primer riego abundante (5-7 litros)</span></div>
           <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Fotografiar y registrar medidas iniciales</span></div>
         </div>
       </div>
       <div class="timeline-item">
-        <div class="timeline-week">Semana 2 &middot; Mar 21-27</div>
-        <h4>&#128167; Riego regular</h4>
-        <p>Observa absorcion del agua y estado de hojas para detectar estres hidrico.</p>
+        <div class="timeline-week">Semana 2 · Mar 21-27</div>
+        <h4>💧 Riego regular</h4>
+        <p>Observa absorción del agua y estado de hojas para detectar estrés hídrico.</p>
         <div class="task-list">
-          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Riegos lunes, miercoles y viernes (2-3 L)</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Riegos lunes, miércoles y viernes (2-3 L)</span></div>
           <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Revisar humedad antes de cada riego</span></div>
-          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Fotografia comparativa del follaje</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Fotografía comparativa del follaje</span></div>
         </div>
       </div>
       <div class="timeline-item">
-        <div class="timeline-week">Semanas 3-4 &middot; Mar 28 - Abr 10</div>
-        <h4>&#128269; Primera inspeccion de plagas</h4>
+        <div class="timeline-week">Semanas 3-4 · Mar 28 - Abr 10</div>
+        <h4>🔍 Primera inspección de plagas</h4>
         <p>Examen de hojas, tallo y zona basal para detectar problemas temprano.</p>
         <div class="task-list">
-          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Inspeccion visual completa (hojas, tronco, raices)</span></div>
-          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Aplicar jabon potasico preventivo si hay pulgones</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Inspección visual completa (hojas, tronco, raíces)</span></div>
+          <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Aplicar jabón potásico preventivo si hay pulgones</span></div>
           <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Consultar IA si se detecta algo anormal</span></div>
         </div>
       </div>
       <div class="timeline-item">
-        <div class="timeline-week">Semanas 5-8 &middot; Abr 11 - May 7</div>
-        <h4>&#127808; Primera fertilizacion organica</h4>
-        <p>Compost en zona de raices para impulsar crecimiento en temporada de lluvias.</p>
+        <div class="timeline-week">Semanas 5-8 · Abr 11 - May 7</div>
+        <h4>🌿 Primera fertilización orgánica</h4>
+        <p>Composta en zona de raíces para impulsar crecimiento en temporada de lluvias.</p>
         <div class="task-list">
           <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Aplicar 2 kg de composta o vermicomposta</span></div>
           <div class="task-item"><div class="task-check" onclick="toggleCheck(this)"></div><span>Medir altura y registrar en plataforma</span></div>
@@ -452,10 +821,10 @@
   </div>
   <div id="tm" class="tab-content">
     <div class="timeline">
-      <div class="timeline-item"><div class="timeline-week">Mes 1 &middot; Marzo 2026</div><h4>&#127807; Establecimiento</h4><p>Meta: supervivencia 100%, primeras hojas nuevas visibles, crecimiento minimo 2 cm.</p></div>
-      <div class="timeline-item"><div class="timeline-week">Meses 2-3 &middot; Abr-May 2026</div><h4>&#127808; Crecimiento inicial</h4><p>Meta: altura 50-60 cm, follaje denso. Primera fertilizacion completada.</p></div>
-      <div class="timeline-item"><div class="timeline-week">Meses 4-6 &middot; Jun-Ago 2026</div><h4>&#127795; Expansión radicular</h4><p>Meta: árbol autosoportado, 80-100 cm, primeros indicios de ramificación.</p></div>
-      <div class="timeline-item"><div class="timeline-week">Meses 7-12 &middot; Sep 2026 - Feb 2027</div><h4>&#127942; Primer ano completado</h4><p>Meta anual: 1.5 m altura, 3 cm diametro tronco, sistema radicular establecido.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Mes 1 · Marzo 2026</div><h4>🌿 Establecimiento</h4><p>Meta: supervivencia 100%, primeras hojas nuevas visibles, crecimiento mínimo 2 cm.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 2-3 · Abr-May 2026</div><h4>🌿 Crecimiento inicial</h4><p>Meta: altura 50-60 cm, follaje denso. Primera fertilización completada.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 4-6 · Jun-Ago 2026</div><h4>🌳 Expansión radicular</h4><p>Meta: árbol autosoportado, 80-100 cm, primeros indicios de ramificación.</p></div>
+      <div class="timeline-item"><div class="timeline-week">Meses 7-12 · Sep 2026 - Feb 2027</div><h4>🏆 Primer año completado</h4><p>Meta anual: 1.5 m altura, 3 cm diámetro tronco, sistema radicular establecido.</p></div>
     </div>
   </div>
 </section>
@@ -465,103 +834,229 @@
   <div class="section-title">Plan de Crecimiento a 30 Años</div>
   <p class="section-sub">Desde la plantación en 2026 hasta convertirse en árbol patrimonial en 2056.</p>
   <div class="plan-grid">
-    <div class="plan-card y1"><div class="plan-year">1 <span>ano</span></div><div class="plan-height">~1.5 m</div><p>Establecimiento radicular. Primer aniversario del proyecto.</p></div>
-    <div clas="plan-card y5"><div class="plan-year">5 <span>años</span></div><div class="plan-height">~5-6 m</div><p>Copa amplia. Primeras flores amarillas. Reduccion del riego.</p></div>
+    <div class="plan-card y1"><div class="plan-year">1 <span>año</span></div><div class="plan-height">~1.5 m</div><p>Establecimiento radicular. Primer aniversario del proyecto.</p></div>
+    <div class="plan-card y5"><div class="plan-year">5 <span>años</span></div><div class="plan-height">~5-6 m</div><p>Copa amplia. Primeras flores amarillas. Reducción del riego.</p></div>
     <div class="plan-card y10"><div class="plan-year">10 <span>años</span></div><div class="plan-height">~10 m</div><p>Árbol maduro joven. Copa 6-8 m. Floración anual abundante.</p></div>
-    <div cl,ass="plan-card y20"><div class="plan-year">20 <span>años</span></div><div class="plan-height">~15 m</div><p>Árbol robusto. Tronco >30 cm. Fauna asociada establecida.</p></div>
-    <div class="plan-card y30"><div class="plan-year">30 <span>años</span></div><div class="plan-height">~18-22 m</div><p>&#127942; Árbol patrimonial. Legado vivo UNAM 475. 660 kg CO₂ capturado.</p></div>
+    <div class="plan-card y20"><div class="plan-year">20 <span>años</span></div><div class="plan-height">~15 m</div><p>Árbol robusto. Tronco >30 cm. Fauna asociada establecida.</p></div>
+    <div class="plan-card y30"><div class="plan-year">30 <span>años</span></div><div class="plan-height">~18-22 m</div><p>🏆 Árbol patrimonial. Legado vivo UNAM 475. 660 kg CO₂ capturado.</p></div>
   </div>
 </section>
 
 <!-- ASESORIA IA -->
 <section id="asesoria">
-  <div class="section-title">Asesoria y Soporte</div>
-  <p class="section-sub">Consulta a la IA o conectate con especialistas de la UNAM.</p>
+  <div class="section-title">Asesoría y Soporte</div>
+  <p class="section-sub">Consulta a la IA o conéctate con especialistas de la UNAM.</p>
   <div class="asesoria-grid">
     <div class="chat-box">
-      <div class="chat-header">
-        <div class="ai-avatar">&#129302;</div>
-        <div><h4>Asistente Árbol IA</h4><p>Experto en cuidado de Acacia &middot; UNAM 475</p></div>
-        <div class="online-dot"></div>
+      <!-- Tabs -->
+      <div class="ai-tabs">
+        <button class="ai-tab-btn active" onclick="switchAITab(this,'tab-chat')">🤖 Chat IA</button>
+        <button class="ai-tab-btn" onclick="switchAITab(this,'tab-pumai')">🔬 PUM-AI</button>
       </div>
-      <div class="chat-msgs" id="chatMsgs">
-        <div class="msg bot"><div class="msg-bubble">Hola! Soy el asistente IA del Proyecto Árbol UNAM 475 475. Puedo ayudarte con riegos, plagas, suelo, poda y cualquier duda. En que puedo apoyarte?</div><div class="msg-time">Ahora</div></div>
+      <!-- Tab: Chat IA -->
+      <div class="ai-tab-pane active" id="tab-chat">
+        <div class="chat-header">
+          <div class="ai-avatar">🤖</div>
+          <div><h4>Asistente Árbol IA</h4><p>Experto en cuidado de árboles nativos · UNAM 475</p></div>
+          <div class="online-dot"></div>
+        </div>
+        <div class="chat-msgs" id="chatMsgs">
+          <div class="msg bot"><div class="msg-bubble">¡Hola! Soy el asistente IA del Proyecto Árbol UNAM 475. Puedo ayudarte con riegos, podas, plagas, suelo, especies nativas y cualquier duda. ¿En qué puedo apoyarte hoy?</div><div class="msg-time">Ahora</div></div>
+        </div>
+        <div class="quick-btns">
+          <button class="quick-btn" onclick="qm('Con que frecuencia riego?')">💧 Riego</button>
+          <button class="quick-btn" onclick="qm('Hojas amarillas en mi arbol')">🍂 Amarillamiento</button>
+          <button class="quick-btn" onclick="qm('Como podar correctamente?')">✂️ Poda</button>
+          <button class="quick-btn" onclick="qm('Vi insectos en las ramas')">🐛 Plagas</button>
+          <button class="quick-btn" onclick="qm('Que especie nativa me recomiendas?')">🌳 Especies</button>
+          <button class="quick-btn" onclick="qm('Como mejorar el suelo?')">🌱 Suelo</button>
+          <button class="quick-btn" onclick="qm('Cuando fertilizar?')">🌿 Fertilizar</button>
+          <button class="quick-btn" onclick="qm('Mi arbol no crece')">📏 Crecimiento</button>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="chatIn" type="text" placeholder="Escribe tu consulta..." onkeydown="if(event.key==='Enter')sendMsg()"/>
+          <button class="btn-send" onclick="sendMsg()">➤</button>
+        </div>
       </div>
-      <div class="quick-btns">
-        <button class="quick-btn" onclick="qm('Con que frecuencia riego?')">&#128167; Riego</button>
-        <button class="quick-btn" onclick="qm('Hojas amarillas')">&#127810; Amarillamiento</button>
-        <button class="quick-btn" onclick="qm('Cuando fertilizar?')">&#127808; Fertilizacion</button>
-        <button class="quick-btn" onclick="qm('Vi insectos en ramas')">&#128027; Plagas</button>
-      </div>
-      <div class="chat-input-row">
-        <input class="chat-input" id="chatIn" type="text" placeholder="Escribe tu consulta..." onkeydown="if(event.key==='Enter')sendMsg()"/>
-        <button class="btn-send" onclick="sendMsg()">&#10148;</button>
+      <!-- Tab: PUM-AI -->
+      <div class="ai-tab-pane" id="tab-pumai">
+        <div class="pumai-box">
+          <div class="pumai-header">
+            <div class="pumai-avatar">🔬</div>
+            <div>
+              <div class="pumai-title">PUM-AI · Plataforma UNAM de Monitoreo Arbóreo</div>
+              <div class="pumai-sub">Sube una foto de tu árbol y/o describe el problema — Gemini AI lo analiza</div>
+            </div>
+          </div>
+          <!-- Foto upload -->
+          <div class="pumai-upload-zone" id="pumaiZone" onclick="document.getElementById('pumaiFile').click()">
+            <input type="file" id="pumaiFile" accept="image/*" onchange="pumaiPreview(this)"/>
+            <div id="pumaiPlaceholder">
+              <div style="font-size:2rem;margin-bottom:.4rem">📷</div>
+              <p style="color:var(--gp);font-size:.88rem;margin:0">Haz clic para subir una foto de tu árbol</p>
+              <p style="color:rgba(255,255,255,.25);font-size:.74rem;margin:.2rem 0 0">JPG, PNG, WEBP · máx 5 MB</p>
+            </div>
+            <img id="pumaiPreviewImg" class="pumai-preview" style="display:none" alt="Vista previa"/>
+          </div>
+          <!-- Description -->
+          <div>
+            <label style="font-size:.8rem;font-weight:700;color:var(--gp);display:block;margin-bottom:.35rem">Descripción del problema <span style="color:rgba(255,255,255,.3)">(opcional si hay foto)</span></label>
+            <textarea id="pumaiDesc" rows="3" placeholder="Ej: Las hojas tienen manchas amarillas y algunas están caídas desde hace una semana..." style="width:100%;padding:.7rem 1rem;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.15);border-radius:10px;color:#fff;font-size:.88rem;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box"></textarea>
+          </div>
+          <!-- Action button -->
+          <button class="btn btn-primary" style="width:100%;padding:.85rem" onclick="runPumAI()">🔬 Analizar con PUM-AI</button>
+          <!-- Spinner -->
+          <div class="pumai-spinner" id="pumaiSpinner">
+            <div class="spinner"></div>
+            <span>PUM-AI está analizando tu árbol con Gemini...</span>
+          </div>
+          <!-- Response -->
+          <div class="pumai-response" id="pumaiResponse"></div>
+        </div>
       </div>
     </div>
     <div class="specialist-box">
-      <h3>&#128105;&#8205;&#128300; Especialistas UNAM</h3>
+      <h3>👩‍🔬 Especialistas UNAM</h3>
       <p>Si la IA no puede resolver tu problema, nuestros biólogos y ecólogos están disponibles. Contamos con especialistas de la Facultad de Ciencias y ecólogos de <strong style="color:var(--gol)">FES Iztacala</strong>.</p>
       <div class="specialist-profiles">
         <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">🌿 Ecólogos · FES Iztacala</div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Claudia Morales</h4><p>Ecología Vegetal &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Claudia Morales')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Héctor Sánchez</h4><p>Ecología Urbana &middot; FES Iztacala</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dr. Héctor Sánchez')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av g" style="background:linear-gradient(135deg,#4caf7d,#2d7a4f)">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Fernanda Ríos</h4><p>Restauración Ecológica &middot; FES Iztacala</p><span class="avail">&#9679; Disponible mañana</span></div><button class="btn-contact" onclick="openModal('M.C. Fernanda Ríos')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g">👩‍🔬</div><div class="spec-info"><h4>Dra. Claudia Morales</h4><p>Ecología Vegetal · FES Iztacala</p><span class="avail">● Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Claudia Morales')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av b">👨‍🔬</div><div class="spec-info"><h4>Dr. Héctor Sánchez</h4><p>Ecología Urbana · FES Iztacala</p><span class="avail">● Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dr. Héctor Sánchez')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g" style="background:linear-gradient(135deg,#4caf7d,#2d7a4f)">👩‍🌿</div><div class="spec-info"><h4>M.C. Fernanda Ríos</h4><p>Restauración Ecológica · FES Iztacala</p><span class="avail">● Disponible mañana</span></div><button class="btn-contact" onclick="openModal('M.C. Fernanda Ríos')">Contactar</button></div>
         <div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gol);margin:1rem 0 .5rem">🔬 Especialistas · Facultad de Ciencias</div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#128300;</div><div class="spec-info"><h4>Dra. Sofía Ramírez</h4><p>Ecología y Botánica &middot; FC-UNAM</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Sofía Ramírez')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av b">&#128104;&#8205;&#128300;</div><div class="spec-info"><h4>Dr. Alejandro Torres</h4><p>Fitopatología &middot; FES Iztacala</p><span class="avail">&#9679; Disponible mañana</span></div><button class="btn-contact" onclick="openModal('Dr. Alejandro Torres')">Contactar</button></div>
-        <div class="spec-card"><div class="spec-av g">&#128105;&#8205;&#127807;</div><div class="spec-info"><h4>M.C. Valeria Mendoza</h4><p>Suelos y Nutrición &middot; FES Cuautitlán</p><span class="avail">&#9679; Disponible hoy</span></div><button class="btn-contact" onclick="openModal('M.C. Valeria Mendoza')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g">👩‍🔬</div><div class="spec-info"><h4>Dra. Sofía Ramírez</h4><p>Ecología y Botánica · FC-UNAM</p><span class="avail">● Disponible hoy</span></div><button class="btn-contact" onclick="openModal('Dra. Sofía Ramírez')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av b">👨‍🔬</div><div class="spec-info"><h4>Dr. Alejandro Torres</h4><p>Fitopatología · FES Iztacala</p><span class="avail">● Disponible mañana</span></div><button class="btn-contact" onclick="openModal('Dr. Alejandro Torres')">Contactar</button></div>
+        <div class="spec-card"><div class="spec-av g">👩‍🌿</div><div class="spec-info"><h4>M.C. Valeria Mendoza</h4><p>Suelos y Nutrición · FES Cuautitlán</p><span class="avail">● Disponible hoy</span></div><button class="btn-contact" onclick="openModal('M.C. Valeria Mendoza')">Contactar</button></div>
       </div>
-      <div class="alert-trigger"><div class="alert-icon">&#9889;</div><p>Si tu árbol muestra sintomas urgentes usa <strong>Alerta Urgente</strong> para contacto inmediato.</p></div>
-      <button class="btn btn-gold btn-block" onclick="notify('&#128680; Alerta enviada','Un especialista te contactara en menos de 2 horas.')">&#128680; Alerta Urgente</button>
+      <div class="alert-trigger"><div class="alert-icon">⚡</div><p>Si tu árbol muestra síntomas urgentes usa <strong>Alerta Urgente</strong> para contacto inmediato.</p></div>
+      <button class="btn btn-gold btn-block" onclick="notify('🚨 Alerta enviada','Un especialista te contactará en menos de 2 horas.')">🚨 Alerta Urgente</button>
     </div>
   </div>
 </section>
+
+<!-- ── ADMIN SECTION ──────────────────────────────────────── -->
+<section id="admin">
+  <div class="section-title">⚙️ Gestión de Usuarios</div>
+  <p class="section-sub">Panel de administración · Crea, edita y elimina cuentas de usuarios autorizados.</p>
+  <!-- Toolbar -->
+  <div class="admin-toolbar">
+    <input class="admin-search" id="adminSearch" type="text" placeholder="🔍 Buscar por email o nombre..." oninput="filterAdminUsers()"/>
+    <button class="btn btn-primary btn-sm" onclick="openAdminUserModal()">➕ Nuevo usuario</button>
+  </div>
+  <!-- Table -->
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead><tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Creado</th><th>Último acceso</th><th>Acciones</th></tr></thead>
+      <tbody id="adminUsersBody">
+        <tr><td colspan="6" style="text-align:center;padding:2rem;color:rgba(255,255,255,.3)">Cargando usuarios...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Modal: Crear / Editar usuario -->
+<div class="modal-overlay" id="mo-admin-user">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="closeAdminUserModal()">✕</button>
+    <h3 id="adminModalTitle" style="color:#fff;font-size:1.1rem;font-weight:800;margin-bottom:1.2rem">Nuevo usuario</h3>
+    <input type="hidden" id="adminUserId"/>
+    <div class="admin-form-grid">
+      <div class="form-group">
+        <label>Correo electrónico *</label>
+        <input type="email" id="adminEmail" class="form-group input" placeholder="usuario@unam.mx" style="width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none"/>
+      </div>
+      <div class="form-group">
+        <label>Nombre completo</label>
+        <input type="text" id="adminName" placeholder="Nombre del usuario" style="width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none"/>
+      </div>
+      <div class="form-group">
+        <label>Contraseña <span id="passHint" style="color:rgba(255,255,255,.3)">(mín. 8 caracteres)</span></label>
+        <input type="password" id="adminPass" placeholder="••••••••" style="width:100%;padding:.75rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.92rem;outline:none"/>
+      </div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="adminRole" class="form-select">
+          <option value="user">Usuario</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:.7rem">
+      <button class="btn btn-primary" style="flex:1" onclick="saveAdminUser()">💾 Guardar</button>
+      <button class="btn btn-outline" style="flex:0 0 auto" onclick="closeAdminUserModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 </div><!-- /page-wrap -->
 
 <footer>
   <div class="page-wrap">
-
-<!-- MISIÓN -->
-<section id="mision" style="background:linear-gradient(135deg,rgba(26,74,46,.95),rgba(45,122,79,.85));border-radius:18px;padding:2.5rem 2rem;margin:0 0 2.5rem;border:1.5px solid var(--gold);position:relative;overflow:hidden">
-  <div style="position:absolute;top:-30px;right:-30px;font-size:9rem;opacity:.06">🌍</div>
-  <div style="display:flex;align-items:flex-start;gap:1.2rem">
-    <div style="font-size:2.8rem;flex-shrink:0">🌿</div>
-    <div>
-      <div style="font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gol);margin-bottom:.5rem">Iniciativa UNAM 475 · 1551 – 2026</div>
-      <h2 style="font-size:1.45rem;color:#fff;font-weight:800;margin-bottom:.85rem;line-height:1.3">Un legado vivo para la humanidad</h2>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        En el marco del <strong style="color:var(--gol)">475 aniversario de la Universidad Nacional Autónoma de México</strong>, esta plataforma nace como una actividad institucional para sembrar y cuidar árboles y plantas en el <strong style="color:#fff">Campus Central de Ciudad Universitaria</strong>, Patrimonio Mundial de la UNESCO.
-      </p>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem;margin-bottom:.9rem">
-        La selección de especies <strong style="color:#fff">no se limita a una sola planta</strong>: cada árbol o arbusto será elegido con base en las <strong style="color:var(--gol)">especies nativas y características ecológicas de la zona</strong>, privilegiando aquellas que apoyan la biodiversidad local, la captura de carbono y el bienestar de la comunidad universitaria.
-      </p>
-      <p style="color:var(--gp);line-height:1.75;font-size:.95rem">
-        Cada árbol registrado y cuidado en esta plataforma representa un <strong style="color:#fff">aporte tangible al planeta</strong>: purifica el aire, regula el microclima, alberga fauna y construye memoria biocultural. En 30 años, estos árboles serán el testimonio vivo de que la UNAM, al cumplir medio milenio, eligió dejar algo <strong style="color:var(--gol)">significativo para la humanidad</strong>.
-      </p>
-      <div style="display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.2rem">
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌳 Especies nativas CU</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🌍 Patrimonio UNESCO</span>
-        <span style="background:rgba(76,175,125,.18);border:1px solid var(--gl);color:var(--gp);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🫁 Captura de CO₂</span>
-        <span style="background:rgba(200,168,75,.18);border:1px solid var(--gold);color:var(--gol);border-radius:99px;padding:.35rem 1rem;font-size:.8rem;font-weight:700">🦋 Biodiversidad local</span>
-      </div>
+    <div class="fi">
+      <svg width="50" height="56" viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
+        <path d="M40 4 L76 18 L76 54 Q76 78 40 88 Q4 78 4 54 L4 18 Z" fill="#002060" stroke="#c8a84b" stroke-width="2"/>
+        <path d="M40 28 C34 32 28 38 30 46 C32 54 38 58 40 60 C42 58 48 54 50 46 C52 38 46 32 40 28Z" fill="#c8a84b" opacity=".85"/>
+        <path d="M30 40 C22 36 14 42 16 48 C20 46 26 44 30 46Z" fill="#c8a84b" opacity=".7"/>
+        <path d="M50 40 C58 36 66 42 64 48 C60 46 54 44 50 46Z" fill="#c8a84b" opacity=".7"/>
+        <ellipse cx="40" cy="62" rx="10" ry="4" fill="#2d7a4f" opacity=".9"/>
+        <ellipse cx="40" cy="53" rx="5" ry="6" fill="#4caf7d" opacity=".9"/>
+        <circle cx="36" cy="52" r="2.5" fill="#e53935" opacity=".85"/>
+        <circle cx="44" cy="51" r="2.5" fill="#e53935" opacity=".85"/>
+        <text x="40" y="84" text-anchor="middle" font-size="7.5" fill="#f0d080" font-weight="bold" letter-spacing="2">UNAM</text>
+      </svg>
+      <h4>Proyecto Árbol UNAM 475 · UNAM 475 Aniversario</h4>
+      <p>Universidad Nacional Autónoma de México · 2026. Sembrando conocimiento y vida para las próximas generaciones.</p>
+      <div class="fl"><a href="#">Privacidad</a><a href="#">Preguntas frecuentes</a><a href="#">Contacto UNAM</a><a href="https://unam.mx">www.unam.mx</a></div>
+      <p style="font-size:.73rem;color:rgba(255,255,255,.2);margin-top:.5rem">© 2026 UNAM · Todos los derechos reservados</p>
     </div>
   </div>
-</section>
-<div class="fi">
-    <div style="font-size:2.2rem">&#127795;</div>
-    <h4>Proyecto Árbol UNAM 475 &middot; UNAM 475 Aniversario</h4>
-    <p>Universidad Nacional Autonoma de Mexico &middot; 2026. Sembrando conocimiento y vida para las proximas generaciones.</p>
-    <div class="fl"><a href="#">Privacidad</a><a href="#">Preguntas frecuentes</a><a href="#">Contacto UNAM</a><a href="https://unam.mx">www.unam.mx</a></div>
-    <p style="font-size:.73rem;color:rgba(255,255,255,.2);margin-top:.5rem">&copy; 2026 UNAM &middot; Todos los derechos reservados</p>
-  </div></div>
 </footer>
 
+<!-- MODAL ÁRBOL DETALLE -->
+<div class="modal-overlay" id="mo-tree">
+  <div class="modal modal-wide">
+    <button class="modal-close" onclick="document.getElementById('mo-tree').classList.remove('open')">✕</button>
+    <div class="tree-detail-header">
+      <div class="tree-detail-icon" id="tdIcon">🌳</div>
+      <div>
+        <h3 id="tdName" style="color:#fff;font-size:1.3rem;margin-bottom:.15rem"></h3>
+        <div id="tdSci" style="color:var(--gol);font-size:.85rem;font-style:italic;margin-bottom:.4rem"></div>
+        <div id="tdBadges"></div>
+      </div>
+    </div>
+    <p id="tdDesc" style="color:var(--gp);font-size:.9rem;margin-bottom:1rem"></p>
+    <div class="tree-detail-tabs">
+      <button class="dtab-btn active" onclick="switchDTab(this,'dt-riego')">💧 Riego</button>
+      <button class="dtab-btn" onclick="switchDTab(this,'dt-poda')">✂️ Poda</button>
+      <button class="dtab-btn" onclick="switchDTab(this,'dt-suelo')">🌱 Suelo</button>
+      <button class="dtab-btn" onclick="switchDTab(this,'dt-plagas')">🔍 Plagas</button>
+      <button class="dtab-btn" onclick="switchDTab(this,'dt-ubicacion')">📍 Ubicación</button>
+    </div>
+    <div id="dt-riego" class="dtab-content active">
+      <div id="tdRiego"></div>
+    </div>
+    <div id="dt-poda" class="dtab-content">
+      <div id="tdPoda"></div>
+    </div>
+    <div id="dt-suelo" class="dtab-content">
+      <div id="tdSuelo"></div>
+    </div>
+    <div id="dt-plagas" class="dtab-content">
+      <div id="tdPlagas"></div>
+    </div>
+    <div id="dt-ubicacion" class="dtab-content">
+      <p style="color:var(--gp);font-size:.85rem;margin-bottom:.8rem">Haz clic en el mapa para marcar la ubicación de tu árbol en Ciudad Universitaria. La coordenada se guardará en tu registro.</p>
+      <div id="mapContainer"></div>
+      <div class="map-info" id="mapInfo">📍 <strong>Sin ubicación registrada.</strong> Haz clic en el mapa para fijar la posición.</div>
+      <button class="btn btn-primary" style="margin-top:.9rem;width:100%" onclick="saveTreeLocation()">💾 Guardar ubicación</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL FOTOGRAFÍA -->
-<div class="modal-overlay" id="mo-foto" style="display:none;align-items:center;justify-content:center">
+<div class="modal-overlay" id="mo-foto">
   <div class="modal">
-    <button class="modal-close" onclick="closeFotoModal()">&#10005;</button>
+    <button class="modal-close" onclick="closeFotoModal()">✕</button>
     <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">📸</div>
     <h3 style="text-align:center;color:#fff;margin-bottom:.4rem">Subir Fotografía</h3>
     <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Documenta el crecimiento semanal de tu árbol</p>
@@ -569,10 +1064,7 @@
       <img id="fotoPreview" style="max-width:100%;max-height:200px;border-radius:10px;border:2px solid var(--gl)"/>
       <p id="fotoFileName" style="color:var(--gp);font-size:.78rem;margin-top:.4rem"></p>
     </div>
-    <label style="display:block;background:rgba(76,175,125,.15);border:2px dashed var(--gl);border-radius:12px;padding:1.5rem;text-align:center;cursor:pointer;transition:background .2s" 
-           onmouseover="this.style.background='rgba(76,175,125,.25)'" 
-           onmouseout="this.style.background='rgba(76,175,125,.15)'"
-           for="fotoInput">
+    <label style="display:block;background:rgba(76,175,125,.15);border:2px dashed var(--gl);border-radius:12px;padding:1.5rem;text-align:center;cursor:pointer;transition:background .2s" onmouseover="this.style.background='rgba(76,175,125,.25)'" onmouseout="this.style.background='rgba(76,175,125,.15)'" for="fotoInput">
       <div style="font-size:2rem;margin-bottom:.4rem">📁</div>
       <p style="color:#fff;font-size:.9rem;font-weight:700">Selecciona una fotografía</p>
       <p style="color:var(--gp);font-size:.78rem">JPG, PNG o HEIC · Máx. 10 MB</p>
@@ -587,55 +1079,41 @@
 </div>
 
 <!-- MODAL MEDIDAS -->
-<div class="modal-overlay" id="mo-medicion" style="display:none;align-items:center;justify-content:center">
+<div class="modal-overlay" id="mo-medicion">
   <div class="modal">
-    <button class="modal-close" onclick="closeMedicionModal()">&#10005;</button>
+    <button class="modal-close" onclick="closeMedicionModal()">✕</button>
     <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">📏</div>
     <h3 style="text-align:center;color:#fff;margin-bottom:.4rem">Registrar Medidas</h3>
     <p style="color:var(--gp);font-size:.88rem;text-align:center;margin-bottom:1.2rem">Anota las medidas actuales de tu árbol</p>
-    <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">🌿 Altura total (cm)</label>
-      <input type="number" id="medAltura" placeholder="Ej. 45" min="0" max="3000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
-    </div>
-    <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">🔵 Diámetro del tronco (cm)</label>
-      <input type="number" id="medDiametro" placeholder="Ej. 3.5" min="0" max="500" step="0.1" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
-    </div>
-    <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">🌳 Diámetro de copa (cm) — opcional</label>
-      <input type="number" id="medCopa" placeholder="Ej. 60" min="0" max="2000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/>
-    </div>
-    <div class="form-group">
-      <label style="color:var(--gp);font-size:.85rem">📝 Observaciones (opcional)</label>
-      <input type="text" id="medNota" placeholder="Ej. Crecimiento uniforme, hojas verdes" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.88rem;outline:none;width:100%"/>
-    </div>
+    <div class="form-group"><label style="color:var(--gp);font-size:.85rem">🌿 Altura total (cm)</label><input type="number" id="medAltura" placeholder="Ej. 45" min="0" max="3000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/></div>
+    <div class="form-group"><label style="color:var(--gp);font-size:.85rem">🔵 Diámetro del tronco (cm)</label><input type="number" id="medDiametro" placeholder="Ej. 3.5" min="0" max="500" step="0.1" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/></div>
+    <div class="form-group"><label style="color:var(--gp);font-size:.85rem">🌳 Diámetro de copa (cm) — opcional</label><input type="number" id="medCopa" placeholder="Ej. 60" min="0" max="2000" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.95rem;outline:none;width:100%"/></div>
+    <div class="form-group"><label style="color:var(--gp);font-size:.85rem">📝 Observaciones (opcional)</label><input type="text" id="medNota" placeholder="Ej. Crecimiento uniforme, hojas verdes" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.88rem;outline:none;width:100%"/></div>
     <button class="btn btn-primary btn-block" style="margin-top:.5rem" onclick="submitMedicion()">📊 Guardar medidas</button>
   </div>
 </div>
-</div><!-- /app -->
 
 <!-- MODAL ESPECIALISTA -->
 <div class="modal-overlay" id="mo">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal()">&#10005;</button>
-    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">&#128105;&#8205;&#128300;</div>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div style="font-size:1.8rem;text-align:center;margin-bottom:.5rem">👩‍🔬</div>
     <h3 id="modalTitle" style="text-align:center">Contactar</h3>
     <p>Describe el problema de tu árbol. El especialista responderá en 24 horas.</p>
-    <div class="form-group"><label>Tu nombre</label><input type="text" id="specName" placeholder="Nombre completo"/></div>
-    <div class="form-group"><label>Descripcion del problema</label><textarea id="specDesc" rows="3" style="width:100%;padding:.7rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.9rem;outline:none;resize:vertical;font-family:inherit" placeholder="Describe los sintomas que observas..."></textarea></div>
-    <button class="btn btn-primary btn-block" onclick="submitConsulta()">&#128228; Enviar consulta</button>
+    <div class="form-group"><label>Tu nombre</label><input type="text" id="specName" placeholder="Nombre completo" style="background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;padding:.7rem 1rem;color:#fff;font-size:.92rem;outline:none;width:100%"/></div>
+    <div class="form-group"><label>Descripción del problema</label><textarea id="specDesc" rows="3" style="width:100%;padding:.7rem 1rem;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:.9rem;outline:none;resize:vertical;font-family:inherit" placeholder="Describe los síntomas que observas..."></textarea></div>
+    <button class="btn btn-primary btn-block" onclick="submitConsulta()">📨 Enviar consulta</button>
   </div>
 </div>
 
 <!-- NOTIFICATION -->
 <div class="notif" id="notif"><strong id="ntitle">Listo</strong><span id="nmsg"></span></div>
-
+</div><!-- /app -->
 <script>
-// ── SUPABASE CONFIG ──────────────────────────────────────────
+// ── SUPABASE ──────────────────────────────────────────────────
 const SUPABASE_URL = 'https://hambscfdiaymowskislw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_s91fShtd7-qov8lVIvpVXQ_xrNANUme';
-const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── AUTH ──────────────────────────────────────────────────────
 async function doLogin() {
@@ -644,7 +1122,6 @@ async function doLogin() {
   const errEl = document.getElementById('loginError');
   const btn   = document.getElementById('loginBtn');
   errEl.style.display = 'none';
-  // Validate allowed domains
   if (!email.endsWith('@unam.mx') && !email.endsWith('@ikusi.com')) {
     errEl.textContent = 'Solo se permiten correos @unam.mx o @ikusi.com';
     errEl.style.display = 'block'; return;
@@ -655,11 +1132,8 @@ async function doLogin() {
   if (error) {
     errEl.textContent = 'Credenciales incorrectas. Verifica tu correo y contraseña.';
     errEl.style.display = 'block';
-  } else {
-    showApp(data.user);
-  }
+  } else { showApp(data.user); }
 }
-
 async function doLogout() {
   await sb.auth.signOut();
   document.getElementById('app').style.display = 'none';
@@ -667,126 +1141,127 @@ async function doLogout() {
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPass').value = '';
 }
-
 function showApp(user) {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('userEmail').textContent = user.email;
-  loadCareLogs();
-  animateCounter();
+  loadCareLogs(); animateCounter();
+  // Show admin panel if user has admin role
+  if (user.user_metadata?.role === 'admin') {
+    document.getElementById('adminLink').style.display = 'inline';
+    document.getElementById('admin').style.display = 'block';
+    loadAdminUsers();
+  }
 }
-
-// Check session on load
 window.addEventListener('load', async () => {
   const { data: { session } } = await sb.auth.getSession();
   if (session) showApp(session.user);
-  document.getElementById('loginPass').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogin();
-  });
+  document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
 });
 
 // ── CARE LOGS ──────────────────────────────────────────────────
 async function logCare(type) {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
-  // Get user's tree
   const { data: trees } = await sb.from('trees').select('id,tree_code').eq('owner_id', user.id).limit(1);
   const treeId = trees && trees.length > 0 ? trees[0].id : null;
   const labels = { riego:'Riego registrado', foto:'Foto documentada', medicion:'Medida registrada' };
-  const msgs   = { riego:'Se registro riego de 2L correctamente.', foto:'Fotografia almacenada en el sistema.', medicion:'Altura y diametro actualizados.' };
-  const { error } = await sb.from('care_logs').insert({
-    tree_id: treeId, user_id: user.id, log_type: type,
-    water_liters: type === 'riego' ? 2 : null,
-    notes: type + ' registrado desde plataforma'
-  });
-  if (!error) {
-    notify('&#10003; ' + labels[type], msgs[type]);
-    loadCareLogs();
-  } else {
-    notify('&#9888; Error', 'No se pudo guardar el registro.');
-  }
+  const msgs   = { riego:'Se registró riego de 2L correctamente.', foto:'Fotografía almacenada.', medicion:'Medidas actualizadas.' };
+  const { error } = await sb.from('care_logs').insert({ tree_id: treeId, user_id: user.id, log_type: type, water_liters: type==='riego' ? 2 : null, notes: type + ' registrado desde plataforma' });
+  if (!error) { notify('✓ ' + labels[type], msgs[type]); loadCareLogs(); }
+  else notify('⚠️ Error', 'No se pudo guardar el registro.');
 }
-
 async function loadCareLogs() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
   const { data: logs } = await sb.from('care_logs').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(5);
   const el = document.getElementById('careLogsList');
-  if (!logs || logs.length === 0) {
-    el.innerHTML = '<p style="color:var(--gp);font-size:.88rem">No hay registros aun. Usa los botones de arriba para empezar.</p>';
-    return;
-  }
-  const icons = { riego:'&#128167;', foto:'&#128248;', medicion:'&#128207;', poda:'&#9988;', fertilizacion:'&#127808;', inspeccion:'&#128269;', otro:'&#128221;' };
-  el.innerHTML = logs.map(l => `
-    <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;gap:.8rem">
-      <span style="font-size:1.4rem">${icons[l.log_type]||'&#128221;'}</span>
-      <div>
-        <strong style="color:#fff;font-size:.88rem;text-transform:capitalize">${l.log_type}</strong>
-        ${l.water_liters ? `<span style="color:var(--gp);font-size:.78rem"> &middot; ${l.water_liters}L</span>` : ''}
-        <p style="color:var(--gp);font-size:.78rem;margin-top:.1rem">${new Date(l.logged_at).toLocaleString('es-MX')}</p>
-      </div>
-    </div>`).join('');
+  if (!logs || logs.length === 0) { el.innerHTML = '<p style="color:var(--gp);font-size:.88rem">No hay registros aún. Usa los botones de arriba para empezar.</p>'; return; }
+  const icons = { riego:'💧', foto:'📸', medicion:'📏', poda:'✂️', fertilizacion:'🌿', inspeccion:'🔍', otro:'📝' };
+  el.innerHTML = logs.map(l => `<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;gap:.8rem"><span style="font-size:1.4rem">${icons[l.log_type]||'📝'}</span><div><strong style="color:#fff;font-size:.88rem;text-transform:capitalize">${l.log_type}</strong>${l.water_liters ? '<span style="color:var(--gp);font-size:.78rem"> · '+l.water_liters+'L</span>' : ''}<p style="color:var(--gp);font-size:.78rem;margin-top:.1rem">${new Date(l.logged_at).toLocaleString('es-MX')}</p></div></div>`).join('');
 }
 
-// ── SPECIALIST REQUESTS ────────────────────────────────────────
+// ── SPECIALIST ────────────────────────────────────────────────
 async function submitConsulta() {
   const { data: { user } } = await sb.auth.getUser();
   const name = document.getElementById('specName').value;
   const desc = document.getElementById('specDesc').value;
   const specialist = document.getElementById('modalTitle').textContent.replace('Contactar: ','');
-  if (!desc) { notify('&#9888; Falta descripción','Escribe el problema de tu árbol.'); return; }
+  if (!desc) { notify('⚠️ Falta descripción','Escribe el problema de tu árbol.'); return; }
   await sb.from('specialist_requests').insert({ user_id: user?.id, specialist_name: specialist, problem_desc: desc, urgency: 'normal' });
   closeModal();
-  notify('&#9993; Consulta enviada','El especialista revisara tu caso en 24 hrs.');
+  notify('✉️ Consulta enviada','El especialista revisará tu caso en 24 hrs.');
 }
 
-// ── UI HELPERS ─────────────────────────────────────────────────
+// ── UI HELPERS ────────────────────────────────────────────────
 function switchTab(btn, id) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(id).classList.add('active');
 }
-function toggleCheck(el) {
-  el.classList.toggle('checked');
-  el.innerHTML = el.classList.contains('checked') ? '&#10003;' : '';
+function switchDTab(btn, id) {
+  btn.closest('.modal').querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
+  btn.closest('.modal').querySelectorAll('.dtab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+  if (id === 'dt-ubicacion') initMap();
 }
+function toggleCheck(el) { el.classList.toggle('checked'); el.innerHTML = el.classList.contains('checked') ? '✓' : ''; }
 function notify(title, msg) {
   document.getElementById('ntitle').innerHTML = title;
   document.getElementById('nmsg').textContent = msg;
-  const n = document.getElementById('notif');
-  n.classList.add('show');
+  const n = document.getElementById('notif'); n.classList.add('show');
   setTimeout(() => n.classList.remove('show'), 3800);
 }
-function openModal(name) {
-  document.getElementById('modalTitle').textContent = 'Contactar: ' + name;
-  document.getElementById('mo').classList.add('open');
-}
+function openModal(name) { document.getElementById('modalTitle').textContent = 'Contactar: '+name; document.getElementById('mo').classList.add('open'); }
 function closeModal() { document.getElementById('mo').classList.remove('open'); }
-document.getElementById('mo').addEventListener('click', e => { if (e.target === document.getElementById('mo')) closeModal(); });
+document.getElementById('mo').addEventListener('click', e => { if (e.target===document.getElementById('mo')) closeModal(); });
 
 function animateCounter() {
-  let t = 0; const el = document.getElementById('ctr'); const target = 847;
-  const s = () => { t += Math.ceil((target - t) / 12); if (t >= target) { el.textContent = target; return; } el.textContent = t; requestAnimationFrame(s); };
-  setTimeout(s, 600);
+  let t=0; const el=document.getElementById('ctr'); const target=847;
+  const s=()=>{ t+=Math.ceil((target-t)/12); if(t>=target){el.textContent=target;return;} el.textContent=t; requestAnimationFrame(s); };
+  setTimeout(s,600);
+}
+
+function filterTrees(type, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.tree-card').forEach(card => {
+    if (type === 'all') { card.style.display=''; return; }
+    const show = (type === 'facil' && card.dataset.dif === 'facil') ||
+                 (type === 'medio' && card.dataset.dif === 'medio') ||
+                 (type === 'nativo' && card.dataset.nat === 'nativo');
+    card.style.display = show ? '' : 'none';
+  });
 }
 
 // ── AI CHAT ────────────────────────────────────────────────────
 const aiR = {
-  riego: "Para una Acacia recien plantada: 2-3 veces por semana los primeros 6 meses (2-3 L cada vez). Despues: una vez por semana en temporada seca. Verifica que el suelo no este encharcado antes de regar.",
-  amarill: "Las hojas amarillas pueden indicar: (1) exceso de riego, (2) deficiencia de hierro, o (3) encharcamiento. Revisa el drenaje del suelo y espacia mas los riegos. Si es severo, contacta a un especialista.",
-  fertiliz: "Aplica fertilizante orgánico (composta o vermicomposta) al inicio de la temporada de lluvias (mayo-junio). Usa 1-2 kg por árbol. Evita fertilizantes con alto nitrógeno.",
-  insecto: "Los insectos mas comunes en Acacia son pulgones y cochinillas. Primera medida: jabon potasico diluido (5 ml/L) en hojas afectadas. Si persiste mas de 5 dias, reporta a un especialista.",
-  plaga: "Revision preventiva semanal (envez de hojas incluido). Mantien el area limpia de hojas caidas. Si detectas hongos o infestacion severa, contacta al Dr. Torres (Fitopatologia).",
-  def: "Gracias por tu consulta. Te recomiendo documentar los sintomas con una fotografia y registrarlos en el panel. Si el problema persiste, contacta a un especialista UNAM desde esta misma seccion. Tienes algun detalle adicional?"
+  riego: "💧 <strong>Riego para tu árbol:</strong><br>• Primeros 6 meses: 2-3 veces/semana (2-3 L cada vez)<br>• Después: 1 vez/semana en temporada seca<br>• En lluvias: suspende si llueve más de 10 mm<br>• Riega al pie, nunca en las hojas<br>• Verifica humedad 5 cm de profundidad antes de cada riego",
+  amarill: "🍂 <strong>Hojas amarillas:</strong> puede indicar (1) exceso de riego, (2) deficiencia de hierro, o (3) encharcamiento.<br>• Revisa el drenaje — introduce dedo 5 cm: si está muy húmedo, espacía riegos<br>• Si las venas siguen verdes: aplica quelato de hierro (Fe-EDTA)<br>• Si es severo o con manchas: puede ser hongo — fotografía y consulta al especialista",
+  fertiliz: "🌿 <strong>Fertilización:</strong><br>• 1ª aplicación: mayo-junio (inicio lluvias) — 1-2 kg composta<br>• 2ª aplicación: octubre — 0.5 kg vermicomposta<br>• Distribuye en corona a 30-50 cm del tronco<br>• Para deficiencias: NPK 10-10-10 foliar<br>• Evita fertilizantes de liberación rápida que queman raíces",
+  insecto: "🐛 <strong>Insectos y plagas comunes:</strong><br>• <em>Pulgones</em>: jabón potásico 5ml/L en envés de hojas, 2x/semana<br>• <em>Cochinilla</em>: paño con alcohol isopropílico 70%<br>• <em>Araña roja</em>: aumenta humedad ambiental, acaricida orgánico<br>• Si persiste >5 días, reporta con foto al Dr. Torres (Fitopatología)",
+  plaga: "🔍 <strong>Control de plagas:</strong><br>• Revisión preventiva semanal (hojas, tronco, base)<br>• Mantén el área libre de hojarasca<br>• Si detectas hongos: reduce humedad foliar, aplica fungicida cúprico<br>• Si hay barrenadores (serrín en la base): contacta urgente al especialista",
+  poda: "✂️ <strong>Guía de poda:</strong><br>• <em>Formativa</em> (año 1-3): elimina brotes laterales débiles, dirige estructura<br>• <em>Sanitaria</em>: retira ramas muertas, cruzadas o enfermas (cualquier época)<br>• <em>Mejor época</em>: feb-mar (fin temporada seca, antes de lluvias)<br>• Herramienta desinfectada con alcohol o cloro diluido<br>• Pasta cicatrizante en cortes >2 cm<br>• Nunca más del 25% del follaje en una sesión",
+  suelo: "🌱 <strong>Preparación de suelo:</strong><br>• Mezcla ideal: 60% tierra de hoja + 30% tezontle + 10% composta<br>• Si es muy arcilloso: agrega arena de río para drenaje<br>• pH óptimo: 6-8 (verifica con tiras reactivas anualmente)<br>• Mulch orgánico: 5-7 cm alrededor (sin tocar corteza)<br>• Evita compactar el suelo; las raíces necesitan oxígeno",
+  especie: "🌳 <strong>Especies nativas recomendadas para CU:</strong><br>• <em>Fácil cuidado</em>: Ahuehuete, Tepozán, Colorín, Capulín, Pochote<br>• <em>Cuidado medio</em>: Fresno mexicano, Encino, Aile, Mezquite<br>• <em>Mayor captura CO₂</em>: Encino (600-900 kg/30 años), Fresno (500-700 kg)<br>• Ve a la sección <strong>Árboles Nativos</strong> para ver el catálogo completo",
+  crecimiento: "📏 <strong>Mi árbol no crece bien:</strong><br>• Verifica que reciba 6-8 h de sol directo<br>• Revisa el riego: ni exceso ni déficit<br>• Aplica composta para activar el suelo<br>• Si el tronco está blando o hay manchas: consulta urgente<br>• Crecimiento esperado año 1: 30-50 cm; año 2-3: 50-80 cm/año<br>• Registra medidas en el panel para comparar el progreso",
+  temperatura: "🌡️ <strong>Clima y temperatura:</strong><br>• Las especies nativas de CU toleran bien el clima de la CDMX (6-24°C)<br>• En caso de helada (muy raro en CU): cubre la base con paja o mulch<br>• Evita zonas con vientos fuertes sin protección los primeros 2 años<br>• La temporada de lluvias (jun-sep) es la mejor para el crecimiento",
+  def: "🤖 Gracias por tu consulta. Te recomiendo documentar los síntomas con una fotografía y registrarlos en el panel. Algunos consejos generales:<br>• Observa si hay cambios en hojas, tronco o suelo<br>• Registra la última fecha de riego y fertilización<br>• Si el problema persiste, contacta a un especialista UNAM desde esta sección<br>¿Tienes algún detalle adicional que pueda ayudar?"
 };
 function getBotReply(m) {
-  m = m.toLowerCase();
+  m = m.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   if (m.includes('rieg') || m.includes('agua') || m.includes('frec')) return aiR.riego;
   if (m.includes('amarill') || m.includes('hoja')) return aiR.amarill;
-  if (m.includes('fertiliz') || m.includes('abono')) return aiR.fertiliz;
-  if (m.includes('insecto') || m.includes('bicho')) return aiR.insecto;
-  if (m.includes('plaga') || m.includes('pulg') || m.includes('hongo')) return aiR.plaga;
+  if (m.includes('fertiliz') || m.includes('abono') || m.includes('composta')) return aiR.fertiliz;
+  if (m.includes('insecto') || m.includes('bicho') || m.includes('pulg')) return aiR.insecto;
+  if (m.includes('plaga') || m.includes('hongo') || m.includes('enfermedad')) return aiR.plaga;
+  if (m.includes('poda') || m.includes('cortar') || m.includes('rama')) return aiR.poda;
+  if (m.includes('suelo') || m.includes('tierra') || m.includes('drenaje') || m.includes('sustrato')) return aiR.suelo;
+  if (m.includes('especie') || m.includes('que arbol') || m.includes('nativ') || m.includes('recomien')) return aiR.especie;
+  if (m.includes('crece') || m.includes('crecimiento') || m.includes('creci') || m.includes('altura')) return aiR.crecimiento;
+  if (m.includes('frio') || m.includes('calor') || m.includes('temperatura') || m.includes('clima')) return aiR.temperatura;
   return aiR.def;
 }
 function addMsg(text, role) {
@@ -800,24 +1275,176 @@ function sendMsg() {
   const inp = document.getElementById('chatIn');
   const text = inp.value.trim(); if (!text) return;
   addMsg(text, 'user'); inp.value = '';
-  setTimeout(() => {
-    const r = getBotReply(text); addMsg(r, 'bot');
-    if (r === aiR.def) setTimeout(() => addMsg('Si deseas, usa el boton <strong>Contactar</strong> en la seccion de especialistas para hablar con un ecologo de la UNAM.', 'bot'), 900);
-  }, 600 + Math.random() * 400);
+  setTimeout(() => { const r = getBotReply(text); addMsg(r, 'bot'); }, 600 + Math.random()*400);
 }
 function qm(t) { document.getElementById('chatIn').value = t; sendMsg(); }
 
+// ── TREES CATALOG DATA ────────────────────────────────────────
+const treesData = [
+  {
+    name:'Ahuehuete', sci:'Taxodium mucronatum', icon:'🌲',
+    desc:'Árbol nacional de México, símbolo de longevidad. Puede vivir miles de años. Ideal para zonas con humedad permanente en CU.',
+    co2:'400-600 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Frecuencia de riego</h5><p>Primeros 6 meses: 3 veces/semana (3-4 L). De establecido: 1-2 veces/semana en temporada seca. Tolera suelos temporalmente inundados.</p></div><div class="care-rec"><h5>💡 Consejo especial</h5><p>El Ahuehuete prefiere humedad constante. Colócalo cerca de canales o zonas con nivel freático alto. Es el único árbol nativo adaptado a suelos húmedos e inundables.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda del Ahuehuete</h5><p>Requiere poda mínima. Solo elimina ramas muertas o cruzadas. Su copa tiende a ser irregular naturalmente — no la "corrijas". Poda sanitaria en febrero-marzo.</p></div><div class="care-rec"><h5>⚠️ Importante</h5><p>Nunca podas drásticas al Ahuehuete. Es de crecimiento lento y cada rama perdida tarda años en recuperarse.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Tipo de suelo ideal</h5><p>Arcilloso-limoso con buen contenido de materia orgánica. Tolera pH 6-7.5. Necesita suelo húmedo; puede tolerar encharcamiento temporal.</p></div><div class="care-rec"><h5>📋 Preparación</h5><ul><li>Hoyo 80×80×80 cm con tierra de hoja</li><li>Mezcla con arena fina para retención de humedad</li><li>Mulch grueso (10 cm) alrededor de la base</li></ul></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas comunes</h5><p>Relativamente resistente. Puede afectarse por cochinilla harinosa en ramas jóvenes. Trata con jabón potásico al 2%.</p></div><div class="care-rec"><h5>🦠 Enfermedades</h5><p>Susceptible a Phytophthora en suelos con mal drenaje. Síntoma: hojas cafés que no caen. Contacta al Dr. Torres si detectas este patrón.</p></div>'
+  },
+  {
+    name:'Tepozán', sci:'Buddleja cordata', icon:'🌳',
+    desc:'Arbusto-árbol nativo de rápido crecimiento con flores fragantes amarillas-anaranjadas que atraen mariposas y colibríes. Muy resistente.',
+    co2:'200-350 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Moderado. Primeros 3 meses: 2 veces/semana (2 L). Establecido: 1 vez/semana o cada 10 días. Muy tolerante a sequía una vez establecido.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Responde muy bien a la poda. Poda formativa los primeros 2 años para dar estructura de árbol. Poda de rejuvenecimiento cada 3-4 años corta al 40% para estimular nuevo crecimiento y más flores.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Adaptable. Funciona en suelos volcánicos de CU (tezontle). pH 6-8. Bien drenado. Tolera suelos pobres.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Muy resistente. Ocasionalmente pulgones en brotes nuevos. Jabón potásico como prevención. Raramente requiere tratamiento.</p></div>'
+  },
+  {
+    name:'Colorín / Zompantle', sci:'Erythrina americana', icon:'🌺',
+    desc:'Árbol de flores rojas espectaculares, símbolo de la primavera mexicana. Fija nitrógeno en el suelo. Altamente resistente a sequía.',
+    co2:'250-400 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Poco exigente. Primeros 3 meses: 2 veces/semana. Establecido: 1 vez cada 2 semanas o solo en temporada seca severa. Xerofítico una vez maduro.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda drástica tolerada. Muchos lo podan al ras del suelo cada año para tener brotes frescos y flores abundantes. Para árbol permanente: poda formativa suave los primeros 3 años.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Muy adaptable. Tolera suelos volcánicos, arcillosos y arenosos. pH 5.5-8. Prefiere buen drenaje pero tolera algo de compactación.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Barrenador del tronco puede ser problema. Detecta: serrín en base. Prevención: mantén corteza sana, sin heridas. Si hay infestación: consulta al Dr. Torres.</p></div>'
+  },
+  {
+    name:'Fresno Mexicano', sci:'Fraxinus uhdei', icon:'🌸',
+    desc:'El árbol urbano más plantado en CDMX. Copa frondosa y densa sombra. Semiperverde en el microclima de CU. Rápido crecimiento.',
+    co2:'500-700 kg CO₂/30 años', dif:'Medio',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Moderado-alto. Primeros 6 meses: 3 veces/semana (3-4 L). Establecido: 2 veces/semana en temporada seca. Reduce riego en temporada de lluvias.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda formativa importante los primeros 5 años para lograr estructura fuerte. Elimina ramas codominantes (dos troncos iguales). Poda sanitaria anual en feb-mar. Puede requerir poda de elevación de copa a los 10 años.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Suelo profundo, bien drenado, rico en materia orgánica. pH 6-7.5. Sensible a encharcamiento prolongado. Añade composta abundante al plantar.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Susceptible a muérdago (Phoradendron) — elimina cualquier brote parásito de inmediato. También puede afectarse por barrenadores. Revisión semestral obligatoria.</p></div>'
+  },
+  {
+    name:'Encino / Roble', sci:'Quercus rugosa', icon:'🌿',
+    desc:'Parte del bosque original de Pedregal de San Ángel en CU. Soporte de gran biodiversidad. Bellotas como alimento para fauna nativa.',
+    co2:'600-900 kg CO₂/30 años', dif:'Medio',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Moderado al inicio, xerofítico de adulto. Primeros 2 años: 2 veces/semana. Establecido: solo en temporada seca severa (mar-may). Tolera la sequía estacional de CU.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda mínima. Respeta su forma natural. Solo poda sanitaria (ramas muertas o enfermas). Evita podas en primavera (época de rebrote). Mejor: agosto-septiembre.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Suelo volcánico rocoso del Pedregal — exactamente el de CU. pH 5.5-7. Tolera suelos pobres. No requiere suelo fértil ni fertilización frecuente.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Agallas (tumores foliares) causadas por avispas — generalmente inofensivas. Pulgones en brotes jóvenes. Resistente a la mayoría de enfermedades cuando está bien ubicado.</p></div>'
+  },
+  {
+    name:'Pochote / Ceiba', sci:'Ceiba aesculifolia', icon:'🌴',
+    desc:'Árbol sagrado para las culturas mesoamericanas. Tronco espinoso verde fotosintético. Muy resistente a sequía. Flores blancas nocturnas.',
+    co2:'350-500 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Muy poco. Primeros 3 meses: 1 vez/semana. Establecido: 1 vez cada 3-4 semanas en temporada seca. Almacena agua en su tronco verde. Muy tolerante a la sequía.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda mínima. Su forma natural es hermosa. Elimina solo ramas muertas. Cuidado con las espinas del tronco al podar — usa equipo de protección.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Muy adaptable. Tolera suelos volcánicos, arenosos y pobres. pH 6-8. Excelente drenaje obligatorio — no tolera encharcamiento.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Extremadamente resistente. Prácticamente sin plagas significativas en CU. Las espinas del tronco lo protegen naturalmente de herbívoros.</p></div>'
+  },
+  {
+    name:'Palo Dulce', sci:'Eysenhardtia polystachya', icon:'🍯',
+    desc:'Árbol medicinal de madera muy densa y aromática. Flores blancas fragantes. Fijador de nitrógeno. Excelente para zonas áridas y volcánicas.',
+    co2:'180-280 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Muy poco después del establecimiento. Primeros 3 meses: 2 veces/semana. Establecido: 1 vez cada 2-3 semanas en temporada seca. Especie xerofítica.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda formativa ligera los primeros 2 años. Tiende a ser multi-tronco; si deseas árbol de un tronco, elimina los brotes laterales desde joven. Tolera bien la poda.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Suelo volcánico delgado — perfectamente adaptado a CU. pH 6-8. Tolera suelos pedregosos. No requiere sustrato rico.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Muy resistente. Prácticamente sin problemas fitosanitarios significativos. La madera aromática y densa lo protege naturalmente.</p></div>'
+  },
+  {
+    name:'Capulín', sci:'Prunus serotina ssp. capuli', icon:'🍑',
+    desc:'Árbol frutal nativo con fruto comestible apreciado en México desde tiempos prehispánicos. Florece en primavera. Atrae aves y polinizadores.',
+    co2:'300-450 kg CO₂/30 años', dif:'Fácil',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Moderado. Primeros 6 meses: 2-3 veces/semana. Establecido: 1-2 veces/semana en temporada seca. Aumenta frecuencia durante floración y fructificación (feb-jul).</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda formativa los primeros 3 años para copa abierta que permita entrada de luz y aire. Elimina chupones del tronco. Poda sanitaria anual. No podar en época de floración.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Suelo bien drenado, medianamente fértil. pH 6-7.5. Añade composta moderada. Tolera suelos volcánicos de CU con enmienda orgánica.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Susceptible a pulgón negro (Myzus cerasi) en brotes. Trata con jabón potásico. Puede tener manchas foliares fúngicas en temporada de lluvias; aplica fungicida preventivo en junio.</p></div>'
+  },
+  {
+    name:'Aile / Aliso', sci:'Alnus acuminata', icon:'💙',
+    desc:'Árbol ripario fijador de nitrógeno. Estabiliza suelos en zonas húmedas. Su hojarasca descompuesta enriquece el suelo con nutrientes.',
+    co2:'400-580 kg CO₂/30 años', dif:'Medio',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Alto. Primeros 6 meses: diario o 4 veces/semana (3-5 L). Establecido: 2-3 veces/semana. Prefiere zonas húmedas o con nivel freático cercano. No tolera la sequía.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Poda formativa para estructura única en árbol. Elimina ramas débiles y codominantes. Tolera bien la poda. Mejor época: enero-febrero, en reposo vegetativo.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Suelo húmedo, profundo, con buen contenido orgánico. pH 5.5-7. Tolera encharcamiento temporal. Planta cerca de áreas con riego o bordos.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Generalmente resistente. Puede tener escarabajo del aile (Agrilus) en troncos débiles. Mantén el árbol vigoroso con buen riego y fertilización para prevención.</p></div>'
+  },
+  {
+    name:'Mezquite', sci:'Prosopis laevigata', icon:'🪨',
+    desc:'Leguminosa nativa extremadamente resistente. Vainas comestibles ricas en azúcares. Fija nitrógeno. Sus raíces profundas buscan agua y estabilizan suelos.',
+    co2:'220-380 kg CO₂/30 años', dif:'Medio',
+    riego:'<div class="care-rec"><h5>💧 Riego</h5><p>Muy poco. Primeros 3 meses: 1-2 veces/semana. Establecido: 1 vez cada 3-4 semanas solo en sequía severa. Sus raíces profundas encuentran agua por sí mismas. Xerofítico.</p></div>',
+    poda:'<div class="care-rec"><h5>✂️ Poda</h5><p>Tolerante a la poda pero no la necesita. Poda formativa para eliminar espinas bajas si está en zona de paso peatonal. Poda sanitaria anual. Cuidado con las espinas.</p></div>',
+    suelo:'<div class="care-rec"><h5>🌱 Suelo</h5><p>Tolera casi cualquier suelo: arenoso, arcilloso, pedregoso, salino. pH 5.5-9. Es perfecto para suelos degradados o difíciles donde otras especies no prosperan.</p></div>',
+    plagas:'<div class="care-rec"><h5>🔍 Plagas</h5><p>Muy resistente. Barrenador del mezquite (Oncideres sp.) puede cortar ramas — poda los muñones. Las espinas naturales lo protegen de herbívoros.</p></div>'
+  }
+];
+
+// ── TREE DETAIL MODAL ─────────────────────────────────────────
+let _leafMap = null, _leafMarker = null, _selectedTreeIdx = 0;
+
+function openTreeDetail(idx) {
+  _selectedTreeIdx = idx;
+  const t = treesData[idx];
+  document.getElementById('tdIcon').textContent = t.icon;
+  document.getElementById('tdName').textContent = t.name;
+  document.getElementById('tdSci').textContent = t.sci;
+  document.getElementById('tdBadges').innerHTML = `<span class="badge native">Nativo</span> <span class="badge ${t.dif==='Fácil'?'easy':'med'}">${t.dif}</span> <span class="badge easy" style="background:rgba(200,168,75,.2);border-color:var(--gold);color:var(--gol)">${t.co2}</span>`;
+  document.getElementById('tdDesc').textContent = t.desc;
+  document.getElementById('tdRiego').innerHTML = t.riego;
+  document.getElementById('tdPoda').innerHTML = t.poda;
+  document.getElementById('tdSuelo').innerHTML = t.suelo;
+  document.getElementById('tdPlagas').innerHTML = t.plagas;
+  // reset tabs
+  document.querySelectorAll('#mo-tree .dtab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#mo-tree .dtab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('#mo-tree .dtab-btn').classList.add('active');
+  document.getElementById('dt-riego').classList.add('active');
+  // destroy old map if any
+  if (_leafMap) { _leafMap.remove(); _leafMap = null; _leafMarker = null; }
+  document.getElementById('mapInfo').innerHTML = '📍 <strong>Sin ubicación registrada.</strong> Haz clic en el mapa para fijar la posición.';
+  document.getElementById('mo-tree').classList.add('open');
+  document.getElementById('mo-tree').addEventListener('click', function(e){ if(e.target===this) this.classList.remove('open'); }, {once:false});
+}
+
+function initMap() {
+  if (_leafMap) { setTimeout(()=>_leafMap.invalidateSize(),100); return; }
+  setTimeout(() => {
+    _leafMap = L.map('mapContainer').setView([19.3320, -99.1877], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(_leafMap);
+    // CU boundary marker
+    L.marker([19.3320, -99.1877], {
+      icon: L.divIcon({className:'', html:'<div style="background:#c8a84b;color:#003;font-size:.65rem;font-weight:700;padding:3px 7px;border-radius:99px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)">📍 CU Centro</div>', iconAnchor:[40,10]})
+    }).addTo(_leafMap).bindPopup('Ciudad Universitaria — Punto de referencia');
+    _leafMap.on('click', e => {
+      const { lat, lng } = e.latlng;
+      if (_leafMarker) _leafMarker.setLatLng(e.latlng);
+      else _leafMarker = L.marker(e.latlng, {draggable:true}).addTo(_leafMap);
+      _leafMarker.on('dragend', ev => updateMapInfo(ev.target.getLatLng().lat, ev.target.getLatLng().lng));
+      updateMapInfo(lat, lng);
+    });
+    _leafMap.invalidateSize();
+  }, 200);
+}
+
+function updateMapInfo(lat, lng) {
+  document.getElementById('mapInfo').innerHTML = `📍 <strong>Ubicación seleccionada:</strong> ${lat.toFixed(6)}°N, ${lng.toFixed(6)}°W — Haz clic en "Guardar ubicación" para registrar.`;
+}
+
+async function saveTreeLocation() {
+  if (!_leafMarker) { notify('⚠️ Sin ubicación','Haz clic en el mapa para marcar la posición.'); return; }
+  const { lat, lng } = _leafMarker.getLatLng();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const { data: trees } = await sb.from('trees').select('id').eq('owner_id', user.id).limit(1);
+  if (trees && trees.length > 0) {
+    await sb.from('trees').update({ location_lat: lat, location_lng: lng }).eq('id', trees[0].id);
+  }
+  notify('📍 Ubicación guardada', `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`);
+}
+
 // ── FOTO MODAL ─────────────────────────────────────────────────
 function openFotoModal() {
-  const m = document.getElementById('mo-foto');
-  m.style.display = 'flex';
-  document.getElementById('fotoPreviewWrap').style.display = 'none';
-  document.getElementById('fotoInput').value = '';
-  document.getElementById('fotoNota').value = '';
+  const m = document.getElementById('mo-foto'); m.style.display='flex';
+  document.getElementById('fotoPreviewWrap').style.display='none';
+  document.getElementById('fotoInput').value=''; document.getElementById('fotoNota').value='';
 }
-function closeFotoModal() {
-  document.getElementById('mo-foto').style.display = 'none';
-}
+function closeFotoModal() { document.getElementById('mo-foto').style.display='none'; }
 function previewFoto(input) {
   if (input.files && input.files[0]) {
     const file = input.files[0];
@@ -825,7 +1452,7 @@ function previewFoto(input) {
     reader.onload = e => {
       document.getElementById('fotoPreview').src = e.target.result;
       document.getElementById('fotoFileName').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
-      document.getElementById('fotoPreviewWrap').style.display = 'block';
+      document.getElementById('fotoPreviewWrap').style.display='block';
     };
     reader.readAsDataURL(file);
   }
@@ -833,79 +1460,252 @@ function previewFoto(input) {
 async function submitFoto() {
   const input = document.getElementById('fotoInput');
   const nota = document.getElementById('fotoNota').value;
-  if (!input.files || !input.files[0]) {
-    notify('⚠️ Sin foto', 'Selecciona una imagen antes de continuar.'); return;
-  }
+  if (!input.files || !input.files[0]) { notify('⚠️ Sin foto','Selecciona una imagen antes de continuar.'); return; }
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
   const { data: trees } = await sb.from('trees').select('id').eq('owner_id', user.id).limit(1);
   const treeId = trees && trees.length > 0 ? trees[0].id : null;
   const file = input.files[0];
   const fileName = user.id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-  // Try upload to Supabase Storage (bucket 'fotos-arboles'); if bucket not set up, just log the record
   let photoUrl = null;
   try {
-    const { data: upData, error: upErr } = await sb.storage.from('fotos-arboles').upload(fileName, file, { upsert: false });
-    if (!upErr && upData) {
-      const { data: urlData } = sb.storage.from('fotos-arboles').getPublicUrl(fileName);
-      photoUrl = urlData?.publicUrl || null;
-    }
+    const { data: upData, error: upErr } = await sb.storage.from('fotos-arboles').upload(fileName, file, { upsert:false });
+    if (!upErr && upData) { const { data: urlData } = sb.storage.from('fotos-arboles').getPublicUrl(fileName); photoUrl = urlData?.publicUrl||null; }
   } catch(e) {}
-  const { error } = await sb.from('care_logs').insert({
-    tree_id: treeId, user_id: user.id, log_type: 'foto',
-    notes: nota || ('Fotografía: ' + file.name),
-    photo_url: photoUrl
-  });
+  const { error } = await sb.from('care_logs').insert({ tree_id:treeId, user_id:user.id, log_type:'foto', notes:nota||('Fotografía: '+file.name), photo_url:photoUrl });
   closeFotoModal();
-  if (!error) {
-    notify('📸 Fotografía registrada', photoUrl ? 'Imagen subida correctamente.' : 'Registro guardado (configura bucket para almacenar imágenes).');
-    loadCareLogs();
-  } else {
-    notify('⚠️ Error', 'No se pudo guardar el registro.');
+  if (!error) { notify('📸 Fotografía registrada', photoUrl?'Imagen subida correctamente.':'Registro guardado.'); loadCareLogs(); }
+  else notify('⚠️ Error','No se pudo guardar el registro.');
+}
+
+// ── AI TAB SWITCHER ────────────────────────────────────────
+function switchAITab(btn, id) {
+  document.querySelectorAll('.ai-tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ai-tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+// ── PUM-AI ─────────────────────────────────────────────────
+const PUMAI_FN_URL = 'https://hambscfdiaymowskislw.supabase.co/functions/v1/pum-ai-analyze';
+
+function pumaiPreview(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) { notify('⚠️ Imagen demasiado grande','Máximo 5 MB permitido.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('pumaiPreviewImg').src = e.target.result;
+    document.getElementById('pumaiPreviewImg').style.display = 'block';
+    document.getElementById('pumaiPlaceholder').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function runPumAI() {
+  const fileInput = document.getElementById('pumaiFile');
+  const desc = document.getElementById('pumaiDesc').value.trim();
+  const hasFile = fileInput.files && fileInput.files[0];
+  if (!hasFile && !desc) {
+    notify('⚠️ Datos insuficientes','Sube una foto o escribe una descripción del problema.');
+    return;
+  }
+  // Show spinner, hide response
+  document.getElementById('pumaiSpinner').classList.add('visible');
+  document.getElementById('pumaiResponse').classList.remove('visible');
+  document.getElementById('pumaiResponse').innerHTML = '';
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) throw new Error('Debes iniciar sesión para usar PUM-AI.');
+    const { data: { session } } = await sb.auth.getSession();
+
+    let imageUrl = null;
+    // Upload photo to Supabase Storage
+    if (hasFile) {
+      const file = fileInput.files[0];
+      const fileName = 'pumai/' + user.id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const { data: upData, error: upErr } = await sb.storage.from('fotos-arboles').upload(fileName, file, { upsert: false });
+      if (!upErr && upData) {
+        const { data: urlData } = sb.storage.from('fotos-arboles').getPublicUrl(fileName);
+        imageUrl = urlData?.publicUrl || null;
+      }
+    }
+
+    // Call edge function
+    const res = await fetch(PUMAI_FN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': 'sb_publishable_s91fShtd7-qov8lVIvpVXQ_xrNANUme'
+      },
+      body: JSON.stringify({ imageUrl, description: desc })
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    // Format response: convert markdown-like text to HTML
+    const html = json.analysis
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)/gm, '• $1')
+      .replace(/\n/g, '<br>');
+
+    document.getElementById('pumaiResponse').innerHTML = '🔬 <strong>Análisis PUM-AI:</strong><br><br>' + html;
+    document.getElementById('pumaiResponse').classList.add('visible');
+  } catch (err) {
+    document.getElementById('pumaiResponse').innerHTML = '⚠️ <strong>Error:</strong> ' + err.message;
+    document.getElementById('pumaiResponse').classList.add('visible');
+  } finally {
+    document.getElementById('pumaiSpinner').classList.remove('visible');
   }
 }
 
+// ── ADMIN USERS ─────────────────────────────────────────────
+const ADMIN_FN_URL = 'https://hambscfdiaymowskislw.supabase.co/functions/v1/admin-users';
+let _adminUsers = [];
+
+async function adminFetch(action, payload = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(ADMIN_FN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + session.access_token,
+      'apikey': 'sb_publishable_s91fShtd7-qov8lVIvpVXQ_xrNANUme'
+    },
+    body: JSON.stringify({ action, ...payload })
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return json.data;
+}
+
+async function loadAdminUsers() {
+  const tbody = document.getElementById('adminUsersBody');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:rgba(255,255,255,.3)">⏳ Cargando...</td></tr>';
+  try {
+    _adminUsers = await adminFetch('list');
+    renderAdminUsers(_adminUsers);
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:#ff8a8a">⚠️ ' + err.message + '</td></tr>';
+  }
+}
+
+function renderAdminUsers(users) {
+  const tbody = document.getElementById('adminUsersBody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:rgba(255,255,255,.3)">Sin usuarios registrados.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td style="color:#fff;font-weight:600">${u.email}</td>
+      <td>${u.name || '<span style="opacity:.4">—</span>'}</td>
+      <td><span class="role-badge ${u.role}">${u.role === 'admin' ? '⚙️ Admin' : '👤 Usuario'}</span></td>
+      <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('es-MX') : '—'}</td>
+      <td>${u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('es-MX') : '<span style="opacity:.4">Nunca</span>'}</td>
+      <td>
+        <button class="btn-edit" onclick="editAdminUser('${u.id}')">✏️ Editar</button>
+        <button class="btn-danger" onclick="deleteAdminUser('${u.id}','${u.email}')">🗑️ Eliminar</button>
+      </td>
+    </tr>`).join('');
+}
+
+function filterAdminUsers() {
+  const q = document.getElementById('adminSearch').value.toLowerCase();
+  const filtered = _adminUsers.filter(u => (u.email||'').toLowerCase().includes(q) || (u.name||'').toLowerCase().includes(q));
+  renderAdminUsers(filtered);
+}
+
+function openAdminUserModal(userId) {
+  document.getElementById('adminModalTitle').textContent = userId ? 'Editar usuario' : 'Nuevo usuario';
+  document.getElementById('adminUserId').value = userId || '';
+  document.getElementById('adminEmail').value = '';
+  document.getElementById('adminName').value = '';
+  document.getElementById('adminPass').value = '';
+  document.getElementById('adminRole').value = 'user';
+  document.getElementById('passHint').textContent = userId ? '(dejar vacío para no cambiar)' : '(mín. 8 caracteres)';
+  if (userId) {
+    const u = _adminUsers.find(x => x.id === userId);
+    if (u) {
+      document.getElementById('adminEmail').value = u.email || '';
+      document.getElementById('adminName').value = u.name || '';
+      document.getElementById('adminRole').value = u.role || 'user';
+    }
+  }
+  document.getElementById('mo-admin-user').classList.add('open');
+}
+
+function editAdminUser(userId) { openAdminUserModal(userId); }
+
+function closeAdminUserModal() { document.getElementById('mo-admin-user').classList.remove('open'); }
+
+async function saveAdminUser() {
+  const userId = document.getElementById('adminUserId').value;
+  const email  = document.getElementById('adminEmail').value.trim();
+  const name   = document.getElementById('adminName').value.trim();
+  const pass   = document.getElementById('adminPass').value;
+  const role   = document.getElementById('adminRole').value;
+  if (!email) { notify('⚠️ Email requerido','Ingresa un correo electrónico.'); return; }
+  if (!userId && !pass) { notify('⚠️ Contraseña requerida','Ingresa una contraseña para el nuevo usuario.'); return; }
+  try {
+    if (userId) {
+      const payload = { userId, email, name, role };
+      if (pass) payload.password = pass;
+      await adminFetch('update', payload);
+      notify('✓ Usuario actualizado', email + ' actualizado correctamente.');
+    } else {
+      await adminFetch('create', { email, password: pass, name, role });
+      notify('✓ Usuario creado', email + ' creado correctamente.');
+    }
+    closeAdminUserModal();
+    loadAdminUsers();
+  } catch (err) {
+    notify('⚠️ Error', err.message);
+  }
+}
+
+async function deleteAdminUser(userId, email) {
+  if (!confirm('¿Eliminar a ' + email + '? Esta acción no se puede deshacer.')) return;
+  try {
+    await adminFetch('delete', { userId });
+    notify('✓ Usuario eliminado', email + ' eliminado.');
+    loadAdminUsers();
+  } catch (err) {
+    notify('⚠️ Error', err.message);
+  }
+}
+
+document.getElementById('mo-admin-user').addEventListener('click', e => { if (e.target === document.getElementById('mo-admin-user')) closeAdminUserModal(); });
+
 // ── MEDICION MODAL ─────────────────────────────────────────────
 function openMedicionModal() {
-  const m = document.getElementById('mo-medicion');
-  m.style.display = 'flex';
-  ['medAltura','medDiametro','medCopa','medNota'].forEach(id => { document.getElementById(id).value = ''; });
+  const m = document.getElementById('mo-medicion'); m.style.display='flex';
+  ['medAltura','medDiametro','medCopa','medNota'].forEach(id=>{ document.getElementById(id).value=''; });
 }
-function closeMedicionModal() {
-  document.getElementById('mo-medicion').style.display = 'none';
-}
+function closeMedicionModal() { document.getElementById('mo-medicion').style.display='none'; }
 async function submitMedicion() {
-  const altura = document.getElementById('medAltura').value;
-  const diametro = document.getElementById('medDiametro').value;
-  const copa = document.getElementById('medCopa').value;
-  const nota = document.getElementById('medNota').value;
-  if (!altura && !diametro) {
-    notify('⚠️ Datos incompletos', 'Ingresa al menos la altura o el diámetro.'); return;
-  }
+  const altura=document.getElementById('medAltura').value;
+  const diametro=document.getElementById('medDiametro').value;
+  const copa=document.getElementById('medCopa').value;
+  const nota=document.getElementById('medNota').value;
+  if (!altura && !diametro) { notify('⚠️ Datos incompletos','Ingresa al menos la altura o el diámetro.'); return; }
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
   const { data: trees } = await sb.from('trees').select('id').eq('owner_id', user.id).limit(1);
   const treeId = trees && trees.length > 0 ? trees[0].id : null;
-  let notesArr = [];
-  if (altura) notesArr.push('Altura: ' + altura + ' cm');
-  if (diametro) notesArr.push('Diámetro tronco: ' + diametro + ' cm');
-  if (copa) notesArr.push('Copa: ' + copa + ' cm');
+  let notesArr=[];
+  if (altura) notesArr.push('Altura: '+altura+' cm');
+  if (diametro) notesArr.push('Diámetro tronco: '+diametro+' cm');
+  if (copa) notesArr.push('Copa: '+copa+' cm');
   if (nota) notesArr.push(nota);
-  const { error } = await sb.from('care_logs').insert({
-    tree_id: treeId, user_id: user.id, log_type: 'medicion',
-    height_cm: altura ? parseFloat(altura) : null,
-    trunk_diameter_cm: diametro ? parseFloat(diametro) : null,
-    notes: notesArr.join(' · ')
-  });
+  const { error } = await sb.from('care_logs').insert({ tree_id:treeId, user_id:user.id, log_type:'medicion', height_cm:altura?parseFloat(altura):null, trunk_diameter_cm:diametro?parseFloat(diametro):null, notes:notesArr.join(' · ') });
   closeMedicionModal();
-  if (!error) {
-    notify('📏 Medidas registradas', notesArr.slice(0,2).join(', '));
-    loadCareLogs();
-  } else {
-    notify('⚠️ Error', 'No se pudieron guardar las medidas.');
-  }
+  if (!error) { notify('📏 Medidas registradas',notesArr.slice(0,2).join(', ')); loadCareLogs(); }
+  else notify('⚠️ Error','No se pudieron guardar las medidas.');
 }
-
 </script>
 </body>
 </html>
