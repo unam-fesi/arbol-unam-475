@@ -1598,37 +1598,38 @@
     </script>
 
     <!-- ========== LOGIN SCREEN ========== -->
-    <div id="loginScreen" class="login-container">
+    <div id="login-screen" class="login-container">
         <div class="login-box">
             <div class="login-logo">
                 <div class="login-logo-text">🌳 FESI UNAM</div>
                 <div class="login-logo-subtitle">Proyecto Árbol UNAM 475</div>
             </div>
 
-            <form id="loginForm" class="login-form">
-                <div id="loginError" class="error-message"></div>
+            <form id="login-form" class="login-form">
+                <div id="login-error" class="error-message"></div>
 
                 <div class="login-form-group">
-                    <label for="loginEmail">Correo Electrónico</label>
-                    <input type="email" id="loginEmail" placeholder="tu@email.com" required>
+                    <label for="login-email">Correo Electrónico</label>
+                    <input type="email" id="login-email" placeholder="tu@email.com" required>
                 </div>
 
                 <div class="login-form-group">
-                    <label for="loginPassword">Contraseña</label>
-                    <input type="password" id="loginPassword" placeholder="••••••••" required>
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
                 </div>
 
-                <button type="submit" class="login-btn">Iniciar Sesión</button>
+                <button type="submit" id="btn-login" class="login-btn">Iniciar Sesión</button>
 
                 <div class="login-footer">
-                    <p>¿Problemas para acceder? Contacta al administrador</p>
+                    <p>¿Problemas para acceder? Contacta al administrador
+            <button id="btn-register" class="register-btn" style="display:none;">Registrarse</button></p>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- ========== MAIN APPLICATION ========== -->
-    <div id="mainApp" class="hidden">
+    <div id="main-app" class="hidden">
         <!-- Navbar -->
         <nav class="navbar">
             <div class="navbar-content">
@@ -1660,10 +1661,12 @@
                     </div>
                 </div>
             </div>
+        
+            <button id="btn-logout" class="nav-btn" onclick="handleLogout()" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></button>
         </nav>
 
         <!-- Hero Section -->
-        <section id="heroSection" class="hero">
+        <section id="hero-section" class="hero">
             <div class="container">
                 <h1>Bienvenido al Proyecto Árbol UNAM 475</h1>
                 <p>Plataforma integral de cuidado y monitoreo de árboles del campus Iztacala de la FES UNAM</p>
@@ -1678,7 +1681,7 @@
         <main class="main-content">
             <div class="container">
                 <!-- ========== MI ÁRBOL SECTION ========== -->
-                <section id="miArbolPage" class="page-section active">
+                <section id="section-mi-arbol" class="page-section active">
                     <h2 style="margin-bottom: 2rem;">Mi Árbol Asignado</h2>
 
                     <!-- Tree Map -->
@@ -1800,10 +1803,23 @@
                             <i class="fas fa-camera"></i> Subir Foto
                         </button>
                     </div>
-                </section>
+                
+                    <div class="telegram-section" style="margin-top:2rem; padding:1.5rem; background:#f0f7ff; border-radius:var(--radius); border:1px solid #d0e3f7;">
+                        <h4><i class="fab fa-telegram"></i> Vinculación con Telegram</h4>
+                        <p class="text-muted">Recibe notificaciones en tu Telegram</p>
+                        <div class="form-group">
+                            <label for="telegram-chat-id">Tu Chat ID de Telegram</label>
+                            <input type="text" id="telegram-chat-id" class="form-control" placeholder="Ej: 123456789" readonly>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+                            <button id="btn-link-telegram" class="btn btn-primary" onclick="linkTelegram()"><i class="fab fa-telegram"></i> Vincular</button>
+                            <button id="btn-unlink-telegram" class="btn btn-secondary" onclick="unlinkTelegram()" style="display:none;"><i class="fas fa-unlink"></i> Desvincular</button>
+                        </div>
+                    </div>
+</section>
 
                 <!-- ========== CUIDADOS SECTION ========== -->
-                <section id="cuidadosPage" class="page-section">
+                <section id="section-cuidados" class="page-section">
                     <h2 style="margin-bottom: 3rem;">Consejos de Cuidado</h2>
 
                     <div class="tips-grid">
@@ -1888,7 +1904,7 @@
                 </section>
 
                 <!-- ========== METAS SECTION ========== -->
-                <section id="metasPage" class="page-section">
+                <section id="section-metas" class="page-section">
                     <h2 style="margin-bottom: 2rem;">Metas de Cuidado</h2>
 
                     <div class="goals-container">
@@ -1992,14 +2008,14 @@
                 </section>
 
                 <!-- ========== PUM-AI SECTION ========== -->
-                <section id="pumAiPage" class="page-section">
+                <section id="section-pumai" class="page-section">
                     <h2 style="margin-bottom: 2rem;">Consultor PUM-AI</h2>
                     <p class="text-muted" style="margin-bottom: 2rem;">Sube una foto de tu árbol y recibe análisis inteligente basado en IA. Nuestro sistema PUM-AI puede identificar problemas, plagas y recomendar acciones específicas.</p>
 
                     <div class="pum-ai-container">
                         <!-- Upload Panel -->
                         <div class="pum-upload-panel">
-                            <div class="pum-upload-area" id="uploadArea">
+                            <div class="pum-upload-area" id="pumai-upload-area">
                                 <div class="pum-upload-icon">📸</div>
                                 <div class="pum-upload-text">
                                     <h4>Subir Foto del Árbol</h4>
@@ -2007,16 +2023,21 @@
                                 </div>
                             </div>
 
-                            <div id="imagePreview" class="pum-image-preview hidden">
+                            <div id="photo-preview" class="pum-image-preview hidden">
                                 <img id="previewImg" class="preview-image" alt="Vista previa">
                             </div>
 
-                            <div class="pum-buttons">
-                                <input type="file" id="photoInput" class="pum-upload-input" accept="image/*">
+                            
+                            <div class="form-group" style="margin-bottom:1rem;">
+                                <label for="pumai-description">Describe el problema o síntoma (opcional)</label>
+                                <textarea id="pumai-description" class="form-control" rows="2" placeholder="Ej: Las hojas se están poniendo amarillas..."></textarea>
+                            </div>
+<div class="pum-buttons">
+                                <input type="file" id="pumai-photo" class="pum-upload-input" accept="image/*">
                                 <button class="btn btn-secondary" id="uploadPhotoAgainBtn" style="flex: 1;">
                                     <i class="fas fa-image"></i> Otra Foto
                                 </button>
-                                <button class="btn btn-primary" id="analyzeBtn" style="flex: 1;">
+                                <button class="btn btn-primary" id="btn-run-pumai" style="flex: 1;">
                                     <i class="fas fa-magic"></i> Analizar
                                 </button>
                             </div>
@@ -2029,24 +2050,29 @@
                                 <p style="margin: 0; font-size: 0.85rem; opacity: 0.9;">Asistente de consultoría inteligente</p>
                             </div>
 
-                            <div class="pum-chat-messages" id="chatMessages">
+                            <div class="pum-chat-messages" id="pumai-chat-messages">
                                 <div class="message assistant">
                                     <div class="message-bubble">¡Hola! Soy PUM-AI, tu consultor de arboricultura. Sube una foto de tu árbol para que pueda analizarla y brindarte recomendaciones personalizadas.</div>
                                 </div>
                             </div>
 
                             <div class="pum-chat-input">
-                                <input type="text" id="messageInput" class="pum-input-field" placeholder="Escribe una pregunta...">
+                                <input type="text" id="pumai-chat-input" class="pum-input-field" placeholder="Escribe una pregunta...">
                                 <button id="sendBtn" class="pum-send-btn">
                                     <i class="fas fa-paper-plane"></i>
                                 </button>
                             </div>
                         </div>
                     </div>
-                </section>
+                
+                    <div id="pumai-result" class="pumai-result-container" style="display:none; margin-top:1.5rem; padding:1.5rem; background:#f8f9fa; border-radius:var(--radius); border:1px solid #e9ecef;">
+                        <h4>Resultado del Análisis</h4>
+                        <div class="result-content"></div>
+                    </div>
+</section>
 
                 <!-- ========== SPECIALIST SECTION ========== -->
-                <section id="specialistPage" class="page-section hidden">
+                <section id="section-specialist" class="page-section hidden">
                     <h2 style="margin-bottom: 2rem;">Panel de Especialista</h2>
 
                     <div class="specialist-container">
@@ -2074,7 +2100,7 @@
                         <!-- Follow-up Tracking -->
                         <div class="tracking-panel">
                             <h3>Registrar Seguimiento</h3>
-                            <form class="tracking-form" id="trackingForm">
+                            <form class="tracking-form" id="form-followup">
                                 <div class="form-group">
                                     <label for="treeSelect">Árbol a Revisar</label>
                                     <select id="treeSelect" required>
@@ -2090,14 +2116,46 @@
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="trackingNotes">Notas de Seguimiento</label>
-                                    <textarea id="trackingNotes" placeholder="Describe el estado actual del árbol, cualquier problema observado, acciones realizadas..." required></textarea>
+                                    <label for="followup-notes">Notas de Seguimiento</label>
+                                    <textarea id="followup-notes" placeholder="Describe el estado actual del árbol, cualquier problema observado, acciones realizadas..." required></textarea>
                                 </div>
 
-                                <button type="submit" class="btn btn-primary">
+                                
+                                <input type="hidden" id="followup-tree-id">
+                                <div class="form-group">
+                                    <label for="followup-type">Tipo de Seguimiento</label>
+                                    <select id="followup-type" class="form-control">
+                                        <option value="riego">Riego</option>
+                                        <option value="poda">Poda</option>
+                                        <option value="fertilizacion">Fertilización</option>
+                                        <option value="inspeccion">Inspección</option>
+                                        <option value="tratamiento">Tratamiento</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="followup-health-assessment">Evaluación de Salud</label>
+                                    <select id="followup-health-assessment" class="form-control">
+                                        <option value="excelente">Excelente</option>
+                                        <option value="buena">Buena</option>
+                                        <option value="regular">Regular</option>
+                                        <option value="mala">Mala</option>
+                                        <option value="critica">Crítica</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="followup-solution">Solución Aplicada</label>
+                                    <textarea id="followup-solution" class="form-control" rows="2" placeholder="Describe la solución o acción tomada"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="followup-next-date">Próxima Fecha de Seguimiento</label>
+                                    <input type="date" id="followup-next-date" class="form-control">
+                                </div>
+<button type="submit" class="btn btn-primary">
                                     <i class="fas fa-save"></i> Guardar Seguimiento
                                 </button>
                             </form>
+                    <div id="followup-history" class="followup-history" style="margin-top:1.5rem;"></div>
+
                         </div>
                     </div>
 
@@ -2174,10 +2232,13 @@
                             </div>
                         </div>
                     </div>
-                </section>
+                
+                    <div id="specialist-trees-list" class="data-list" style="margin-top:1rem;"></div>
+                    <div id="problem-reports-list" class="data-list" style="margin-top:1rem;"></div>
+</section>
 
                 <!-- ========== ADMIN PANEL ========== -->
-                <section id="adminPage" class="page-section hidden">
+                <section id="section-admin" class="page-section hidden">
                     <h2 style="margin-bottom: 2rem;">Panel de Administración</h2>
 
                     <div class="admin-panel">
@@ -2210,35 +2271,35 @@
                                 <!-- Add User Form -->
                                 <div class="admin-form">
                                     <h4>Agregar Nuevo Usuario</h4>
-                                    <form id="addUserForm" class="flex flex-col gap-2">
+                                    <form id="form-admin-user" class="flex flex-col gap-2">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newUserName">Nombre Completo</label>
-                                                <input type="text" id="newUserName" required>
+                                                <label for="admin-user-nombre">Nombre Completo</label>
+                                                <input type="text" id="admin-user-nombre" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newUserEmail">Correo Electrónico</label>
-                                                <input type="email" id="newUserEmail" required>
+                                                <label for="admin-user-correo">Correo Electrónico</label>
+                                                <input type="email" id="admin-user-correo" required>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newUserPassword">Contraseña</label>
-                                                <input type="password" id="newUserPassword" required>
+                                                <label for="admin-user-password">Contraseña</label>
+                                                <input type="password" id="admin-user-password" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newUserAccount">Número de Cuenta</label>
-                                                <input type="text" id="newUserAccount">
+                                                <label for="admin-user-num-cuenta">Número de Cuenta</label>
+                                                <input type="text" id="admin-user-num-cuenta">
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newUserBirth">Fecha de Nacimiento</label>
-                                                <input type="date" id="newUserBirth">
+                                                <label for="admin-user-fecha-nacimiento">Fecha de Nacimiento</label>
+                                                <input type="date" id="admin-user-fecha-nacimiento">
                                             </div>
                                             <div class="form-group">
-                                                <label for="newUserStatus">Estado Académico</label>
-                                                <select id="newUserStatus" required>
+                                                <label for="admin-user-estatus">Estado Académico</label>
+                                                <select id="admin-user-estatus" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="estudiante">Estudiante Activo</option>
                                                     <option value="egresado">Egresado</option>
@@ -2250,8 +2311,8 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newUserRole">Rol de Usuario</label>
-                                                <select id="newUserRole" required>
+                                                <label for="admin-user-role">Rol de Usuario</label>
+                                                <select id="admin-user-role" required>
                                                     <option value="user">Usuario Básico</option>
                                                     <option value="specialist">Especialista</option>
                                                     <option value="admin">Administrador</option>
@@ -2277,7 +2338,7 @@
                                                 <th>Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="usersTableBody">
+                                        <tbody id="users-table-body">
                                             <tr>
                                                 <td>Juan Pérez</td>
                                                 <td>juan@example.com</td>
@@ -2310,25 +2371,25 @@
                                 <!-- Add Tree Form -->
                                 <div class="admin-form">
                                     <h4>Agregar Nuevo Árbol</h4>
-                                    <form id="addTreeForm" class="flex flex-col gap-2">
+                                    <form id="form-admin-tree" class="flex flex-col gap-2">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newTreeCode">Código del Árbol</label>
-                                                <input type="text" id="newTreeCode" placeholder="ARB-001" required>
+                                                <label for="admin-tree-code">Código del Árbol</label>
+                                                <input type="text" id="admin-tree-code" placeholder="ARB-001" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newTreeSpecies">Especie</label>
-                                                <input type="text" id="newTreeSpecies" placeholder="Pinus pinea" required>
+                                                <label for="admin-tree-species">Especie</label>
+                                                <input type="text" id="admin-tree-species" placeholder="Pinus pinea" required>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newTreeCommon">Nombre Común</label>
-                                                <input type="text" id="newTreeCommon" placeholder="Pino Mediterráneo" required>
+                                                <label for="admin-tree-common-name">Nombre Común</label>
+                                                <input type="text" id="admin-tree-common-name" placeholder="Pino Mediterráneo" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newTreeType">Tipo</label>
-                                                <select id="newTreeType" required>
+                                                <label for="admin-tree-type">Tipo</label>
+                                                <select id="admin-tree-type" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="perenne">Perenne</option>
                                                     <option value="caduca">Caduca</option>
@@ -2338,8 +2399,8 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newTreeSize">Tamaño</label>
-                                                <select id="newTreeSize" required>
+                                                <label for="admin-tree-size">Tamaño</label>
+                                                <select id="admin-tree-size" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="pequeno">Pequeño (< 5m)</option>
                                                     <option value="mediano">Mediano (5-15m)</option>
@@ -2347,24 +2408,24 @@
                                                 </select>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newTreeCampus">Campus</label>
-                                                <input type="text" id="newTreeCampus" placeholder="Iztacala" required>
+                                                <label for="admin-tree-campus">Campus</label>
+                                                <input type="text" id="admin-tree-campus" placeholder="Iztacala" required>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newTreeGarden">Jardín</label>
-                                                <input type="text" id="newTreeGarden" placeholder="Jardín Central" required>
+                                                <label for="admin-tree-garden">Jardín</label>
+                                                <input type="text" id="admin-tree-garden" placeholder="Jardín Central" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newTreeLocation">Ubicación</label>
-                                                <input type="text" id="newTreeLocation" placeholder="Coordenadas o descripción" required>
+                                                <label for="admin-tree-location">Ubicación</label>
+                                                <input type="text" id="admin-tree-location" placeholder="Coordenadas o descripción" required>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newTreeStatus">Estado</label>
-                                                <select id="newTreeStatus" required>
+                                                <label for="admin-tree-status">Estado</label>
+                                                <select id="admin-tree-status" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="saludable">Saludable</option>
                                                     <option value="enfermo">Enfermo</option>
@@ -2373,11 +2434,34 @@
                                                 </select>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newTreeHealth">Puntuación de Salud (0-100)</label>
-                                                <input type="number" id="newTreeHealth" min="0" max="100" value="80" required>
+                                                <label for="admin-tree-health">Puntuación de Salud (0-100)</label>
+                                                <input type="number" id="admin-tree-health" min="0" max="100" value="80" required>
                                             </div>
                                         </div>
-                                        <button type="submit" class="btn btn-primary">
+                                        
+                                <div class="form-group">
+                                    <label for="admin-tree-planting-date">Fecha de Plantación</label>
+                                    <input type="date" id="admin-tree-planting-date" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-tree-notes">Notas</label>
+                                    <textarea id="admin-tree-notes" class="form-control" rows="2" placeholder="Notas adicionales"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-tree-location-desc">Descripción de Ubicación</label>
+                                    <input type="text" id="admin-tree-location-desc" class="form-control" placeholder="Descripción de la ubicación">
+                                </div>
+                                <div class="form-row" style="display:flex;gap:1rem;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="admin-tree-lat">Latitud</label>
+                                        <input type="number" id="admin-tree-lat" class="form-control" step="any" placeholder="19.xxx">
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="admin-tree-lng">Longitud</label>
+                                        <input type="number" id="admin-tree-lng" class="form-control" step="any" placeholder="-99.xxx">
+                                    </div>
+                                </div>
+<button type="submit" class="btn btn-primary">
                                             <i class="fas fa-plus"></i> Agregar Árbol
                                         </button>
                                     </form>
@@ -2396,7 +2480,7 @@
                                                 <th>Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="treesTableBody">
+                                        <tbody id="trees-table-body">
                                             <tr>
                                                 <td>ARB-001</td>
                                                 <td>Pinus pinea</td>
@@ -2429,28 +2513,39 @@
                                 <!-- Add Garden Form -->
                                 <div class="admin-form">
                                     <h4>Crear Nuevo Jardín</h4>
-                                    <form id="addGardenForm" class="flex flex-col gap-2">
+                                    <form id="form-admin-garden" class="flex flex-col gap-2">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newGardenName">Nombre del Jardín</label>
-                                                <input type="text" id="newGardenName" placeholder="Jardín Central" required>
+                                                <label for="admin-garden-name">Nombre del Jardín</label>
+                                                <input type="text" id="admin-garden-name" placeholder="Jardín Central" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="newGardenCampus">Campus</label>
-                                                <input type="text" id="newGardenCampus" placeholder="Iztacala" required>
+                                                <label for="admin-garden-campus">Campus</label>
+                                                <input type="text" id="admin-garden-campus" placeholder="Iztacala" required>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newGardenLocation">Ubicación / Descripción</label>
-                                                <input type="text" id="newGardenLocation" placeholder="Entre edificios A y B" required>
+                                                <label for="admin-garden-location-desc">Ubicación / Descripción</label>
+                                                <input type="text" id="admin-garden-location-desc" placeholder="Entre edificios A y B" required>
                                             </div>
                                             <div class="form-group">
                                                 <label for="newGardenArea">Área (m²)</label>
                                                 <input type="number" id="newGardenArea" placeholder="1000" required>
                                             </div>
                                         </div>
-                                        <button type="submit" class="btn btn-primary">
+                                        
+                                <div class="form-row" style="display:flex;gap:1rem;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="admin-garden-lat">Latitud</label>
+                                        <input type="number" id="admin-garden-lat" class="form-control" step="any" placeholder="19.xxx">
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="admin-garden-lng">Longitud</label>
+                                        <input type="number" id="admin-garden-lng" class="form-control" step="any" placeholder="-99.xxx">
+                                    </div>
+                                </div>
+<button type="submit" class="btn btn-primary">
                                             <i class="fas fa-plus"></i> Crear Jardín
                                         </button>
                                     </form>
@@ -2469,7 +2564,7 @@
                                                 <th>Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="gardensTableBody">
+                                        <tbody id="gardens-table-body">
                                             <tr>
                                                 <td>Jardín Central</td>
                                                 <td>Iztacala</td>
@@ -2502,11 +2597,11 @@
                                 <!-- Add Group Form -->
                                 <div class="admin-form">
                                     <h4>Crear Nuevo Grupo</h4>
-                                    <form id="addGroupForm" class="flex flex-col gap-2">
+                                    <form id="form-admin-group" class="flex flex-col gap-2">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="newGroupName">Nombre del Grupo</label>
-                                                <input type="text" id="newGroupName" placeholder="Grupo de Voluntarios A" required>
+                                                <label for="admin-group-name">Nombre del Grupo</label>
+                                                <input type="text" id="admin-group-name" placeholder="Grupo de Voluntarios A" required>
                                             </div>
                                             <div class="form-group">
                                                 <label for="newGroupType">Tipo</label>
@@ -2520,8 +2615,8 @@
                                             </div>
                                         </div>
                                         <div class="form-group">
-                                            <label for="newGroupDescription">Descripción</label>
-                                            <textarea id="newGroupDescription" placeholder="Descripción del grupo..." style="min-height: 100px;"></textarea>
+                                            <label for="admin-group-description">Descripción</label>
+                                            <textarea id="admin-group-description" placeholder="Descripción del grupo..." style="min-height: 100px;"></textarea>
                                         </div>
                                         <div class="form-group">
                                             <label for="newGroupMembers">Miembros (selecciona usuarios)</label>
@@ -2558,7 +2653,7 @@
                                                 <th>Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="groupsTableBody">
+                                        <tbody id="groups-table-body">
                                             <tr>
                                                 <td>Grupo Voluntarios A</td>
                                                 <td><span class="badge badge-primary">Voluntarios</span></td>
@@ -2581,6 +2676,8 @@
                                             </tr>
                                         </tbody>
                                     </table>
+                        <div id="group-members-list" class="data-list" style="margin-top:1rem;"></div>
+
                                 </div>
                             </div>
 
@@ -2589,11 +2686,12 @@
                                 <!-- Send Notification Form -->
                                 <div class="admin-form">
                                     <h4>Enviar Notificación</h4>
-                                    <form id="sendNotificationForm" class="flex flex-col gap-2">
+                                    <form id="form-notification" class="flex flex-col gap-2">
+                                <input type="hidden" id="notif-target-id" value="">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="notifType">Tipo de Envío</label>
-                                                <select id="notifType" required>
+                                                <label for="notif-target-type">Tipo de Envío</label>
+                                                <select id="notif-target-type" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="usuario">Usuario Individual</option>
                                                     <option value="grupo">Grupo</option>
@@ -2611,17 +2709,17 @@
                                             </div>
                                         </div>
                                         <div class="form-group">
-                                            <label for="notifTitle">Título</label>
-                                            <input type="text" id="notifTitle" placeholder="Recordatorio de cuidado" required>
+                                            <label for="notif-title">Título</label>
+                                            <input type="text" id="notif-title" placeholder="Recordatorio de cuidado" required>
                                         </div>
                                         <div class="form-group">
-                                            <label for="notifMessage">Mensaje</label>
-                                            <textarea id="notifMessage" placeholder="Contenido de la notificación..." style="min-height: 120px;" required></textarea>
+                                            <label for="notif-message">Mensaje</label>
+                                            <textarea id="notif-message" placeholder="Contenido de la notificación..." style="min-height: 120px;" required></textarea>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="notifChannel">Canal</label>
-                                                <select id="notifChannel" required>
+                                                <label for="notif-send-via">Canal</label>
+                                                <select id="notif-send-via" required>
                                                     <option value="">Selecciona...</option>
                                                     <option value="telegram">Telegram</option>
                                                     <option value="email">Correo Electrónico</option>
@@ -2753,7 +2851,17 @@
                             </div>
                         </div>
                     </div>
-                </section>
+                
+                    <div id="panel-dashboard" class="admin-panel" style="display:none;">
+                        <h3>Dashboard</h3>
+                        <div id="dashboard-stats" class="dashboard-stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2rem;"></div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;">
+                            <div class="chart-container"><canvas id="chart-health"></canvas></div>
+                            <div class="chart-container"><canvas id="chart-status"></canvas></div>
+                            <div class="chart-container"><canvas id="chart-campus"></canvas></div>
+                        </div>
+                    </div>
+</section>
             </div>
         </main>
     </div>
@@ -5036,5 +5144,6 @@ window.saveCareChecklistItem = saveCareChecklistItem;
 window.updateCareChecklist = updateCareChecklist;
 
     </script>
+    <div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:10000;"></div>
 </body>
 </html>
