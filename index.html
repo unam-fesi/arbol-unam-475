@@ -67,20 +67,20 @@
             overflow-x: hidden;
         }
 
-        /* Tree Watermark Background */
+        /* FESI Logo Watermark Background */
         body::before {
     content: '';
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 80vw;
-    height: 80vh;
-    background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500"><defs><radialGradient id="g1" cx="50%25" cy="40%25" r="50%25"><stop offset="0%25" stop-color="%2352b788"/><stop offset="100%25" stop-color="%232d6a4f"/></radialGradient><radialGradient id="g2" cx="50%25" cy="50%25" r="50%25"><stop offset="0%25" stop-color="%2340916c"/><stop offset="100%25" stop-color="%231b3a31"/></radialGradient><radialGradient id="g3" cx="50%25" cy="40%25" r="50%25"><stop offset="0%25" stop-color="%2395d5b2"/><stop offset="100%25" stop-color="%2340916c"/></radialGradient></defs><rect x="185" y="280" width="30" height="180" rx="8" fill="%238B6914" opacity="0.9"/><rect x="178" y="350" width="44" height="10" rx="4" fill="%23A0782C" opacity="0.6"/><ellipse cx="200" cy="180" rx="140" ry="130" fill="url(%23g1)" opacity="0.85"/><ellipse cx="140" cy="200" rx="90" ry="80" fill="url(%23g2)" opacity="0.7"/><ellipse cx="260" cy="200" rx="90" ry="80" fill="url(%23g2)" opacity="0.7"/><ellipse cx="200" cy="130" rx="100" ry="85" fill="url(%23g3)" opacity="0.8"/><ellipse cx="160" cy="160" rx="60" ry="50" fill="%2352b788" opacity="0.5"/><ellipse cx="240" cy="160" rx="60" ry="50" fill="%2395d5b2" opacity="0.4"/><ellipse cx="200" cy="100" rx="70" ry="55" fill="%2352b788" opacity="0.6"/><circle cx="150" cy="250" r="8" fill="%23ff6b6b" opacity="0.6"/><circle cx="250" cy="230" r="6" fill="%23ffd93d" opacity="0.5"/><circle cx="180" cy="140" r="7" fill="%23ff6b6b" opacity="0.5"/><circle cx="220" cy="120" r="5" fill="%23ffd93d" opacity="0.6"/><circle cx="270" cy="170" r="6" fill="%23ff6b6b" opacity="0.4"/></svg>');
+    width: 60vw;
+    height: 60vh;
+    background-image: url('img/fesi-logo.png');
     background-repeat: no-repeat;
     background-position: center;
     background-size: contain;
-    opacity: 0.06;
+    opacity: 0.12;
     pointer-events: none;
     z-index: 0;
 }
@@ -545,6 +545,7 @@
             justify-content: center;
             font-weight: 600;
             font-size: 0.9rem;
+            flex-shrink: 0;
         }
 
         .user-dropdown {
@@ -557,20 +558,29 @@
             right: 0;
             background: white;
             border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            min-width: 200px;
+            box-shadow: var(--shadow-lg);
+            min-width: 240px;
             margin-top: 0.5rem;
             display: none;
             z-index: 1000;
+            overflow: hidden;
         }
 
         .dropdown-menu.show {
             display: block;
+            animation: fadeInDown 0.2s ease;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .dropdown-menu a,
         .dropdown-menu button {
-            display: block;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
             width: 100%;
             padding: 0.75rem 1.25rem;
             text-align: left;
@@ -580,6 +590,7 @@
             transition: var(--transition);
             font-weight: 500;
             cursor: pointer;
+            font-size: 0.9rem;
         }
 
         .dropdown-menu a:hover,
@@ -588,20 +599,28 @@
             color: var(--primary);
         }
 
-        .dropdown-menu a:first-child,
-        .dropdown-menu button:first-child {
-            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        }
-
-        .dropdown-menu a:last-child,
-        .dropdown-menu button:last-child {
-            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-        }
-
         .dropdown-divider {
             height: 1px;
             background: var(--border-light);
-            margin: 0.5rem 0;
+            margin: 0.25rem 0;
+        }
+
+        /* Profile Modal */
+        #profile-modal .form-group {
+            margin-bottom: 1rem;
+        }
+        #profile-modal .form-group label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        #profile-modal .form-group input,
+        #profile-modal .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius);
         }
 
         /* ========== HERO SECTION ========== */
@@ -1632,8 +1651,9 @@
     <div id="login-screen" class="login-container">
         <div class="login-box">
             <div class="login-logo">
-                <div class="login-logo-text">🌳 Árbol UNAM</div>
-                <div class="login-logo-subtitle">Proyecto de Monitoreo de Árboles</div>
+                <img src="img/fesi-logo.png" alt="FESI UNAM" style="width:120px;height:auto;margin:0 auto 1rem;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
+                <div class="login-logo-text">Proyecto Árbol UNAM 475</div>
+                <div class="login-logo-subtitle">Plataforma de Monitoreo de Árboles - FES Iztacala</div>
             </div>
 
             <div id="login-error" class="error-message"></div>
@@ -1649,11 +1669,11 @@
                     <input type="password" id="login-password" placeholder="••••••••" required>
                 </div>
 
-                <button type="submit" class="login-btn">Iniciar Sesión</button>
+                <button type="submit" class="login-btn"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</button>
             </form>
 
             <div class="login-footer">
-                <p>FES Iztacala - UNAM</p>
+                <p style="color:var(--text-light);font-size:0.85rem;">Universidad Nacional Autónoma de México</p>
             </div>
         </div>
     </div>
@@ -1683,14 +1703,22 @@
                 <div class="navbar-user">
                     <div class="user-dropdown">
                         <button class="user-menu-btn" id="userMenuBtn">
+                            <img id="userAvatarImg" src="" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:none;border:2px solid var(--primary);">
                             <div class="user-avatar" id="userAvatar">U</div>
                             <span id="userName">Usuario</span>
+                            <i class="fas fa-chevron-down" style="font-size:0.7rem;color:var(--text-light);"></i>
                         </button>
                         <div class="dropdown-menu" id="userDropdown">
-                            <a href="#" onclick="return false;">Perfil</a>
-                            <a href="#" onclick="return false;">Configuración</a>
+                            <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border-light);">
+                                <div style="font-weight:600;color:var(--text-dark);" id="dropdownUserName">Usuario</div>
+                                <div style="font-size:0.8rem;color:var(--text-light);" id="dropdownUserEmail">email@example.com</div>
+                                <div style="margin-top:4px;"><span class="badge badge-primary" id="dropdownUserRole" style="font-size:0.7rem;">usuario</span></div>
+                            </div>
+                            <a href="#" onclick="openProfileModal(); return false;"><i class="fas fa-user-edit" style="width:20px;"></i> Mi Perfil</a>
+                            <a href="#" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree" style="width:20px;"></i> Mi Árbol</a>
+                            <a href="#" onclick="showSection('section-pumai'); return false;"><i class="fas fa-robot" style="width:20px;"></i> PUM-AI</a>
                             <div class="dropdown-divider"></div>
-                            <button id="logoutBtn" onclick="handleLogout(); return false;">Cerrar Sesión</button>
+                            <button id="logoutBtn" onclick="handleLogout(); return false;" style="color:var(--danger);"><i class="fas fa-sign-out-alt" style="width:20px;"></i> Cerrar Sesión</button>
                         </div>
                     </div>
                 </div>
@@ -2355,6 +2383,64 @@
                     </div>
                 </section>
             </div>
+        </div>
+    </div>
+
+    <!-- ========== PROFILE MODAL ========== -->
+    <div id="profile-modal" class="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+        <div class="modal-content" style="background:white;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:2rem;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                <h3 style="margin:0;"><i class="fas fa-user-circle"></i> Mi Perfil</h3>
+                <button onclick="closeProfileModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-light);">&times;</button>
+            </div>
+
+            <div style="text-align:center;margin-bottom:1.5rem;">
+                <div style="position:relative;display:inline-block;">
+                    <img id="profile-avatar-preview" src="" alt="Avatar" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);background:var(--bg);display:none;">
+                    <div id="profile-avatar-placeholder" style="width:100px;height:100px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:600;margin:0 auto;">U</div>
+                    <label for="profile-photo-input" style="position:absolute;bottom:0;right:0;background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid white;font-size:0.8rem;">
+                        <i class="fas fa-camera"></i>
+                    </label>
+                    <input type="file" id="profile-photo-input" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange(this)">
+                </div>
+                <p style="font-size:0.8rem;color:var(--text-light);margin-top:0.5rem;">Haz clic en la cámara para cambiar tu foto</p>
+            </div>
+
+            <form id="profile-form" onsubmit="saveProfile(event)">
+                <div class="form-group">
+                    <label>Nombre completo</label>
+                    <input type="text" id="profile-fullname" placeholder="Tu nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Correo electrónico</label>
+                    <input type="email" id="profile-email" disabled style="background:var(--bg);color:var(--text-light);">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono</label>
+                    <input type="tel" id="profile-phone" placeholder="55 1234 5678">
+                </div>
+                <div class="form-group">
+                    <label>Estatus Académico</label>
+                    <select id="profile-academic-status">
+                        <option value="">Seleccionar...</option>
+                        <option value="alumno">Alumno</option>
+                        <option value="exalumno">Exalumno</option>
+                        <option value="postgrado">Postgrado</option>
+                        <option value="doctorante">Doctorante</option>
+                        <option value="profesor">Profesor</option>
+                        <option value="investigador">Investigador</option>
+                        <option value="administrativo">Administrativo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Departamento / Carrera</label>
+                    <input type="text" id="profile-department" placeholder="Ej: Biología, Enfermería...">
+                </div>
+                <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+                    <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> Guardar Cambios</button>
+                    <button type="button" class="btn btn-outline" onclick="closeProfileModal()" style="flex:0 0 auto;">Cancelar</button>
+                </div>
+            </form>
         </div>
     </div>
 
