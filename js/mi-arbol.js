@@ -303,7 +303,7 @@ async function loadMyTree(forceReload) {
     myTreeLoaded = true;
   } catch (err) {
     console.error('Error loading tree:', err);
-    document.getElementById('mi-arbol-content').innerHTML = `<p style="padding:20px;color:var(--danger);">Error: ${err.message}</p>`;
+    document.getElementById('mi-arbol-content').innerHTML = `<p style="padding:20px;color:var(--danger);">Error: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -355,13 +355,34 @@ Formato exacto de respuesta (JSON puro):
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
 
-    const reply = data?.reply || '';
-    // Extract JSON from response
+    let reply = data?.reply || '';
+    // Clean up: remove markdown code fences, thinking blocks, etc.
+    reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // Extract JSON from response — find the outermost { ... }
     let jsonStr = reply;
-    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    const jsonMatch = reply.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/);
     if (jsonMatch) jsonStr = jsonMatch[0];
 
-    const scores = JSON.parse(jsonStr);
+    // Clean common Gemini formatting issues
+    jsonStr = jsonStr.replace(/[\r\n]+/g, ' ').replace(/,\s*}/g, '}').trim();
+
+    let scores;
+    try {
+      scores = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      // Fallback: try to extract individual values with regex
+      console.warn('JSON parse failed, trying regex fallback:', parseErr.message, 'Raw:', jsonStr);
+      scores = {};
+      const autoRubricKeys = HEALTH_RUBRICS.filter(r => r.auto).map(r => r.key);
+      autoRubricKeys.forEach(key => {
+        const m = reply.match(new RegExp(`"${key}"\\s*:\\s*(\\d)`));
+        if (m) scores[key] = parseInt(m[1]);
+      });
+      // Try to get justificacion
+      const justMatch = reply.match(/"justificacion"\s*:\s*"([^"]+)/);
+      if (justMatch) scores.justificacion = justMatch[1];
+    }
 
     // Fill in the rubric selects
     let filled = 0;
@@ -379,7 +400,7 @@ Formato exacto de respuesta (JSON puro):
 
   } catch (err) {
     console.error('AI analysis error:', err);
-    statusEl.innerHTML = `<span style="color:var(--danger);"><i class="fas fa-exclamation-triangle"></i> Error: ${err.message}. Puedes evaluar manualmente.</span>`;
+    statusEl.innerHTML = `<span style="color:var(--danger);"><i class="fas fa-exclamation-triangle"></i> Error: ${escapeHtml(err.message)}. Puedes evaluar manualmente.</span>`;
   }
   btn.disabled = false;
 }
