@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proyecto Ãrbol UNAM 475 - FES Iztacala</title>
+    <title>Proyecto Árbol UNAM 475 - FES Iztacala</title>
 
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0"></script>
@@ -21,7 +21,485 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">bsolute;
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        /* Root Variables */
+        :root {
+            --primary: #2d6a4f;
+            --primary-light: #40916c;
+            --primary-dark: #1b3a31;
+            --secondary: #40916c;
+            --accent: #52b788;
+            --danger: #d62828;
+            --warning: #f77f00;
+            --success: #06d6a0;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-dark: #1a1a1a;
+            --text-light: #666666;
+            --border-light: #e0e0e0;
+            --shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.12);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
+            --radius: 8px;
+            --radius-lg: 12px;
+            --transition: all 0.3s ease;
+        }
+
+        /* Global Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-dark);
+            line-height: 1.6;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Tree Watermark Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" opacity="0.03"><path d="M100,20 Q80,40 80,70 Q80,100 100,120 Q120,100 120,70 Q120,40 100,20 M70,100 Q50,110 40,140 Q30,170 60,190 M130,100 Q150,110 160,140 Q170,170 140,190 M100,120 L100,190" fill="none" stroke="currentColor" stroke-width="2"/></svg>');
+            background-repeat: repeat;
+            background-attachment: fixed;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        h1 { font-size: 2.5rem; }
+        h2 { font-size: 2rem; }
+        h3 { font-size: 1.5rem; }
+        h4 { font-size: 1.25rem; }
+        h5 { font-size: 1.1rem; }
+        h6 { font-size: 1rem; }
+
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        a:hover {
+            color: var(--primary-light);
+        }
+
+        button {
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            border-radius: var(--radius);
+        }
+
+        input, textarea, select {
+            font-family: 'Inter', sans-serif;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius);
+            padding: 0.75rem;
+            transition: var(--transition);
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.1);
+        }
+
+        /* Typography */
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-muted { color: var(--text-light); }
+        .text-small { font-size: 0.875rem; }
+        .text-large { font-size: 1.125rem; }
+
+        /* Spacing Utilities */
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mt-3 { margin-top: 1.5rem; }
+        .mt-4 { margin-top: 2rem; }
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .mb-3 { margin-bottom: 1.5rem; }
+        .mb-4 { margin-bottom: 2rem; }
+        .p-2 { padding: 1rem; }
+        .p-3 { padding: 1.5rem; }
+        .p-4 { padding: 2rem; }
+
+        /* Flex Utilities */
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-center { justify-content: center; align-items: center; }
+        .flex-between { justify-content: space-between; align-items: center; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-1 { gap: 0.5rem; }
+        .gap-2 { gap: 1rem; }
+        .gap-3 { gap: 1.5rem; }
+        .gap-4 { gap: 2rem; }
+
+        /* Grid Utilities */
+        .grid { display: grid; }
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; }
+        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; }
+
+        /* Cards & Panels */
+        .card, .panel {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .panel {
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius);
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+            font-size: 0.95rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+        }
+
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-light);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c71c1c;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059a88;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-lg {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+        }
+
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-primary {
+            background: rgba(45, 106, 79, 0.2);
+            color: var(--primary);
+        }
+
+        .badge-success {
+            background: rgba(6, 214, 160, 0.2);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: rgba(247, 127, 0, 0.2);
+            color: var(--warning);
+        }
+
+        .badge-danger {
+            background: rgba(214, 40, 40, 0.2);
+            color: var(--danger);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .container-fluid {
+            width: 100%;
+            padding: 0 1.5rem;
+        }
+
+        /* Section */
+        .section {
+            padding: 3rem 0;
+        }
+
+        .section-dark {
+            background: var(--primary-dark);
+            color: white;
+        }
+
+        /* ========== LOGIN SCREEN ========== */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            padding: 1.5rem;
+        }
+
+        .login-box {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            padding: 3rem;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .login-logo-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-dark);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.875rem;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius);
+        }
+
+        .form-group input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 0.875rem;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 1rem;
+        }
+
+        .login-btn:hover {
+            background: var(--primary-light);
+        }
+
+        .login-form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .error-message {
+            background: rgba(214, 40, 40, 0.1);
+            color: var(--danger);
+            padding: 0.875rem;
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* ========== NAVBAR ========== */
+        .navbar {
+            background: white;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            padding: 1rem 0;
+        }
+
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-logo {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .navbar-logo-icon {
+            font-size: 1.5rem;
+        }
+
+        .navbar-brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .navbar-brand-main {
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        .navbar-brand-sub {
+            font-size: 0.7rem;
+            color: var(--text-light);
+        }
+
+        .navbar-nav {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: var(--text-dark);
+            font-weight: 500;
+            transition: var(--transition);
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--primary);
+        }
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
             bottom: -0.5rem;
             left: 0;
             right: 0;
@@ -188,7 +666,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ========== MI ÃRBOL SECTION ========== */
+        /* ========== MI ÁRBOL SECTION ========== */
         .tree-info {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -208,7 +686,366 @@
             box-shadow: var(--shadow);
             padding: 2rem;
         }
-margin-bottom: 1.5rem;
+
+        .tree-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .tree-icon {
+            font-size: 3rem;
+            color: var(--primary);
+        }
+
+        .tree-header-content h3 {
+            margin-bottom: 0.5rem;
+        }
+
+        .tree-header-content .text-small {
+            color: var(--text-light);
+        }
+
+        .tree-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .detail-item {
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: var(--radius);
+        }
+
+        .detail-label {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+            font-weight: 600;
+        }
+
+        .detail-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .health-score {
+            font-size: 2rem;
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        .map-container {
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            height: 400px;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        #treeMap {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== CARE CHECKLIST ========== */
+        .checklist {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .checklist-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .checklist h3 {
+            margin: 0;
+        }
+
+        .checklist-progress {
+            text-align: right;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border-light);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+            transition: width 0.3s ease;
+        }
+
+        .checklist-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .checklist-item:hover {
+            background: rgba(45, 106, 79, 0.05);
+        }
+
+        .checklist-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .checklist-item.completed label {
+            text-decoration: line-through;
+            color: var(--text-light);
+        }
+
+        .checklist-item label {
+            cursor: pointer;
+            flex: 1;
+            margin: 0;
+        }
+
+        .checklist-item-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex: 1;
+        }
+
+        .checklist-item-date {
+            font-size: 0.8rem;
+            color: var(--text-light);
+        }
+
+        /* ========== CUIDADOS SECTION ========== */
+        .tips-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .tip-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .tip-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-4px);
+        }
+
+        .tip-icon {
+            height: 120px;
+            background: linear-gradient(135deg, rgba(45, 106, 79, 0.1) 0%, rgba(64, 145, 108, 0.1) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: var(--primary);
+        }
+
+        .tip-content {
+            padding: 1.5rem;
+        }
+
+        .tip-content h4 {
+            margin-bottom: 0.75rem;
+            color: var(--text-dark);
+        }
+
+        .tip-content p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .tip-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .tip-content li {
+            padding-left: 1.5rem;
+            position: relative;
+            color: var(--text-light);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .tip-content li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        /* ========== GOALS SECTION ========== */
+        .goals-container {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+        }
+
+        .goals-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .goals-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .goal-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.25rem;
+            background: var(--bg);
+            border-radius: var(--radius);
+            border-left: 4px solid var(--primary);
+        }
+
+        .goal-checkbox {
+            margin-top: 0.25rem;
+        }
+
+        .goal-checkbox input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .goal-content {
+            flex: 1;
+        }
+
+        .goal-content h4 {
+            margin: 0 0 0.3rem 0;
+            color: var(--text-dark);
+        }
+
+        .goal-content p {
+            margin: 0;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .goal-status {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .goal-progress {
+            min-width: 80px;
+        }
+
+        /* ========== PUM-AI SECTION ========== */
+        .pum-ai-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            height: 600px;
+            margin-bottom: 3rem;
+        }
+
+        @media (max-width: 1024px) {
+            .pum-ai-container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+        }
+
+        .pum-upload-panel {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pum-upload-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed var(--primary);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            text-align: center;
+            background: rgba(45, 106, 79, 0.03);
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 1.5rem;
+        }
+
+        .pum-upload-area:hover {
+            background: rgba(45, 106, 79, 0.08);
+            border-color: var(--primary-light);
+        }
+
+        .pum-upload-icon {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+
+        .pum-upload-text h4 {
+            margin: 0 0 0.5rem 0;
+            color: var(--text-dark);
+        }
+
+        .pum-upload-text p {
+            margin: 0;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .pum-image-preview {
+            margin-bottom: 1.5rem;
         }
 
         .preview-image {
@@ -616,7 +1453,7 @@ margin-bottom: 1.5rem;
             to { transform: translateX(400px); opacity: 0; }
         }
 
-        /* ========== RESPONSIVE =========== */
+        /* ========== RESPONSIVE ========== */
         @media (max-width: 768px) {
             h1 { font-size: 2rem; }
             h2 { font-size: 1.5rem; }
@@ -768,15 +1605,265 @@ margin-bottom: 1.5rem;
 
         .info-message.show {
             display: block;
-        }                  </div>
+        }
+    </style>
+</head>
+<body>
+    <!-- ========== LOGIN SCREEN ========== -->
+    <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <div class="login-logo">
+                <div class="login-logo-text">🌳 Árbol UNAM</div>
+                <div class="login-logo-subtitle">Proyecto de Monitoreo de Árboles</div>
+            </div>
+
+            <div id="login-error" class="error-message"></div>
+
+            <form onsubmit="handleLogin(event)">
+                <div class="login-form-group">
+                    <label for="login-email">Correo Electrónico</label>
+                    <input type="email" id="login-email" placeholder="tu.email@example.com" required>
+                </div>
+
+                <div class="login-form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="login-btn">Iniciar Sesión</button>
+            </form>
+
+            <div class="login-footer">
+                <p>FES Iztacala - UNAM</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MAIN APP ========== -->
+    <div id="main-app" style="display:none;">
+        <!-- NAVBAR -->
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="navbar-logo">
+                    <span class="navbar-logo-icon">🌳</span>
+                    <div class="navbar-brand-text">
+                        <span class="navbar-brand-main">Árbol UNAM</span>
+                        <span class="navbar-brand-sub">Monitoreo de Árboles</span>
+                    </div>
+                </div>
+
+                <div id="navbarNav" class="navbar-nav">
+                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree"></i> Mi Árbol</a>
+                    <a href="#" class="nav-link" data-section="section-cuidados" onclick="showSection('section-cuidados'); return false;"><i class="fas fa-hand-holding-heart"></i> Cuidados</a>
+                    <a href="#" class="nav-link" data-section="section-metas" onclick="showSection('section-metas'); return false;"><i class="fas fa-bullseye"></i> Metas</a>
+                    <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai'); return false;"><i class="fas fa-robot"></i> PUM-AI</a>
+                    <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist'); return false;" style="display:none;"><i class="fas fa-user-md"></i> Especialista</a>
+                    <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin'); return false;" style="display:none;"><i class="fas fa-cogs"></i> Admin</a>
+                </div>
+
+                <div class="navbar-user">
+                    <div class="user-dropdown">
+                        <button class="user-menu-btn" id="userMenuBtn">
+                            <div class="user-avatar" id="userAvatar">U</div>
+                            <span id="userName">Usuario</span>
+                        </button>
+                        <div class="dropdown-menu" id="userDropdown">
+                            <a href="#" onclick="return false;">Perfil</a>
+                            <a href="#" onclick="return false;">Configuración</a>
+                            <div class="dropdown-divider"></div>
+                            <button id="logoutBtn" onclick="handleLogout(); return false;">Cerrar Sesión</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="container">
+                <!-- ========== MI ÁRBOL SECTION ========== -->
+                <section id="section-mi-arbol" class="page-section active">
+                    <h2 style="margin-bottom: 2rem;">Mi Árbol</h2>
+                    <div id="mi-arbol-content">
+                        <!-- Dynamically filled by JS -->
+                    </div>
+                </section>
+
+                <!-- ========== CUIDADOS SECTION ========== -->
+                <section id="section-cuidados" class="page-section">
+                    <h2 style="margin-bottom: 3rem;">Consejos de Cuidado</h2>
+
+                    <div class="tips-grid">
+                        <div class="tip-card">
+                            <div class="tip-icon">💧</div>
+                            <div class="tip-content">
+                                <h4>Riego Adecuado</h4>
+                                <p>El riego es fundamental para la salud del árbol. Aprende cuándo y cuánto regar.</p>
+                                <ul>
+                                    <li>Riego diario en verano</li>
+                                    <li>3-4 veces por semana en invierno</li>
+                                    <li>Mantener suelo húmedo pero no anegado</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">✂️</div>
+                            <div class="tip-content">
+                                <h4>Poda y Mantenimiento</h4>
+                                <p>Una poda adecuada promueve el crecimiento saludable del árbol.</p>
+                                <ul>
+                                    <li>Podar en invierno o principios de primavera</li>
+                                    <li>Eliminar ramas muertas o enfermas</li>
+                                    <li>Dar forma para mejorar estructura</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🍂</div>
+                            <div class="tip-content">
+                                <h4>Control de Plagas</h4>
+                                <p>Prevención y tratamiento de plagas comunes en árboles.</p>
+                                <ul>
+                                    <li>Inspeccionar regularmente</li>
+                                    <li>Usar insecticidas naturales</li>
+                                    <li>Promover depredadores beneficiosos</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🌿</div>
+                            <div class="tip-content">
+                                <h4>Fertilización</h4>
+                                <p>Nutrientes esenciales para un crecimiento óptimo.</p>
+                                <ul>
+                                    <li>Fertilizar en primavera y verano</li>
+                                    <li>Usar abonos naturales preferentemente</li>
+                                    <li>Seguir dosis recomendadas</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🌡️</div>
+                            <div class="tip-content">
+                                <h4>Condiciones Climáticas</h4>
+                                <p>Adaptar el cuidado según las estaciones y clima.</p>
+                                <ul>
+                                    <li>Proteger en heladas</li>
+                                    <li>Aumentar riego en sequías</li>
+                                    <li>Proporcionar sombra en calor extremo</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">📊</div>
+                            <div class="tip-content">
+                                <h4>Monitoreo Continuo</h4>
+                                <p>Seguimiento regular para detectar problemas tempranamente.</p>
+                                <ul>
+                                    <li>Revisar hojas y tallos semanalmente</li>
+                                    <li>Documentar cambios con fotos</li>
+                                    <li>Reportar anomalías inmediatamente</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========== METAS SECTION ========== -->
+                <section id="section-metas" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Metas de Cuidado</h2>
+
+                    <div class="goals-container">
+                        <div class="goals-header">
+                            <h3>Objetivos para este trimestre</h3>
+                            <p class="text-muted">Completa los siguientes objetivos para mejorar la salud de tu árbol</p>
+                        </div>
+
+                        <div class="goals-list">
+                            <div class="goal-item">
+                                <div class="goal-checkbox">
+                                    <input type="checkbox" id="goal1" class="goal-checkbox-input">
+                                </div>
+                                <div class="goal-content">
+                                    <h4>Aumentar indicador de salud a 90%</h4>
+                                    <p>El árbol debe alcanzar una puntuación de salud del 90% a través de cuidado consistente</p>
+                                </div>
+                                <div class="goal-status">
+                                    <div class="goal-progress">
+                                        <small>Progreso: 85%</small>
+                                        <div class="progress-bar" style="margin-top: 0.25rem;">
+                                            <div class="progress-fill" style="width: 85%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="goal-item">
+                                <div class="goal-checkbox">
+                                    <input type="checkbox" id="goal2" class="goal-checkbox-input">
+                                </div>
+                                <div class="goal-content">
+                                    <h4>Realizar inspección mensual documentada</h4>
+                                    <p>Realizar una inspección completa cada mes y documentar con fotos y notas</p>
+                                </div>
+                                <div class="goal-status">
+                                    <div class="goal-progress">
+                                        <small>Progreso: 100%</small>
+                                        <div class="progress-bar" style="margin-top: 0.25rem;">
+                                            <div class="progress-fill" style="width: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="goal-item">
+                                <div class="goal-checkbox">
+                                    <input type="checkbox" id="goal3" class="goal-checkbox-input">
+                                </div>
+                                <div class="goal-content">
+                                    <h4>Implementar sistema de riego mejorado</h4>
+                                    <p>Instalar gotero automático o mejorar técnica de riego manual</p>
+                                </div>
+                                <div class="goal-status">
+                                    <div class="goal-progress">
+                                        <small>Progreso: 50%</small>
+                                        <div class="progress-bar" style="margin-top: 0.25rem;">
+                                            <div class="progress-fill" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="goal-item">
+                                <div class="goal-checkbox">
+                                    <input type="checkbox" id="goal4" class="goal-checkbox-input">
+                                </div>
+                                <div class="goal-content">
+                                    <h4>Eliminar plagas identificadas</h4>
+                                    <p>Aplicar tratamiento y verificar que las plagas hayan sido erradicadas</p>
+                                </div>
+                                <div class="goal-status">
+                                    <div class="goal-progress">
+                                        <small>Progreso: 75%</small>
+                                        <div class="progress-bar" style="margin-top: 0.25rem;">
+                                            <div class="progress-fill" style="width: 75%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div class="goal-item">
                                 <div class="goal-checkbox">
                                     <input type="checkbox" id="goal5" class="goal-checkbox-input">
                                 </div>
                                 <div class="goal-content">
-                                    <h4>Participar en capacitaciÃ³n sobre arboricultura</h4>
-                                    <p>Completar al menos una sesiÃ³n de capacitaciÃ³n especializada</p>
+                                    <h4>Participar en capacitación sobre arboricultura</h4>
+                                    <p>Completar al menos una sesión de capacitación especializada</p>
                                 </div>
                                 <div class="goal-status">
                                     <div class="goal-progress">
@@ -794,7 +1881,7 @@ margin-bottom: 1.5rem;
                 <!-- ========== PUM-AI SECTION ========== -->
                 <section id="section-pumai" class="page-section">
                     <h2 style="margin-bottom: 2rem;">Consultor PUM-AI</h2>
-                    <p class="text-muted" style="margin-bottom: 2rem;">Sube una foto de tu Ã¡rbol y recibe anÃ¡lisis inteligente basado en IA.</p>
+                    <p class="text-muted" style="margin-bottom: 2rem;">Sube una foto de tu árbol y recibe análisis inteligente basado en IA.</p>
                     <div id="pumai-content">
                         <!-- Dynamically filled by JS -->
                     </div>
@@ -810,12 +1897,12 @@ margin-bottom: 1.5rem;
 
                 <!-- ========== ADMIN SECTION ========== -->
                 <section id="section-admin" class="page-section">
-                    <h2 style="margin-bottom: 2rem;">Panel de AdministraciÃ³n</h2>
+                    <h2 style="margin-bottom: 2rem;">Panel de Administración</h2>
 
                     <div class="admin-panel">
                         <div class="admin-tabs">
                             <button class="admin-tab active" data-tab="users" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button>
-                            <button class="admin-tab" data-tab="trees" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Ãrboles</button>
+                            <button class="admin-tab" data-tab="trees" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Árboles</button>
                             <button class="admin-tab" data-tab="gardens" onclick="switchAdminTab('gardens')"><i class="fas fa-leaf"></i> Jardines</button>
                             <button class="admin-tab" data-tab="groups" onclick="switchAdminTab('groups')"><i class="fas fa-layer-group"></i> Grupos</button>
                             <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
@@ -840,11 +1927,11 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-user-password">ContraseÃ±a</label>
+                                                <label for="admin-user-password">Contraseña</label>
                                                 <input type="password" id="admin-user-password">
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-user-num-cuenta">NÃºmero de Cuenta</label>
+                                                <label for="admin-user-num-cuenta">Número de Cuenta</label>
                                                 <input type="text" id="admin-user-num-cuenta">
                                             </div>
                                         </div>
@@ -895,11 +1982,11 @@ margin-bottom: 1.5rem;
                             <!-- TREES TAB -->
                             <div id="treesTab" class="tab-pane">
                                 <div class="admin-form">
-                                    <h4>Agregar/Editar Ãrbol</h4>
+                                    <h4>Agregar/Editar Árbol</h4>
                                     <form id="form-admin-tree">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-code">CÃ³digo</label>
+                                                <label for="admin-tree-code">Código</label>
                                                 <input type="text" id="admin-tree-code" required>
                                             </div>
                                             <div class="form-group">
@@ -909,7 +1996,7 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-common-name">Nombre ComÃºn</label>
+                                                <label for="admin-tree-common-name">Nombre Común</label>
                                                 <input type="text" id="admin-tree-common-name">
                                             </div>
                                             <div class="form-group">
@@ -919,9 +2006,9 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-size">TamaÃ±o</label>
+                                                <label for="admin-tree-size">Tamaño</label>
                                                 <select id="admin-tree-size">
-                                                    <option value="small">PequeÃ±o</option>
+                                                    <option value="small">Pequeño</option>
                                                     <option value="medium">Mediano</option>
                                                     <option value="large">Grande</option>
                                                 </select>
@@ -933,11 +2020,11 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-garden">JardÃ­n</label>
+                                                <label for="admin-tree-garden">Jardín</label>
                                                 <input type="text" id="admin-tree-garden">
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-tree-location">UbicaciÃ³n</label>
+                                                <label for="admin-tree-location">Ubicación</label>
                                                 <input type="text" id="admin-tree-location">
                                             </div>
                                         </div>
@@ -947,7 +2034,7 @@ margin-bottom: 1.5rem;
                                                 <select id="admin-tree-status">
                                                     <option value="healthy">Saludable</option>
                                                     <option value="at-risk">En Riesgo</option>
-                                                    <option value="critical">CrÃmtico</option>
+                                                    <option value="critical">Crítico</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">
@@ -955,20 +2042,20 @@ margin-bottom: 1.5rem;
                                                 <input type="number" id="admin-tree-health" min="0" max="100">
                                             </div>
                                         </div>
-                                        <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar Ãrbol</button>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar Árbol</button>
                                     </form>
                                 </div>
 
-                                <h4 style="margin-bottom: 1rem;">Ãrboles Registrados</h4>
+                                <h4 style="margin-bottom: 1rem;">Árboles Registrados</h4>
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>CÃ³digo</th>
+                                            <th>Código</th>
                                             <th>Especie</th>
                                             <th>Campus</th>
-                                            <th>Dano salud</th>
+                                            <th>Salud</th>
                                             <th>Acciones</th>
-                                            </tr>
+                                        </tr>
                                     </thead>
                                     <tbody id="trees-table-body">
                                         <!-- Dynamically filled by JS -->
@@ -979,7 +2066,7 @@ margin-bottom: 1.5rem;
                             <!-- GARDENS TAB -->
                             <div id="gardensTab" class="tab-pane">
                                 <div class="admin-form">
-                                    <h4>Agregar/Editar JardÃ­n</h4>
+                                    <h4>Agregar/Editar Jardín</h4>
                                     <form id="form-admin-garden">
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1003,11 +2090,11 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-garden-desc">DescripciÃ³n</label>
+                                                <label for="admin-garden-desc">Descripción</label>
                                                 <textarea id="admin-garden-desc" style="grid-column: 1 / -1;"></textarea>
                                             </div>
                                         </div>
-                                        <button type="button" class="btn btn-primary" onclick="saveAdminGarden(event)">Guardar JardÃ­n</button>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminGarden(event)">Guardar Jardín</button>
                                     </form>
                                 </div>
 
@@ -1017,7 +2104,7 @@ margin-bottom: 1.5rem;
                                         <tr>
                                             <th>Nombre</th>
                                             <th>Campus</th>
-                                            <th>UbicaciÃ³n</th>
+                                            <th>Ubicación</th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -1038,7 +2125,7 @@ margin-bottom: 1.5rem;
                                                 <input type="text" id="admin-group-name" required>
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-group-desc">DescripciÃ³n</label>
+                                                <label for="admin-group-desc">Descripción</label>
                                                 <input type="text" id="admin-group-desc">
                                             </div>
                                         </div>
@@ -1051,7 +2138,7 @@ margin-bottom: 1.5rem;
                                     <thead>
                                         <tr>
                                             <th>Nombre</th>
-                                            <th>DescripciÃ³n</th>
+                                            <th>Descripción</th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -1064,14 +2151,14 @@ margin-bottom: 1.5rem;
                             <!-- NOTIFICATIONS TAB -->
                             <div id="notificationsTab" class="tab-pane">
                                 <div class="admin-form">
-                                    <h4>Enviar NotificaciÃ³n</h4>
+                                    <h4>Enviar Notificación</h4>
                                     <form id="form-notification">
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label for="notif-target-type">Tipo de Destinatario</label>
                                                 <select id="notif-target-type">
                                                     <option value="all">Todos</option>
-                                                    <option value="user">Usuario EspecÃ­fico</option>
+                                                    <option value="user">Usuario Específico</option>
                                                     <option value="group">Grupo</option>
                                                 </select>
                                             </div>
@@ -1082,7 +2169,7 @@ margin-bottom: 1.5rem;
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="notif-title">TÃ­tulo</label>
+                                                <label for="notif-title">Título</label>
                                                 <input type="text" id="notif-title" required>
                                             </div>
                                         </div>
@@ -1092,7 +2179,7 @@ margin-bottom: 1.5rem;
                                                 <textarea id="notif-message" required style="grid-column: 1 / -1;"></textarea>
                                             </div>
                                         </div>
-                                        <button type="button" class="btn btn-primary" onclick="sendNotification(event)">Enviar NotificaciÃ³n</button>
+                                        <button type="button" class="btn btn-primary" onclick="sendNotification(event)">Enviar Notificación</button>
                                     </form>
                                 </div>
 
@@ -1100,7 +2187,7 @@ margin-bottom: 1.5rem;
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>TÃ­tulo</th>
+                                            <th>Título</th>
                                             <th>Destinatario</th>
                                             <th>Fecha</th>
                                             <th>Estado</th>
@@ -1124,13 +2211,13 @@ margin-bottom: 1.5rem;
                                         <canvas id="chart-health" style="max-height: 300px;"></canvas>
                                     </div>
                                     <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow);">
-                                        <h4 style="margin-bottom: 1rem;">Status de Ãrboles</h4>
+                                        <h4 style="margin-bottom: 1rem;">Status de Árboles</h4>
                                         <canvas id="chart-status" style="max-height: 300px;"></canvas>
                                     </div>
                                 </div>
 
                                 <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow);">
-                                    <h4 style="margin-bottom: 1rem;">Ãrboles por Campus</h4>
+                                    <h4 style="margin-bottom: 1rem;">Árboles por Campus</h4>
                                     <canvas id="chart-campus" style="max-height: 300px;"></canvas>
                                 </div>
                             </div>
@@ -1139,6 +2226,7 @@ margin-bottom: 1.5rem;
                 </section>
             </div>
         </div>
+    </div>
 
     <!-- Toast Container -->
     <div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:10000;"></div>
