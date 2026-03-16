@@ -1693,9 +1693,8 @@
                 </div>
 
                 <div id="navbarNav" class="navbar-nav">
-                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree"></i> Mi Árbol</a>
-                    <a href="#" class="nav-link" data-section="section-cuidados" onclick="showSection('section-cuidados'); return false;"><i class="fas fa-hand-holding-heart"></i> Cuidados</a>
-                    <a href="#" class="nav-link" data-section="section-metas" onclick="showSection('section-metas'); return false;"><i class="fas fa-bullseye"></i> Metas</a>
+                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree"></i> Mi &Aacute;rbol</a>
+                    <a href="#" class="nav-link" data-section="section-info" onclick="showSection('section-info'); return false;"><i class="fas fa-book"></i> Informaci&oacute;n</a>
                     <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai'); return false;"><i class="fas fa-robot"></i> PUM-AI</a>
                     <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist'); return false;" style="display:none;"><i class="fas fa-user-md"></i> Especialista</a>
                     <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin'); return false;" style="display:none;"><i class="fas fa-cogs"></i> Admin</a>
@@ -1737,9 +1736,17 @@
                     </div>
                 </section>
 
-                <!-- ========== CUIDADOS SECTION ========== -->
-                <section id="section-cuidados" class="page-section">
-                    <h2 style="margin-bottom: 3rem;">Consejos de Cuidado</h2>
+                <!-- ========== INFORMACIÓN SECTION ========== -->
+                <section id="section-info" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Informaci&oacute;n</h2>
+
+                    <!-- Árboles Endémicos de Referencia - llenado por JS -->
+                    <div id="info-endemic-trees"></div>
+
+                    <!-- Especialistas - llenado por JS -->
+                    <div id="info-specialists" style="margin-top:2rem;"></div>
+
+                    <h3 style="margin-top: 3rem; margin-bottom: 2rem;"><i class="fas fa-hand-holding-heart"></i> Consejos de Cuidado</h3>
 
                     <div class="tips-grid">
                         <div class="tip-card">
@@ -1817,110 +1824,6 @@
                                     <li>Documentar cambios con fotos</li>
                                     <li>Reportar anomalías inmediatamente</li>
                                 </ul>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ========== METAS SECTION ========== -->
-                <section id="section-metas" class="page-section">
-                    <h2 style="margin-bottom: 2rem;">Metas de Cuidado</h2>
-
-                    <div class="goals-container">
-                        <div class="goals-header">
-                            <h3>Objetivos para este trimestre</h3>
-                            <p class="text-muted">Completa los siguientes objetivos para mejorar la salud de tu árbol</p>
-                        </div>
-
-                        <div class="goals-list">
-                            <div class="goal-item">
-                                <div class="goal-checkbox">
-                                    <input type="checkbox" id="goal1" class="goal-checkbox-input">
-                                </div>
-                                <div class="goal-content">
-                                    <h4>Aumentar indicador de salud a 90%</h4>
-                                    <p>El árbol debe alcanzar una puntuación de salud del 90% a través de cuidado consistente</p>
-                                </div>
-                                <div class="goal-status">
-                                    <div class="goal-progress">
-                                        <small>Progreso: 85%</small>
-                                        <div class="progress-bar" style="margin-top: 0.25rem;">
-                                            <div class="progress-fill" style="width: 85%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="goal-item">
-                                <div class="goal-checkbox">
-                                    <input type="checkbox" id="goal2" class="goal-checkbox-input">
-                                </div>
-                                <div class="goal-content">
-                                    <h4>Realizar inspección mensual documentada</h4>
-                                    <p>Realizar una inspección completa cada mes y documentar con fotos y notas</p>
-                                </div>
-                                <div class="goal-status">
-                                    <div class="goal-progress">
-                                        <small>Progreso: 100%</small>
-                                        <div class="progress-bar" style="margin-top: 0.25rem;">
-                                            <div class="progress-fill" style="width: 100%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="goal-item">
-                                <div class="goal-checkbox">
-                                    <input type="checkbox" id="goal3" class="goal-checkbox-input">
-                                </div>
-                                <div class="goal-content">
-                                    <h4>Implementar sistema de riego mejorado</h4>
-                                    <p>Instalar gotero automático o mejorar técnica de riego manual</p>
-                                </div>
-                                <div class="goal-status">
-                                    <div class="goal-progress">
-                                        <small>Progreso: 50%</small>
-                                        <div class="progress-bar" style="margin-top: 0.25rem;">
-                                            <div class="progress-fill" style="width: 50%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="goal-item">
-                                <div class="goal-checkbox">
-                                    <input type="checkbox" id="goal4" class="goal-checkbox-input">
-                                </div>
-                                <div class="goal-content">
-                                    <h4>Eliminar plagas identificadas</h4>
-                                    <p>Aplicar tratamiento y verificar que las plagas hayan sido erradicadas</p>
-                                </div>
-                                <div class="goal-status">
-                                    <div class="goal-progress">
-                                        <small>Progreso: 75%</small>
-                                        <div class="progress-bar" style="margin-top: 0.25rem;">
-                                            <div class="progress-fill" style="width: 75%"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="goal-item">
-                                <div class="goal-checkbox">
-                                    <input type="checkbox" id="goal5" class="goal-checkbox-input">
-                                </div>
-                                <div class="goal-content">
-                                    <h4>Participar en capacitación sobre arboricultura</h4>
-                                    <p>Completar al menos una sesión de capacitación especializada</p>
-                                </div>
-                                <div class="goal-status">
-                                    <div class="goal-progress">
-                                        <small>Progreso: 0%</small>
-                                        <div class="progress-bar" style="margin-top: 0.25rem;">
-                                            <div class="progress-fill" style="width: 0%"></div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -2011,6 +1914,17 @@
                                                     <option value="admin">Administrador</option>
                                                 </select>
                                             </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-campus">Campus</label>
+                                                <select id="admin-user-campus">
+                                                    <option value="FESI">FES Iztacala</option>
+                                                    <option value="FESA">FES Arag&oacute;n</option>
+                                                    <option value="FESC">FES Cuautitl&aacute;n</option>
+                                                    <option value="FESZ">FES Zaragoza</option>
+                                                    <option value="FESAC">FES Acatl&aacute;n</option>
+                                                    <option value="CU">Ciudad Universitaria</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="saveAdminUser(event)">Guardar Usuario</button>
                                     </form>
@@ -2076,12 +1990,18 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-garden">Jardín</label>
-                                                <input type="text" id="admin-tree-garden">
+                                                <label for="admin-tree-location">Ubicaci&oacute;n desc.</label>
+                                                <input type="text" id="admin-tree-location" placeholder="Ej: Junto al edificio A2">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-lat">Latitud</label>
+                                                <input type="number" step="any" id="admin-tree-lat" placeholder="19.5322">
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-tree-location">Ubicación</label>
-                                                <input type="text" id="admin-tree-location">
+                                                <label for="admin-tree-lng">Longitud</label>
+                                                <input type="number" step="any" id="admin-tree-lng" placeholder="-99.1847">
                                             </div>
                                         </div>
                                         <div class="form-row">
@@ -2090,15 +2010,34 @@
                                                 <select id="admin-tree-status">
                                                     <option value="healthy">Saludable</option>
                                                     <option value="at-risk">En Riesgo</option>
-                                                    <option value="critical">Crítico</option>
+                                                    <option value="critical">Cr&iacute;tico</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">
                                                 <label for="admin-tree-health">Salud (%)</label>
-                                                <input type="number" id="admin-tree-health" min="0" max="100">
+                                                <input type="number" id="admin-tree-health" min="0" max="100" value="80">
                                             </div>
                                         </div>
-                                        <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar Árbol</button>
+                                        <h4 style="margin:1.5rem 0 0.75rem;padding-top:0.75rem;border-top:1px solid #eee;">Medidas Iniciales</h4>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-height">Altura (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-height" placeholder="350">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-trunk">Di&aacute;m. tronco (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-trunk" placeholder="25">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-crown">Di&aacute;m. copa (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-crown" placeholder="400">
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:1rem;">
+                                            <label for="admin-tree-notes">Notas iniciales</label>
+                                            <textarea id="admin-tree-notes" rows="2" style="width:100%;padding:0.5rem;" placeholder="Observaciones del estado inicial..."></textarea>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar &Aacute;rbol</button>
                                     </form>
                                 </div>
 
