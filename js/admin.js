@@ -251,48 +251,40 @@ async function saveAdminUser(e) {
   const campus = document.getElementById('admin-user-campus')?.value || 'FESI';
 
   try {
-    // Use Edge Function to create user (avoids "signups not allowed" error)
-    const { data, error } = await sb.functions.invoke('create-user', {
-      body: { email: correo, password, full_name: nombre, role, account_number: numCuenta, birth_date: fechaNac, academic_status: estatus, campus }
-    });
+    // Guardar sesión actual del admin antes de crear usuario
+    const { data: { session: adminSession } } = await sb.auth.getSession();
 
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    const { data: signUpData, error: signUpError } = await sb.auth.signUp({
+      email: correo,
+      password: password,
+      options: { data: { full_name: nombre, role: role } }
+    });
+    if (signUpError) throw signUpError;
+
+    const newUserId = signUpData.user?.id;
+    if (newUserId) {
+      // Restaurar sesión del admin (signUp puede cambiar la sesión activa)
+      if (adminSession) {
+        await sb.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token
+        });
+      }
+
+      await sb.from('user_profiles').upsert({
+        id: newUserId, full_name: nombre, role,
+        account_number: numCuenta || null,
+        birth_date: fechaNac || null,
+        academic_status: estatus, campus
+      });
+    }
 
     showToast('Usuario creado exitosamente.', 'success');
     document.getElementById('form-admin-user')?.reset();
     loadAdminUsers();
   } catch (err) {
     console.error('Error creating user:', err);
-    // Fallback: try signUp directly
-    if (err.message?.includes('create-user') || err.message?.includes('Function not found')) {
-      try {
-        const { data: signUpData, error: signUpError } = await sb.auth.signUp({
-          email: correo,
-          password: password,
-          options: { data: { full_name: nombre, role: role } }
-        });
-        if (signUpError) throw signUpError;
-        const newUserId = signUpData.user?.id;
-        if (newUserId) {
-          await sb.from('user_profiles').upsert({
-            id: newUserId, full_name: nombre, role, account_number: numCuenta || null,
-            birth_date: fechaNac || null, academic_status: estatus, campus
-          });
-        }
-        showToast('Usuario creado. Recibirá email de confirmación.', 'success');
-        document.getElementById('form-admin-user')?.reset();
-        loadAdminUsers();
-      } catch (fallbackErr) {
-        if (fallbackErr.message?.includes('Signups not allowed')) {
-          showToast('Error: Los registros están deshabilitados. Ve a Supabase → Authentication → Settings → Enable email signup, o despliega la Edge Function "create-user".', 'error');
-        } else {
-          showToast('Error: ' + fallbackErr.message, 'error');
-        }
-      }
-    } else {
-      showToast('Error: ' + err.message, 'error');
-    }
+    showToast('Error: ' + err.message, 'error');
   }
 }
 
