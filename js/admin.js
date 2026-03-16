@@ -248,36 +248,51 @@ async function saveAdminUser(e) {
   if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
   if (!password || password.length < 6) { showToast('Contraseña de al menos 6 caracteres', 'error'); return; }
 
+  const campus = document.getElementById('admin-user-campus')?.value || 'FESI';
+
   try {
-    const { data: signUpData, error: signUpError } = await sb.auth.signUp({
-      email: correo,
-      password: password,
-      options: {
-        data: { full_name: nombre, role: role }
-      }
+    // Use Edge Function to create user (avoids "signups not allowed" error)
+    const { data, error } = await sb.functions.invoke('create-user', {
+      body: { email: correo, password, full_name: nombre, role, account_number: numCuenta, birth_date: fechaNac, academic_status: estatus, campus }
     });
 
-    if (signUpError) throw signUpError;
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
-    const newUserId = signUpData.user?.id;
-    if (newUserId) {
-      await sb.from('user_profiles').upsert({
-        id: newUserId,
-        full_name: nombre,
-        role: role,
-        account_number: numCuenta || null,
-        birth_date: fechaNac || null,
-        academic_status: estatus,
-        campus: 'FES Iztacala'
-      });
-    }
-
-    showToast('Usuario creado. Recibirá email de confirmación.', 'success');
+    showToast('Usuario creado exitosamente.', 'success');
     document.getElementById('form-admin-user')?.reset();
     loadAdminUsers();
   } catch (err) {
     console.error('Error creating user:', err);
-    showToast('Error: ' + err.message, 'error');
+    // Fallback: try signUp directly
+    if (err.message?.includes('create-user') || err.message?.includes('Function not found')) {
+      try {
+        const { data: signUpData, error: signUpError } = await sb.auth.signUp({
+          email: correo,
+          password: password,
+          options: { data: { full_name: nombre, role: role } }
+        });
+        if (signUpError) throw signUpError;
+        const newUserId = signUpData.user?.id;
+        if (newUserId) {
+          await sb.from('user_profiles').upsert({
+            id: newUserId, full_name: nombre, role, account_number: numCuenta || null,
+            birth_date: fechaNac || null, academic_status: estatus, campus
+          });
+        }
+        showToast('Usuario creado. Recibirá email de confirmación.', 'success');
+        document.getElementById('form-admin-user')?.reset();
+        loadAdminUsers();
+      } catch (fallbackErr) {
+        if (fallbackErr.message?.includes('Signups not allowed')) {
+          showToast('Error: Los registros están deshabilitados. Ve a Supabase → Authentication → Settings → Enable email signup, o despliega la Edge Function "create-user".', 'error');
+        } else {
+          showToast('Error: ' + fallbackErr.message, 'error');
+        }
+      }
+    } else {
+      showToast('Error: ' + err.message, 'error');
+    }
   }
 }
 
@@ -368,8 +383,14 @@ async function saveAdminTree(e) {
     size: document.getElementById('admin-tree-size')?.value,
     campus: document.getElementById('admin-tree-campus')?.value.trim(),
     location_desc: document.getElementById('admin-tree-location')?.value.trim(),
+    location_lat: parseFloat(document.getElementById('admin-tree-lat')?.value) || null,
+    location_lng: parseFloat(document.getElementById('admin-tree-lng')?.value) || null,
     status: document.getElementById('admin-tree-status')?.value,
     health_score: parseInt(document.getElementById('admin-tree-health')?.value) || 80,
+    initial_height_cm: parseFloat(document.getElementById('admin-tree-height')?.value) || null,
+    initial_trunk_diameter_cm: parseFloat(document.getElementById('admin-tree-trunk')?.value) || null,
+    initial_crown_diameter_cm: parseFloat(document.getElementById('admin-tree-crown')?.value) || null,
+    initial_notes: document.getElementById('admin-tree-notes')?.value.trim() || null,
     created_by: currentUser?.id
   };
   if (!tree.tree_code || !tree.species) { showToast('Código y especie son requeridos', 'error'); return; }
@@ -394,6 +415,10 @@ async function editAdminTree(treeId) {
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Especie</label><input type="text" id="edit-tree-species" value="${escapeHtml(tree.species || '')}" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Nombre Común</label><input type="text" id="edit-tree-common" value="${escapeHtml(tree.common_name || '')}" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Campus</label><input type="text" id="edit-tree-campus" value="${escapeHtml(tree.campus || '')}" style="width:100%;padding:0.5rem;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="form-group"><label>Latitud</label><input type="number" step="any" id="edit-tree-lat" value="${tree.location_lat || ''}" style="width:100%;padding:0.5rem;" placeholder="19.5322"></div>
+        <div class="form-group"><label>Longitud</label><input type="number" step="any" id="edit-tree-lng" value="${tree.location_lng || ''}" style="width:100%;padding:0.5rem;" placeholder="-99.1847"></div>
+      </div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Salud (0-100)</label><input type="number" id="edit-tree-health" value="${tree.health_score || 0}" min="0" max="100" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Estado</label>
         <select id="edit-tree-status" style="width:100%;padding:0.5rem;">
@@ -401,6 +426,12 @@ async function editAdminTree(treeId) {
           <option value="at-risk" ${tree.status === 'at-risk' ? 'selected' : ''}>En Riesgo</option>
           <option value="critical" ${tree.status === 'critical' ? 'selected' : ''}>Crítico</option>
         </select>
+      </div>
+      <h4 style="margin:1rem 0 0.5rem;border-top:1px solid #eee;padding-top:0.75rem;">Medidas Iniciales</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="form-group"><label>Altura (cm)</label><input type="number" step="0.1" id="edit-tree-height" value="${tree.initial_height_cm || ''}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group"><label>Tronco (cm)</label><input type="number" step="0.1" id="edit-tree-trunk" value="${tree.initial_trunk_diameter_cm || ''}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group"><label>Copa (cm)</label><input type="number" step="0.1" id="edit-tree-crown" value="${tree.initial_crown_diameter_cm || ''}" style="width:100%;padding:0.5rem;"></div>
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Guardar</button>
     </form>
@@ -412,8 +443,13 @@ async function editAdminTree(treeId) {
       species: document.getElementById('edit-tree-species').value.trim(),
       common_name: document.getElementById('edit-tree-common').value.trim(),
       campus: document.getElementById('edit-tree-campus').value.trim(),
+      location_lat: parseFloat(document.getElementById('edit-tree-lat').value) || null,
+      location_lng: parseFloat(document.getElementById('edit-tree-lng').value) || null,
       health_score: parseInt(document.getElementById('edit-tree-health').value) || 0,
-      status: document.getElementById('edit-tree-status').value
+      status: document.getElementById('edit-tree-status').value,
+      initial_height_cm: parseFloat(document.getElementById('edit-tree-height').value) || null,
+      initial_trunk_diameter_cm: parseFloat(document.getElementById('edit-tree-trunk').value) || null,
+      initial_crown_diameter_cm: parseFloat(document.getElementById('edit-tree-crown').value) || null
     }).eq('id', treeId);
     if (error) { showToast('Error: ' + error.message, 'error'); return; }
     showToast('Árbol actualizado', 'success');
