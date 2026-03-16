@@ -125,34 +125,22 @@ async function sendPumaiMessage() {
 
     // Add photo if present
     if (pumaiCurrentPhoto) {
-      requestBody.imageBase64 = pumaiCurrentPhoto.split(',')[1]; // Remove data:...;base64, prefix
+      requestBody.imageBase64 = pumaiCurrentPhoto.split(',')[1];
       requestBody.imageType = pumaiCurrentPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
     }
 
-    // Get current session token for auth
-    const { data: sessionData } = await sb.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-
-    // Call Edge Function (Gemini key lives server-side, safe!)
-    const response = await fetch(PUMAI_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (accessToken || SUPABASE_KEY),
-        'apikey': SUPABASE_KEY
-      },
-      body: JSON.stringify(requestBody)
+    // Use sb.functions.invoke() - handles auth headers automatically
+    const { data, error } = await sb.functions.invoke('pum-ai', {
+      body: requestBody
     });
 
     document.getElementById(typingId)?.remove();
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({ error: `Error ${response.status}` }));
-      throw new Error(errData.error || errData.details?.error?.message || `Error ${response.status}`);
+    if (error) {
+      throw new Error(error.message || 'Error llamando a PUM-AI');
     }
 
-    const result = await response.json();
-    const botReply = result.reply || 'Sin respuesta del modelo.';
+    const botReply = data?.reply || 'Sin respuesta del modelo.';
 
     // Simple markdown-like formatting
     const formattedReply = botReply
