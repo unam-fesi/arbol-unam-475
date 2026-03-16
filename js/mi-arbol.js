@@ -48,13 +48,13 @@ async function loadMyTree() {
               <div class="tree-icon"><i class="fas fa-tree"></i></div>
               <div class="tree-header-content">
                 <h3>${escapeHtml(tree.common_name || tree.species)}</h3>
-                <p class="text-small text-muted">${escapeHtml(tree.species)} | Código: ${escapeHtml(tree.code)}</p>
+                <p class="text-small text-muted">${escapeHtml(tree.species)} | Código: ${escapeHtml(tree.tree_code)}</p>
               </div>
             </div>
             <div class="tree-details">
               <div class="detail-item">
                 <div class="detail-label">Ubicación</div>
-                <div class="detail-value">${escapeHtml(tree.location || tree.campus || '-')}</div>
+                <div class="detail-value">${escapeHtml(tree.location_desc || tree.campus || '-')}</div>
               </div>
               <div class="detail-item">
                 <div class="detail-label">Tipo</div>
@@ -62,7 +62,7 @@ async function loadMyTree() {
               </div>
               <div class="detail-item">
                 <div class="detail-label">Estado</div>
-                <div class="detail-value"><span class="badge badge-${tree.status === 'saludable' ? 'success' : 'warning'}">${escapeHtml(tree.status || 'activo')}</span></div>
+                <div class="detail-value"><span class="badge badge-${tree.status === 'healthy' ? 'success' : 'warning'}">${escapeHtml(tree.status || 'activo')}</span></div>
               </div>
               <div class="detail-item">
                 <div class="detail-label">Salud</div>
@@ -81,15 +81,15 @@ async function loadMyTree() {
     `;
 
     // Init map if coordinates exist
-    if (tree.latitude && tree.longitude) {
+    if (tree.location_lat && tree.location_lng) {
       setTimeout(() => {
-        const map = L.map('treeMapContainer').setView([tree.latitude, tree.longitude], 17);
+        const map = L.map('treeMapContainer').setView([tree.location_lat, tree.location_lng], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap'
         }).addTo(map);
-        L.marker([tree.latitude, tree.longitude])
+        L.marker([tree.location_lat, tree.location_lng])
           .addTo(map)
-          .bindPopup(`<b>${tree.common_name || tree.species}</b><br>${tree.code}`)
+          .bindPopup(`<b>${tree.common_name || tree.species}</b><br>${tree.tree_code}`)
           .openPopup();
       }, 100);
     }
