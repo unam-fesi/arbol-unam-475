@@ -1,8 +1,26 @@
 // ============================================================================
-// NAVIGATION - Navbar, Sections, Role-based visibility
+// NAVIGATION - Navbar, Sections, Role-based visibility + Security
 // ============================================================================
 
 function showSection(sectionId) {
+  // SECURITY: block non-admin from admin section
+  if (sectionId === 'section-admin') {
+    if (!currentUserProfile || currentUserProfile.role !== 'admin') {
+      showToast('Acceso denegado: solo administradores', 'error');
+      showSection('section-mi-arbol');
+      return;
+    }
+  }
+
+  // SECURITY: block non-specialist/non-admin from specialist section
+  if (sectionId === 'section-specialist') {
+    if (!currentUserProfile || !['specialist', 'admin'].includes(currentUserProfile.role)) {
+      showToast('Acceso denegado: solo especialistas', 'error');
+      showSection('section-mi-arbol');
+      return;
+    }
+  }
+
   // Hide all sections
   document.querySelectorAll('[id^="section-"]').forEach(s => {
     s.style.display = 'none';
@@ -34,11 +52,25 @@ function setupRoleBasedNav(role) {
     const section = link.dataset.section;
     let visible = true;
 
+    // Hide admin link for non-admins
     if (section === 'section-admin' && role !== 'admin') visible = false;
+    // Hide specialist link for non-specialist/non-admin
     if (section === 'section-specialist' && !['specialist', 'admin'].includes(role)) visible = false;
 
     link.style.display = visible ? '' : 'none';
   });
+
+  // Also hide the actual section content for non-admins (defense in depth)
+  const adminSection = document.getElementById('section-admin');
+  if (adminSection && role !== 'admin') {
+    adminSection.style.display = 'none';
+    adminSection.innerHTML = ''; // Clear content entirely for non-admins
+  }
+
+  const specialistSection = document.getElementById('section-specialist');
+  if (specialistSection && !['specialist', 'admin'].includes(role)) {
+    specialistSection.style.display = 'none';
+  }
 }
 
 // User menu dropdown toggle
