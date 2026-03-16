@@ -17,6 +17,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'gardens') loadAdminGardens();
     else if (tabName === 'groups') loadAdminGroups();
     else if (tabName === 'notifications') loadAdminNotifications();
+    else if (tabName === 'assignments') loadAssignments();
     else if (tabName === 'dashboard') loadAdminDashboard();
   }
   document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -30,6 +31,7 @@ async function loadAdminDashboard() {
   try {
     const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
     const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
+    const { count: assignCount } = await sb.from('tree_assignments').select('*', { count: 'exact', head: true });
     const { data: trees } = await sb.from('trees_catalog').select('health_score, status, campus');
     const treeList = trees || [];
     const avgHealth = treeList.length > 0
@@ -41,8 +43,27 @@ async function loadAdminDashboard() {
         <div class="card" style="text-align:center;"><div style="font-size:2rem;">👥</div><h3>${userCount || 0}</h3><p class="text-muted">Usuarios</p></div>
         <div class="card" style="text-align:center;"><div style="font-size:2rem;">🌳</div><h3>${treeCount || 0}</h3><p class="text-muted">Árboles</p></div>
         <div class="card" style="text-align:center;"><div style="font-size:2rem;">💚</div><h3>${avgHealth}%</h3><p class="text-muted">Salud Promedio</p></div>
+        <div class="card" style="text-align:center;"><div style="font-size:2rem;">🔗</div><h3>${assignCount || 0}</h3><p class="text-muted">Asignaciones</p></div>
       `;
     }
+
+    // Load recent assignments for dashboard
+    const { data: recentAssign } = await sb.from('tree_assignments')
+      .select('*, trees_catalog(tree_code, common_name), user_profiles!tree_assignments_user_id_fkey(full_name)')
+      .order('assigned_at', { ascending: false }).limit(5);
+
+    const dashAssignEl = document.getElementById('dashboard-assignments');
+    if (dashAssignEl && recentAssign && recentAssign.length > 0) {
+      dashAssignEl.innerHTML = '<h4 style="margin-bottom:1rem;">Asignaciones Recientes</h4>' +
+        recentAssign.map(a => `
+          <div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #eee;">
+            <span>🌳 ${escapeHtml(a.trees_catalog?.tree_code || '-')} (${escapeHtml(a.trees_catalog?.common_name || '')})</span>
+            <span>→ 👤 ${escapeHtml(a.user_profiles?.full_name || 'Grupo')}</span>
+            <span class="text-muted text-small">${formatDate(a.assigned_at)}</span>
+          </div>
+        `).join('');
+    }
+
     if (typeof Chart !== 'undefined') {
       Object.values(Chart.instances || {}).forEach(c => c.destroy());
     }
@@ -90,11 +111,11 @@ async function loadAdminUsers() {
         <td>${escapeHtml(user.full_name || '-')}</td>
         <td>${escapeHtml(user.account_number || '-')}</td>
         <td><span style="background:var(--primary);color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${user.role || 'user'}</span></td>
+        <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
         <td>${escapeHtml(user.campus || '-')}</td>
         <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')">Editar</button>
-          <button class="btn btn-sm btn-primary" onclick="assignTreeToUser('${user.id}', '${escapeHtml(user.full_name || '')}')">Asignar Árbol</button>
         </td>
       `;
       tbody.appendChild(row);
@@ -111,13 +132,13 @@ async function saveAdminUser(e) {
   const password = document.getElementById('admin-user-password')?.value.trim();
   const numCuenta = document.getElementById('admin-user-num-cuenta')?.value.trim();
   const fechaNac = document.getElementById('admin-user-fecha-nacimiento')?.value;
+  const estatus = document.getElementById('admin-user-estatus')?.value || 'alumno';
   const role = document.getElementById('admin-user-role')?.value || 'user';
 
   if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
   if (!password || password.length < 6) { showToast('Contraseña de al menos 6 caracteres', 'error'); return; }
 
   try {
-    // Create user via Supabase Auth signUp
     const { data: signUpData, error: signUpError } = await sb.auth.signUp({
       email: correo,
       password: password,
@@ -130,13 +151,13 @@ async function saveAdminUser(e) {
 
     const newUserId = signUpData.user?.id;
     if (newUserId) {
-      // Update the user_profiles with additional data
       await sb.from('user_profiles').upsert({
         id: newUserId,
         full_name: nombre,
         role: role,
         account_number: numCuenta || null,
         birth_date: fechaNac || null,
+        academic_status: estatus,
         campus: 'FES Iztacala'
       });
     }
@@ -155,6 +176,11 @@ async function editAdminUser(userId) {
     const { data: user, error } = await sb.from('user_profiles').select('*').eq('id', userId).single();
     if (error) throw error;
 
+    const statusOptions = ['alumno', 'exalumno', 'postgrado', 'doctorante', 'profesor', 'investigador', 'administrativo'];
+    const statusSelect = statusOptions.map(s =>
+      `<option value="${s}" ${user.academic_status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+    ).join('');
+
     showModal('Editar Usuario', `
       <form id="edit-user-form">
         <div class="form-group" style="margin-bottom:1rem;"><label>Nombre</label><input type="text" id="edit-user-name" value="${escapeHtml(user.full_name || '')}" style="width:100%;padding:0.5rem;"></div>
@@ -164,6 +190,9 @@ async function editAdminUser(userId) {
             <option value="specialist" ${user.role === 'specialist' ? 'selected' : ''}>Especialista</option>
             <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador</option>
           </select>
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;"><label>Estatus Académico</label>
+          <select id="edit-user-status" style="width:100%;padding:0.5rem;">${statusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>No. Cuenta</label><input type="text" id="edit-user-cuenta" value="${escapeHtml(user.account_number || '')}" style="width:100%;padding:0.5rem;"></div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Campus</label><input type="text" id="edit-user-campus" value="${escapeHtml(user.campus || '')}" style="width:100%;padding:0.5rem;"></div>
@@ -177,6 +206,7 @@ async function editAdminUser(userId) {
       const { error: updateError } = await sb.from('user_profiles').update({
         full_name: document.getElementById('edit-user-name').value.trim(),
         role: document.getElementById('edit-user-role').value,
+        academic_status: document.getElementById('edit-user-status').value,
         account_number: document.getElementById('edit-user-cuenta').value.trim(),
         campus: document.getElementById('edit-user-campus').value.trim(),
         telegram_chat_id: document.getElementById('edit-user-telegram').value.trim() || null
@@ -186,60 +216,6 @@ async function editAdminUser(userId) {
       closeModal();
       loadAdminUsers();
     });
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-// ---- ASSIGN TREE TO USER ----
-async function assignTreeToUser(userId, userName) {
-  try {
-    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').order('tree_code');
-    if (!trees || trees.length === 0) { showToast('No hay árboles registrados', 'warning'); return; }
-
-    // Get current assignments
-    const { data: existing } = await sb.from('tree_assignments').select('tree_id').eq('user_id', userId);
-    const assignedIds = (existing || []).map(a => a.tree_id);
-
-    let existingHtml = assignedIds.length > 0
-      ? '<p style="margin-bottom:0.5rem;"><strong>Árboles asignados:</strong></p>' +
-        (trees.filter(t => assignedIds.includes(t.id)).map(t =>
-          `<span style="background:#e8f5e9;padding:4px 8px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}</span>`
-        ).join(''))
-      : '<p class="text-muted">Sin árboles asignados</p>';
-
-    let optionsHtml = trees.filter(t => !assignedIds.includes(t.id))
-      .map(t => `<option value="${t.id}">${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}</option>`)
-      .join('');
-
-    showModal(`Asignar Árbol a ${userName}`, `
-      <div style="margin-bottom:1.5rem;">${existingHtml}</div>
-      <div style="display:flex;gap:8px;">
-        <select id="assign-tree-select" style="flex:1;padding:0.5rem;border:1px solid #ddd;border-radius:4px;">
-          <option value="">Selecciona árbol...</option>
-          ${optionsHtml}
-        </select>
-        <button onclick="doAssignTree('${userId}', '${escapeHtml(userName)}')" class="btn btn-primary btn-sm">Asignar</button>
-      </div>
-    `);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
-
-async function doAssignTree(userId, userName) {
-  const treeId = document.getElementById('assign-tree-select')?.value;
-  if (!treeId) { showToast('Selecciona un árbol', 'warning'); return; }
-  try {
-    const { error } = await sb.from('tree_assignments').insert([{
-      tree_id: parseInt(treeId),
-      user_id: userId,
-      assigned_by: currentUser?.id
-    }]);
-    if (error) throw error;
-    showToast('Árbol asignado', 'success');
-    closeModal();
-    assignTreeToUser(userId, userName); // Refresh
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   }
@@ -524,20 +500,11 @@ async function removeGroupMember(groupId, userId, groupName) {
   manageGroupMembers(groupId, groupName);
 }
 
-// ---- NOTIFICATIONS (insert directo, sin Edge Function) ----
+// ---- NOTIFICATIONS (fix check constraint) ----
 async function loadAdminNotifications() {
   try {
     const { data: groups } = await sb.from('user_groups').select('id, name').order('name');
     const { data: users } = await sb.from('user_profiles').select('id, full_name').order('full_name');
-
-    // Replace textbox with select if needed
-    const notifUserEl = document.getElementById('notifUser');
-    if (notifUserEl && notifUserEl.tagName === 'INPUT') {
-      const sel = document.createElement('select');
-      sel.id = 'notifUser';
-      sel.style.cssText = 'width:100%;padding:0.5rem;border:1px solid var(--border-light);border-radius:var(--radius);';
-      notifUserEl.parentNode.replaceChild(sel, notifUserEl);
-    }
 
     const targetSelect = document.getElementById('notifUser');
     if (targetSelect) {
@@ -550,7 +517,6 @@ async function loadAdminNotifications() {
       });
     }
 
-    // Show notification history
     const { data: history } = await sb.from('notifications').select('*').order('sent_at', { ascending: false }).limit(20);
     const historyBody = document.getElementById('notificationsTableBody');
     if (historyBody) {
@@ -581,30 +547,231 @@ async function sendNotification(e) {
   if (!title || !message) { showToast('Título y mensaje son requeridos', 'error'); return; }
 
   try {
+    // Build notification data - only include fields that are definitely valid
     const notifData = {
       title,
       message,
-      sender_id: currentUser?.id || null,
-      notification_type: 'admin',
-      send_via: 'in_app',
-      sent_at: new Date().toISOString()
+      sender_id: currentUser?.id || null
     };
 
+    // Parse target - the select values are formatted as "user:uuid" or "group:uuid"
     if (targetType === 'user' && targetValue) {
-      notifData.target_user_id = targetValue.replace('user:', '');
+      const uid = targetValue.replace('user:', '').replace('group:', '');
+      notifData.target_user_id = uid;
     } else if (targetType === 'group' && targetValue) {
-      notifData.target_group_id = targetValue.replace('group:', '');
+      const gid = targetValue.replace('group:', '').replace('user:', '');
+      notifData.target_group_id = gid;
     }
+    // When 'all', don't set target_user_id or target_group_id (both null)
 
     const { error } = await sb.from('notifications').insert([notifData]);
-    if (error) throw error;
+    if (error) {
+      console.error('Notification insert error:', error);
+      // If check constraint fails, try minimal insert
+      if (error.message && error.message.includes('check')) {
+        const minData = { title, message };
+        if (notifData.target_user_id) minData.target_user_id = notifData.target_user_id;
+        if (notifData.target_group_id) minData.target_group_id = notifData.target_group_id;
+        const { error: retryErr } = await sb.from('notifications').insert([minData]);
+        if (retryErr) throw retryErr;
+      } else {
+        throw error;
+      }
+    }
 
-    showToast('Notificación guardada', 'success');
+    showToast('Notificación enviada', 'success');
     document.getElementById('form-notification')?.reset();
+    document.getElementById('notif-user-field').style.display = 'none';
     loadAdminNotifications();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   }
+}
+
+// ---- ASSIGNMENTS TAB ----
+async function loadAssignments() {
+  try {
+    // Populate dropdowns
+    const { data: users } = await sb.from('user_profiles').select('id, full_name').order('full_name');
+    const { data: groups } = await sb.from('user_groups').select('id, name').order('name');
+    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').order('tree_code');
+    const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
+
+    // Tree assignment target dropdown
+    populateAssignTarget('assign-target-type', 'assign-target', users, groups);
+    // Garden assignment target dropdown
+    populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
+
+    // Tree dropdown
+    const treeSelect = document.getElementById('assign-tree');
+    if (treeSelect) {
+      treeSelect.innerHTML = '<option value="">Selecciona árbol...</option>';
+      (trees || []).forEach(t => {
+        treeSelect.innerHTML += `<option value="${t.id}">${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}</option>`;
+      });
+    }
+
+    // Garden dropdown
+    const gardenSelect = document.getElementById('assign-garden-select');
+    if (gardenSelect) {
+      gardenSelect.innerHTML = '<option value="">Selecciona jardín...</option>';
+      (gardens || []).forEach(g => {
+        gardenSelect.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)} (${escapeHtml(g.campus || '-')})</option>`;
+      });
+    }
+
+    // Listen for type changes
+    document.getElementById('assign-target-type')?.addEventListener('change', function() {
+      populateAssignTarget('assign-target-type', 'assign-target', users, groups);
+    });
+    document.getElementById('assign-garden-target-type')?.addEventListener('change', function() {
+      populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
+    });
+
+    // Load existing tree assignments
+    const { data: treeAssignments } = await sb.from('tree_assignments')
+      .select('*, trees_catalog(tree_code, common_name), user_profiles!tree_assignments_user_id_fkey(full_name)')
+      .order('assigned_at', { ascending: false });
+
+    const treeBody = document.getElementById('tree-assignments-body');
+    if (treeBody) {
+      treeBody.innerHTML = '';
+      (treeAssignments || []).forEach(a => {
+        const row = document.createElement('tr');
+        const name = a.user_profiles?.full_name || (a.group_id ? 'Grupo' : '-');
+        const type = a.user_id ? 'Usuario' : 'Grupo';
+        const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
+        row.innerHTML = `
+          <td>🌳 ${escapeHtml(a.trees_catalog?.tree_code || '-')} - ${escapeHtml(a.trees_catalog?.common_name || '')}</td>
+          <td>${escapeHtml(name)}</td>
+          <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
+          <td>${formatDate(a.assigned_at)}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${a.id}')">Quitar</button></td>
+        `;
+        treeBody.appendChild(row);
+      });
+      if (!treeAssignments || treeAssignments.length === 0) {
+        treeBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de árboles</td></tr>';
+      }
+    }
+
+    // Load existing garden assignments
+    const { data: gardenAssignments } = await sb.from('garden_assignments')
+      .select('*, gardens(name, campus), user_profiles!garden_assignments_user_id_fkey(full_name)')
+      .order('assigned_at', { ascending: false });
+
+    const gardenBody = document.getElementById('garden-assignments-body');
+    if (gardenBody) {
+      gardenBody.innerHTML = '';
+      (gardenAssignments || []).forEach(a => {
+        const name = a.user_profiles?.full_name || (a.group_id ? 'Grupo' : '-');
+        const type = a.user_id ? 'Usuario' : 'Grupo';
+        const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>🌿 ${escapeHtml(a.gardens?.name || '-')} (${escapeHtml(a.gardens?.campus || '')})</td>
+          <td>${escapeHtml(name)}</td>
+          <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
+          <td>${formatDate(a.assigned_at)}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${a.id}')">Quitar</button></td>
+        `;
+        gardenBody.appendChild(row);
+      });
+      if (!gardenAssignments || gardenAssignments.length === 0) {
+        gardenBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de jardines</td></tr>';
+      }
+    }
+
+  } catch (err) {
+    console.error('Load assignments error:', err);
+    showToast('Error cargando asignaciones: ' + err.message, 'error');
+  }
+}
+
+function populateAssignTarget(typeSelectId, targetSelectId, users, groups) {
+  const typeSelect = document.getElementById(typeSelectId);
+  const targetSelect = document.getElementById(targetSelectId);
+  if (!typeSelect || !targetSelect) return;
+
+  const type = typeSelect.value;
+  targetSelect.innerHTML = '<option value="">Selecciona...</option>';
+  if (type === 'user') {
+    (users || []).forEach(u => {
+      targetSelect.innerHTML += `<option value="${u.id}">👤 ${escapeHtml(u.full_name || 'Sin nombre')}</option>`;
+    });
+  } else {
+    (groups || []).forEach(g => {
+      targetSelect.innerHTML += `<option value="${g.id}">📂 ${escapeHtml(g.name)}</option>`;
+    });
+  }
+}
+
+async function doAssignTreeFromTab() {
+  const targetType = document.getElementById('assign-target-type')?.value;
+  const targetId = document.getElementById('assign-target')?.value;
+  const treeId = document.getElementById('assign-tree')?.value;
+  const notes = document.getElementById('assign-notes')?.value.trim();
+
+  if (!targetId || !treeId) { showToast('Selecciona destinatario y árbol', 'warning'); return; }
+
+  const data = {
+    tree_id: parseInt(treeId),
+    assigned_by: currentUser?.id,
+    notes: notes || null
+  };
+  if (targetType === 'user') data.user_id = targetId;
+  else data.group_id = targetId;
+
+  try {
+    const { error } = await sb.from('tree_assignments').insert([data]);
+    if (error) throw error;
+    showToast('Árbol asignado exitosamente', 'success');
+    document.getElementById('form-assign-tree')?.reset();
+    loadAssignments();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function doAssignGardenFromTab() {
+  const targetType = document.getElementById('assign-garden-target-type')?.value;
+  const targetId = document.getElementById('assign-garden-target')?.value;
+  const gardenId = document.getElementById('assign-garden-select')?.value;
+
+  if (!targetId || !gardenId) { showToast('Selecciona destinatario y jardín', 'warning'); return; }
+
+  const data = {
+    garden_id: gardenId,
+    assigned_by: currentUser?.id
+  };
+  if (targetType === 'user') data.user_id = targetId;
+  else data.group_id = targetId;
+
+  try {
+    const { error } = await sb.from('garden_assignments').insert([data]);
+    if (error) throw error;
+    showToast('Jardín asignado exitosamente', 'success');
+    document.getElementById('form-assign-garden')?.reset();
+    loadAssignments();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function removeTreeAssignment(id) {
+  if (!confirm('¿Quitar esta asignación?')) return;
+  const { error } = await sb.from('tree_assignments').delete().eq('id', id);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Asignación removida', 'success');
+  loadAssignments();
+}
+
+async function removeGardenAssignment(id) {
+  if (!confirm('¿Quitar esta asignación?')) return;
+  const { error } = await sb.from('garden_assignments').delete().eq('id', id);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Asignación removida', 'success');
+  loadAssignments();
 }
 
 // ---- SPECIALIST ----
@@ -613,7 +780,6 @@ async function loadSpecialistTrees() {
   if (!content) return;
 
   try {
-    // Load trees that have problem reports or need followup
     const { data: trees } = await sb.from('trees_catalog').select('*').order('health_score', { ascending: true }).limit(20);
 
     let html = '<div class="specialist-container"><div class="trees-list-panel"><h3>Árboles para Revisión</h3>';
@@ -662,7 +828,6 @@ async function loadSpecialistTrees() {
       const notes = document.getElementById('spec-notes')?.value.trim();
       if (!treeId) { showToast('Selecciona un árbol', 'error'); return; }
 
-      // Save followup
       await sb.from('specialist_followups').insert([{
         tree_id: parseInt(treeId),
         specialist_id: currentUser?.id,
@@ -670,7 +835,6 @@ async function loadSpecialistTrees() {
         notes: notes
       }]);
 
-      // Update tree health
       if (health) {
         await sb.from('trees_catalog').update({ health_score: health }).eq('id', parseInt(treeId));
       }
@@ -711,8 +875,6 @@ window.loadAdminDashboard = loadAdminDashboard;
 window.loadAdminUsers = loadAdminUsers;
 window.saveAdminUser = saveAdminUser;
 window.editAdminUser = editAdminUser;
-window.assignTreeToUser = assignTreeToUser;
-window.doAssignTree = doAssignTree;
 window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
@@ -729,5 +891,10 @@ window.addGroupMember = addGroupMember;
 window.removeGroupMember = removeGroupMember;
 window.loadAdminNotifications = loadAdminNotifications;
 window.sendNotification = sendNotification;
+window.loadAssignments = loadAssignments;
+window.doAssignTreeFromTab = doAssignTreeFromTab;
+window.doAssignGardenFromTab = doAssignGardenFromTab;
+window.removeTreeAssignment = removeTreeAssignment;
+window.removeGardenAssignment = removeGardenAssignment;
 window.loadSpecialistTrees = loadSpecialistTrees;
 window.showSpecialistTree = showSpecialistTree;
