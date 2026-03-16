@@ -41,6 +41,7 @@ function showSection(sectionId) {
 
     // Load data for section
     if (sectionId === 'section-mi-arbol') loadMyTree();
+    else if (sectionId === 'section-info') loadInfoSection();
     else if (sectionId === 'section-pumai') initPumAI();
     else if (sectionId === 'section-admin') switchAdminTab('users');
     else if (sectionId === 'section-specialist') loadSpecialistTrees();
