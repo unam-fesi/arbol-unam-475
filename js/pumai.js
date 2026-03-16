@@ -147,10 +147,8 @@ async function sendPumaiMessage() {
 
     const botReply = data?.reply || 'Sin respuesta del modelo.';
 
-    // Simple markdown-like formatting
-    const formattedReply = botReply
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>');
+    // Safe markdown-like formatting (escape HTML first, then apply formatting)
+    const formattedReply = safeMd(botReply);
 
     addPumaiMessage(formattedReply, false);
 
