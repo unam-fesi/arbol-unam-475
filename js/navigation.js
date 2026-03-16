@@ -73,22 +73,6 @@ function setupRoleBasedNav(role) {
   }
 }
 
-// User menu dropdown toggle
-document.addEventListener('DOMContentLoaded', function() {
-  const menuBtn = document.getElementById('userMenuBtn');
-  const dropdown = document.getElementById('userDropdown');
-
-  if (menuBtn && dropdown) {
-    menuBtn.addEventListener('click', () => dropdown.classList.toggle('show'));
-    document.addEventListener('click', (e) => {
-      if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
-        dropdown.classList.remove('show');
-      }
-    });
-  }
-
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-});
+// NOTE: User dropdown toggle is handled in index.html DOMContentLoaded to avoid duplicates
 
 window.showSection = showSection;
