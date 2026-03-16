@@ -94,9 +94,14 @@ const SPECIALIST_CONTACTS = [
   }
 ];
 
-async function loadMyTree() {
+let myTreeLoaded = false;
+
+async function loadMyTree(forceReload) {
   const container = document.getElementById('section-mi-arbol');
   if (!container) return;
+
+  // Skip if already loaded (unless forced)
+  if (myTreeLoaded && !forceReload) return;
 
   try {
     // Get assigned trees for current user
@@ -204,16 +209,28 @@ async function loadMyTree() {
     // Init map if coordinates exist
     if (tree.location_lat && tree.location_lng) {
       setTimeout(() => {
+        const mapContainer = document.getElementById('treeMapContainer');
+        if (!mapContainer || typeof L === 'undefined') return;
+        // Prevent re-init if already has a map
+        if (mapContainer._leaflet_id) return;
         const map = L.map('treeMapContainer').setView([tree.location_lat, tree.location_lng], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap'
+          attribution: '&copy; OpenStreetMap'
         }).addTo(map);
         L.marker([tree.location_lat, tree.location_lng])
           .addTo(map)
-          .bindPopup(`<b>${tree.common_name || tree.species}</b><br>${tree.tree_code}`)
+          .bindPopup(`<b>${escapeHtml(tree.common_name || tree.species)}</b><br>${escapeHtml(tree.tree_code)}`)
           .openPopup();
-      }, 100);
+        setTimeout(() => { map.invalidateSize(); }, 200);
+      }, 200);
+    } else {
+      const mapContainer = document.getElementById('treeMapContainer');
+      if (mapContainer) {
+        mapContainer.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-light);"><p>Sin coordenadas registradas para este árbol</p></div>';
+      }
     }
+
+    myTreeLoaded = true;
 
   } catch (err) {
     console.error('Error loading tree:', err);
