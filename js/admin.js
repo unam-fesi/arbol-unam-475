@@ -2,8 +2,19 @@
 // ADMIN - Dashboard, Users, Trees, Gardens, Groups, Notifications, Assignments
 // ============================================================================
 
+// ---- ROLE GUARD: block non-admin from admin panel ----
+function isAdminRole() {
+  return currentUserProfile && currentUserProfile.role === 'admin';
+}
+
 // ---- TAB SWITCHING ----
 function switchAdminTab(tabName) {
+  // Double-check: only admin can use admin tabs
+  if (!isAdminRole()) {
+    showToast('Acceso denegado: solo administradores', 'error');
+    showSection('section-mi-arbol');
+    return;
+  }
   document.querySelectorAll('.tab-pane').forEach(el => {
     el.style.display = 'none';
     el.classList.remove('active');
@@ -47,21 +58,47 @@ async function loadAdminDashboard() {
       `;
     }
 
-    // Load recent assignments for dashboard
+    // Load recent assignments for dashboard (simple queries, no FK hints)
     const { data: recentAssign } = await sb.from('tree_assignments')
-      .select('*, trees_catalog(tree_code, common_name), user_profiles!tree_assignments_user_id_fkey(full_name)')
-      .order('assigned_at', { ascending: false }).limit(5);
+      .select('*')
+      .order('assigned_at', { ascending: false }).limit(10);
+
+    // Lookup names separately to avoid FK hint issues
+    const allTreeIds = [...new Set((recentAssign || []).map(a => a.tree_id))];
+    const allUserIds = [...new Set((recentAssign || []).filter(a => a.user_id).map(a => a.user_id))];
+    const allGroupIds = [...new Set((recentAssign || []).filter(a => a.group_id).map(a => a.group_id))];
+
+    let treeLookup = {}, userLookup = {}, groupLookup = {};
+    if (allTreeIds.length > 0) {
+      const { data: tData } = await sb.from('trees_catalog').select('id, tree_code, common_name').in('id', allTreeIds);
+      (tData || []).forEach(t => { treeLookup[t.id] = t; });
+    }
+    if (allUserIds.length > 0) {
+      const { data: uData } = await sb.from('user_profiles').select('id, full_name').in('id', allUserIds);
+      (uData || []).forEach(u => { userLookup[u.id] = u; });
+    }
+    if (allGroupIds.length > 0) {
+      const { data: gData } = await sb.from('user_groups').select('id, name').in('id', allGroupIds);
+      (gData || []).forEach(g => { groupLookup[g.id] = g; });
+    }
 
     const dashAssignEl = document.getElementById('dashboard-assignments');
-    if (dashAssignEl && recentAssign && recentAssign.length > 0) {
-      dashAssignEl.innerHTML = '<h4 style="margin-bottom:1rem;">Asignaciones Recientes</h4>' +
-        recentAssign.map(a => `
-          <div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #eee;">
-            <span>🌳 ${escapeHtml(a.trees_catalog?.tree_code || '-')} (${escapeHtml(a.trees_catalog?.common_name || '')})</span>
-            <span>→ 👤 ${escapeHtml(a.user_profiles?.full_name || 'Grupo')}</span>
+    if (dashAssignEl) {
+      let assignHtml = '<h4 style="margin-bottom:1rem;cursor:pointer;" onclick="switchAdminTab(\'assignments\')">🔗 Asignaciones Recientes <span style="font-size:0.8rem;color:var(--primary);">(ver todas →)</span></h4>';
+      if (recentAssign && recentAssign.length > 0) {
+        assignHtml += recentAssign.map(a => {
+          const tree = treeLookup[a.tree_id] || {};
+          const targetName = a.user_id ? ('👤 ' + (userLookup[a.user_id]?.full_name || 'Usuario')) : ('📂 ' + (groupLookup[a.group_id]?.name || 'Grupo'));
+          return `<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #eee;">
+            <span>🌳 ${escapeHtml(tree.tree_code || '-')} (${escapeHtml(tree.common_name || '')})</span>
+            <span>→ ${targetName}</span>
             <span class="text-muted text-small">${formatDate(a.assigned_at)}</span>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
+      } else {
+        assignHtml += '<p class="text-muted" style="padding:1rem;">Sin asignaciones aún</p>';
+      }
+      dashAssignEl.innerHTML = assignHtml;
     }
 
     if (typeof Chart !== 'undefined') {
@@ -628,22 +665,42 @@ async function loadAssignments() {
       populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
     });
 
-    // Load existing tree assignments
+    // Load existing tree assignments (simple query, then lookup names)
     const { data: treeAssignments } = await sb.from('tree_assignments')
-      .select('*, trees_catalog(tree_code, common_name), user_profiles!tree_assignments_user_id_fkey(full_name)')
+      .select('*')
       .order('assigned_at', { ascending: false });
+
+    // Build lookups for tree assignments
+    const taTreeIds = [...new Set((treeAssignments || []).map(a => a.tree_id))];
+    const taUserIds = [...new Set((treeAssignments || []).filter(a => a.user_id).map(a => a.user_id))];
+    const taGroupIds = [...new Set((treeAssignments || []).filter(a => a.group_id).map(a => a.group_id))];
+
+    let taTreeMap = {}, taUserMap = {}, taGroupMap = {};
+    if (taTreeIds.length > 0) {
+      const { data: td } = await sb.from('trees_catalog').select('id, tree_code, common_name').in('id', taTreeIds);
+      (td || []).forEach(t => { taTreeMap[t.id] = t; });
+    }
+    if (taUserIds.length > 0) {
+      const { data: ud } = await sb.from('user_profiles').select('id, full_name').in('id', taUserIds);
+      (ud || []).forEach(u => { taUserMap[u.id] = u; });
+    }
+    if (taGroupIds.length > 0) {
+      const { data: gd } = await sb.from('user_groups').select('id, name').in('id', taGroupIds);
+      (gd || []).forEach(g => { taGroupMap[g.id] = g; });
+    }
 
     const treeBody = document.getElementById('tree-assignments-body');
     if (treeBody) {
       treeBody.innerHTML = '';
       (treeAssignments || []).forEach(a => {
         const row = document.createElement('tr');
-        const name = a.user_profiles?.full_name || (a.group_id ? 'Grupo' : '-');
+        const tree = taTreeMap[a.tree_id] || {};
+        const targetName = a.user_id ? (taUserMap[a.user_id]?.full_name || 'Usuario') : (taGroupMap[a.group_id]?.name || 'Grupo');
         const type = a.user_id ? 'Usuario' : 'Grupo';
         const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
         row.innerHTML = `
-          <td>🌳 ${escapeHtml(a.trees_catalog?.tree_code || '-')} - ${escapeHtml(a.trees_catalog?.common_name || '')}</td>
-          <td>${escapeHtml(name)}</td>
+          <td>🌳 ${escapeHtml(tree.tree_code || '-')} - ${escapeHtml(tree.common_name || '')}</td>
+          <td>${escapeHtml(targetName)}</td>
           <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
           <td>${formatDate(a.assigned_at)}</td>
           <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${a.id}')">Quitar</button></td>
@@ -655,22 +712,41 @@ async function loadAssignments() {
       }
     }
 
-    // Load existing garden assignments
+    // Load existing garden assignments (simple query)
     const { data: gardenAssignments } = await sb.from('garden_assignments')
-      .select('*, gardens(name, campus), user_profiles!garden_assignments_user_id_fkey(full_name)')
+      .select('*')
       .order('assigned_at', { ascending: false });
+
+    const gaGardenIds = [...new Set((gardenAssignments || []).map(a => a.garden_id))];
+    const gaUserIds = [...new Set((gardenAssignments || []).filter(a => a.user_id).map(a => a.user_id))];
+    const gaGroupIds = [...new Set((gardenAssignments || []).filter(a => a.group_id).map(a => a.group_id))];
+
+    let gaGardenMap = {}, gaUserMap = {}, gaGroupMap = {};
+    if (gaGardenIds.length > 0) {
+      const { data: gard } = await sb.from('gardens').select('id, name, campus').in('id', gaGardenIds);
+      (gard || []).forEach(g => { gaGardenMap[g.id] = g; });
+    }
+    if (gaUserIds.length > 0) {
+      const { data: ud2 } = await sb.from('user_profiles').select('id, full_name').in('id', gaUserIds);
+      (ud2 || []).forEach(u => { gaUserMap[u.id] = u; });
+    }
+    if (gaGroupIds.length > 0) {
+      const { data: gd2 } = await sb.from('user_groups').select('id, name').in('id', gaGroupIds);
+      (gd2 || []).forEach(g => { gaGroupMap[g.id] = g; });
+    }
 
     const gardenBody = document.getElementById('garden-assignments-body');
     if (gardenBody) {
       gardenBody.innerHTML = '';
       (gardenAssignments || []).forEach(a => {
-        const name = a.user_profiles?.full_name || (a.group_id ? 'Grupo' : '-');
+        const garden = gaGardenMap[a.garden_id] || {};
+        const targetName = a.user_id ? (gaUserMap[a.user_id]?.full_name || 'Usuario') : (gaGroupMap[a.group_id]?.name || 'Grupo');
         const type = a.user_id ? 'Usuario' : 'Grupo';
         const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
         const row = document.createElement('tr');
         row.innerHTML = `
-          <td>🌿 ${escapeHtml(a.gardens?.name || '-')} (${escapeHtml(a.gardens?.campus || '')})</td>
-          <td>${escapeHtml(name)}</td>
+          <td>🌿 ${escapeHtml(garden.name || '-')} (${escapeHtml(garden.campus || '')})</td>
+          <td>${escapeHtml(targetName)}</td>
           <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
           <td>${formatDate(a.assigned_at)}</td>
           <td><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${a.id}')">Quitar</button></td>
