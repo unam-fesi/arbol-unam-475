@@ -1,20 +1,9 @@
 // ============================================================================
-// PUM-AI - Consultor de arboricultura usando Gemini API directo
+// PUM-AI - Consultor de arboricultura via Edge Function (Gemini protegido)
 // ============================================================================
 
 let pumaiChatHistory = [];
 let pumaiCurrentPhoto = null;
-
-const PUMAI_SYSTEM_PROMPT = `Eres PUM-AI, un consultor experto en arboricultura de la UNAM (Universidad Nacional Autónoma de México), campus FES Iztacala. Tu especialidad es el cuidado de árboles endémicos y nativos de México.
-
-Tus capacidades:
-- Diagnóstico de enfermedades y plagas en árboles
-- Recomendaciones de cuidado (riego, poda, fertilización)
-- Identificación de especies por foto
-- Evaluación de salud del árbol
-- Consejos de conservación
-
-Responde siempre en español, de forma clara y práctica. Si recibes una foto, analízala describiendo lo que observas del árbol (hojas, tronco, color, posibles problemas).`;
 
 function initPumAI() {
   const container = document.getElementById('pumai-content');
@@ -129,70 +118,41 @@ async function sendPumaiMessage() {
   );
 
   try {
-    // Build Gemini API request
-    const contents = [];
-
-    // Add system instruction via first user turn context
-    const parts = [];
-
-    // Add text
-    const userText = message || 'Analiza esta foto de mi árbol y dame un diagnóstico completo.';
-    parts.push({ text: PUMAI_SYSTEM_PROMPT + '\n\nUsuario: ' + userText });
+    // Build request body for Edge Function
+    const requestBody = {
+      message: message || 'Analiza esta foto de mi árbol y dame un diagnóstico completo.'
+    };
 
     // Add photo if present
     if (pumaiCurrentPhoto) {
-      const base64Data = pumaiCurrentPhoto.split(',')[1]; // Remove data:image/...;base64, prefix
-      const mimeType = pumaiCurrentPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
-      parts.push({
-        inline_data: {
-          mime_type: mimeType,
-          data: base64Data
-        }
-      });
+      requestBody.imageBase64 = pumaiCurrentPhoto.split(',')[1]; // Remove data:...;base64, prefix
+      requestBody.imageType = pumaiCurrentPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
     }
 
-    contents.push({ role: 'user', parts });
+    // Get current session token for auth
+    const { data: sessionData } = await sb.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
 
-    // Add chat history (last 6 messages)
-    pumaiChatHistory.slice(-6).forEach(msg => {
-      contents.push({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }]
-      });
-    });
-
-    // Re-add current message at end if we have history
-    if (pumaiChatHistory.length > 0) {
-      const currentParts = [{ text: userText }];
-      if (pumaiCurrentPhoto) {
-        const base64Data = pumaiCurrentPhoto.split(',')[1];
-        const mimeType = pumaiCurrentPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
-        currentParts.push({ inline_data: { mime_type: mimeType, data: base64Data } });
-      }
-      contents.push({ role: 'user', parts: currentParts });
-    }
-
-    const response = await fetch(GEMINI_URL, {
+    // Call Edge Function (Gemini key lives server-side, safe!)
+    const response = await fetch(PUMAI_FUNCTION_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 1024
-        }
-      })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (accessToken || SUPABASE_KEY),
+        'apikey': SUPABASE_KEY
+      },
+      body: JSON.stringify(requestBody)
     });
 
     document.getElementById(typingId)?.remove();
 
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(errText || `Error ${response.status}`);
+      const errData = await response.json().catch(() => ({ error: `Error ${response.status}` }));
+      throw new Error(errData.error || errData.details?.error?.message || `Error ${response.status}`);
     }
 
     const result = await response.json();
-    const botReply = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta del modelo.';
+    const botReply = result.reply || 'Sin respuesta del modelo.';
 
     // Simple markdown-like formatting
     const formattedReply = botReply
@@ -202,16 +162,16 @@ async function sendPumaiMessage() {
     addPumaiMessage(formattedReply, false);
 
     pumaiChatHistory.push(
-      { role: 'user', content: userText },
+      { role: 'user', content: requestBody.message },
       { role: 'assistant', content: botReply }
     );
 
     removePumaiPhoto();
 
-    // Save conversation to DB (optional, non-blocking)
+    // Save conversation to DB (non-blocking)
     if (currentUser) {
       sb.from('ai_conversations').insert([
-        { user_id: currentUser.id, role: 'user', message: userText },
+        { user_id: currentUser.id, role: 'user', message: requestBody.message },
         { user_id: currentUser.id, role: 'assistant', message: botReply }
       ]).then(() => {}).catch(() => {});
     }
@@ -222,10 +182,6 @@ async function sendPumaiMessage() {
     addPumaiMessage(`<span style="color:var(--danger);">Error: ${escapeHtml(err.message)}</span>`, false);
   }
 }
-
-window.initPumAI = initPumAI;
-window.sendPumaiMessage = sendPumaiMessage;
-window.removePumaiPhoto = removePumaiPhoto;
 
 window.initPumAI = initPumAI;
 window.sendPumaiMessage = sendPumaiMessage;
