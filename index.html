@@ -2080,7 +2080,7 @@
 </section>
 
                 <!-- ========== SPECIALIST SECTION ========== -->
-                <section id="section-specialist" class="page-section hidden">
+                <section id="section-specialist" class="page-section">
                     <h2 style="margin-bottom: 2rem;">Panel de Especialista</h2>
 
                     <div class="specialist-container">
@@ -2246,7 +2246,7 @@
 </section>
 
                 <!-- ========== ADMIN PANEL ========== -->
-                <section id="section-admin" class="page-section hidden">
+                <section id="section-admin" class="page-section">
                     <h2 style="margin-bottom: 2rem;">Panel de Administración</h2>
 
                     <div class="admin-panel">
@@ -3211,7 +3211,7 @@ function showSection(sectionId) {
     } else if (sectionId === 'section-pumai') {
       initPumaiBotUI();
     } else if (sectionId === 'section-admin') {
-      loadAdminDashboard();
+      switchAdminTab('users');
     } else if (sectionId === 'section-specialist') {
       loadSpecialistTrees();
     }
@@ -3610,7 +3610,8 @@ async function loadAdminUsers() {
 
     if (error) throw error;
 
-    const tbody = document.querySelector('#table-users tbody');
+    const tbody = document.getElementById('users-table-body');
+    if (!tbody) { showToast('Error: tabla de usuarios no encontrada', 'error'); return; }
     tbody.innerHTML = '';
 
     data.forEach(user => {
@@ -3762,7 +3763,8 @@ async function loadAdminTrees() {
 
     if (error) throw error;
 
-    const tbody = document.querySelector('#table-trees tbody');
+    const tbody = document.getElementById('trees-table-body');
+    if (!tbody) { showToast('Error: tabla de árboles no encontrada', 'error'); return; }
     tbody.innerHTML = '';
 
     data.forEach(tree => {
@@ -3938,7 +3940,8 @@ async function loadAdminGardens() {
 
     if (error) throw error;
 
-    const tbody = document.querySelector('#table-gardens tbody');
+    const tbody = document.getElementById('gardens-table-body');
+    if (!tbody) { showToast('Error: tabla de jardines no encontrada', 'error'); return; }
     tbody.innerHTML = '';
 
     data.forEach(garden => {
@@ -4077,7 +4080,8 @@ async function loadAdminGroups() {
 
     if (groupsError) throw groupsError;
 
-    const tbody = document.querySelector('#table-groups tbody');
+    const tbody = document.getElementById('groups-table-body');
+    if (!tbody) { showToast('Error: tabla de grupos no encontrada', 'error'); return; }
     tbody.innerHTML = '';
 
     for (const group of groups) {
@@ -4287,7 +4291,8 @@ async function loadAdminNotifications() {
 
     if (error) throw error;
 
-    const tbody = document.querySelector('#table-notifications tbody');
+    const tbody = document.getElementById('notificationsTableBody');
+    if (!tbody) { showToast('Error: tabla de notificaciones no encontrada', 'error'); return; }
     tbody.innerHTML = '';
 
     data.forEach(notif => {
@@ -4378,54 +4383,74 @@ async function sendNotification() {
  */
 async function loadAdminDashboard() {
   try {
-    // Get stats
+    // Get user count
+    const { count: userCount } = await sb
+      .from('user_profiles')
+      .select('*', { count: 'exact', head: true });
+
+    // Get tree stats
     const { count: treeCount } = await sb
       .from('trees_catalog')
       .select('*', { count: 'exact', head: true });
 
-    const { data: trees } = await sb
+    const { data: trees, error: treesError } = await sb
       .from('trees_catalog')
       .select('health_score, status, campus');
 
+    if (treesError) {
+      console.warn('Dashboard: trees query error (table may not exist yet):', treesError.message);
+    }
+
     // Calculate averages
-    const avgHealth = trees && trees.length > 0
-      ? Math.round(trees.reduce((sum, t) => sum + (t.health_score || 0), 0) / trees.length)
+    const treeList = trees || [];
+    const avgHealth = treeList.length > 0
+      ? Math.round(treeList.reduce((sum, t) => sum + (t.health_score || 0), 0) / treeList.length)
       : 0;
 
     const statusCounts = {};
     const campusCounts = {};
 
-    if (trees) {
-      trees.forEach(tree => {
-        statusCounts[tree.status || 'activo'] = (statusCounts[tree.status || 'activo'] || 0) + 1;
-        campusCounts[tree.campus || 'CU'] = (campusCounts[tree.campus || 'CU'] || 0) + 1;
-      });
-    }
+    treeList.forEach(tree => {
+      statusCounts[tree.status || 'activo'] = (statusCounts[tree.status || 'activo'] || 0) + 1;
+      campusCounts[tree.campus || 'Iztacala'] = (campusCounts[tree.campus || 'Iztacala'] || 0) + 1;
+    });
 
     // Display stats
     const statsContainer = document.getElementById('dashboard-stats');
-    statsContainer.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
-        <div style="background: #E3F2FD; padding: 20px; border-radius: 8px; text-align: center;">
+    if (statsContainer) {
+      statsContainer.innerHTML = `
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 2rem; color: var(--primary);">👥</div>
+          <h3>${userCount || 0}</h3>
+          <p class="text-muted">Usuarios</p>
+        </div>
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 2rem; color: var(--primary);">🌳</div>
           <h3>${treeCount || 0}</h3>
-          <p>Árboles totales</p>
+          <p class="text-muted">Árboles</p>
         </div>
-        <div style="background: #F3E5F5; padding: 20px; border-radius: 8px; text-align: center;">
-          <h3>${avgHealth}</h3>
-          <p>Salud promedio</p>
+        <div class="card" style="text-align: center;">
+          <div style="font-size: 2rem; color: var(--success);">💚</div>
+          <h3>${avgHealth}%</h3>
+          <p class="text-muted">Salud Promedio</p>
         </div>
-      </div>
-    `;
+      `;
+    }
 
-    // Create charts
-    createHealthChart(trees || []);
-    createStatusChart(statusCounts);
-    createCampusChart(campusCounts);
+    // Destroy previous charts to avoid "canvas already in use" error
+    Chart.helpers?.each(Chart.instances, function(instance) { instance.destroy(); });
+
+    // Create charts (only if there's data)
+    if (treeList.length > 0) {
+      createHealthChart(treeList);
+      createStatusChart(statusCounts);
+      createCampusChart(campusCounts);
+    }
 
     showToast('Dashboard cargado', 'success');
   } catch (err) {
     console.error('Error loading dashboard:', err);
-    showToast('Error cargando dashboard', 'error');
+    showToast('Error cargando dashboard: ' + err.message, 'error');
   }
 }
 
@@ -4505,17 +4530,19 @@ function createCampusChart(campusCounts) {
  * Switch admin tab
  */
 function switchAdminTab(tabName) {
-  // Hide all content
-  document.querySelectorAll('[id^="admin-content-"]').forEach(el => {
+  // Hide all tab panes
+  document.querySelectorAll('.tab-pane').forEach(el => {
     el.style.display = 'none';
+    el.classList.remove('active');
   });
 
-  // Show selected content
-  const content = document.getElementById(`admin-content-${tabName}`);
+  // Show selected tab pane (IDs are like: usersTab, treesTab, dashboardTab)
+  const content = document.getElementById(`${tabName}Tab`);
   if (content) {
     content.style.display = 'block';
+    content.classList.add('active');
 
-    // Load data
+    // Load data for the tab
     if (tabName === 'users') loadAdminUsers();
     else if (tabName === 'trees') loadAdminTrees();
     else if (tabName === 'gardens') loadAdminGardens();
@@ -4524,11 +4551,13 @@ function switchAdminTab(tabName) {
     else if (tabName === 'dashboard') loadAdminDashboard();
   }
 
-  // Update tab active state
-  document.querySelectorAll('[id^="admin-tab-"]').forEach(tab => {
+  // Update tab button active state
+  document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.classList.remove('active');
+    if (tab.dataset.tab === tabName) {
+      tab.classList.add('active');
+    }
   });
-  document.getElementById(`admin-tab-${tabName}`)?.classList.add('active');
 }
 
 // ============================================================================
@@ -5132,9 +5161,9 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Admin tab switching
-  document.querySelectorAll('[id^="admin-tab-"]').forEach(tab => {
+  document.querySelectorAll('.admin-tab[data-tab]').forEach(tab => {
     tab.addEventListener('click', function() {
-      const tabName = this.id.replace('admin-tab-', '');
+      const tabName = this.dataset.tab;
       switchAdminTab(tabName);
     });
   });
