@@ -117,6 +117,9 @@ async function handleLogout() {
     await sb.auth.signOut();
     currentUser = null;
     currentUserProfile = null;
+    // Reset section caches
+    if (typeof myTreeLoaded !== 'undefined') myTreeLoaded = false;
+    if (typeof dashboardLoaded !== 'undefined') dashboardLoaded = false;
 
     // Clear all local storage related to Supabase
     const keysToRemove = [];
@@ -144,8 +147,14 @@ async function handleLogout() {
   }
 }
 
-async function loadUserProfile() {
+async function loadUserProfile(forceReload) {
   if (!currentUser) return;
+  // Skip if already loaded (unless forced)
+  if (currentUserProfile && !forceReload) {
+    setupRoleBasedNav(currentUserProfile.role);
+    updateUserDisplay();
+    return;
+  }
   try {
     const { data, error } = await sb
       .from('user_profiles')
@@ -182,19 +191,14 @@ function openProfileModal() {
   if (currentUserProfile) {
     document.getElementById('profile-fullname').value = currentUserProfile.full_name || '';
     document.getElementById('profile-email').value = currentUser?.email || '';
-    document.getElementById('profile-phone').value = currentUserProfile.phone || '';
+    document.getElementById('profile-account-number').value = currentUserProfile.account_number || '';
+    document.getElementById('profile-birth-date').value = currentUserProfile.birth_date || '';
     document.getElementById('profile-academic-status').value = currentUserProfile.academic_status || '';
-    document.getElementById('profile-department').value = currentUserProfile.department || '';
+    document.getElementById('profile-campus').value = currentUserProfile.campus || '';
 
-    // Avatar
-    const preview = document.getElementById('profile-avatar-preview');
+    // Avatar placeholder (initials)
     const placeholder = document.getElementById('profile-avatar-placeholder');
-    if (currentUserProfile.avatar_url) {
-      preview.src = currentUserProfile.avatar_url;
-      preview.style.display = 'block';
-      placeholder.style.display = 'none';
-    } else {
-      preview.style.display = 'none';
+    if (placeholder) {
       placeholder.style.display = 'flex';
       placeholder.textContent = (currentUserProfile.full_name || 'U').charAt(0).toUpperCase();
     }
@@ -206,39 +210,15 @@ function closeProfileModal() {
   if (modal) modal.style.display = 'none';
 }
 
-let pendingAvatarBase64 = null;
-
-function handleProfilePhotoChange(input) {
-  if (!input.files || !input.files[0]) return;
-  const file = input.files[0];
-
-  if (file.size > 2 * 1024 * 1024) {
-    showToast('La imagen no debe superar 2MB', 'warning');
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    pendingAvatarBase64 = e.target.result;
-    const preview = document.getElementById('profile-avatar-preview');
-    const placeholder = document.getElementById('profile-avatar-placeholder');
-    if (preview) {
-      preview.src = pendingAvatarBase64;
-      preview.style.display = 'block';
-    }
-    if (placeholder) placeholder.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
-}
-
 async function saveProfile(e) {
   if (e) e.preventDefault();
   if (!currentUser) return;
 
   const fullName = document.getElementById('profile-fullname').value.trim();
-  const phone = document.getElementById('profile-phone').value.trim();
+  const accountNumber = document.getElementById('profile-account-number').value.trim();
+  const birthDate = document.getElementById('profile-birth-date').value;
   const academicStatus = document.getElementById('profile-academic-status').value;
-  const department = document.getElementById('profile-department').value.trim();
+  const campus = document.getElementById('profile-campus').value.trim();
 
   if (!fullName) {
     showToast('El nombre es obligatorio', 'warning');
@@ -247,19 +227,11 @@ async function saveProfile(e) {
 
   const updates = {
     full_name: fullName,
-    phone: phone || null,
+    account_number: accountNumber || null,
+    birth_date: birthDate || null,
     academic_status: academicStatus || null,
-    department: department || null,
-    updated_at: new Date().toISOString()
+    campus: campus || null
   };
-
-  // Handle avatar upload
-  if (pendingAvatarBase64) {
-    // Store avatar as data URL in avatar_url field (simple approach)
-    // For large scale, use Supabase Storage instead
-    updates.avatar_url = pendingAvatarBase64;
-    pendingAvatarBase64 = null;
-  }
 
   try {
     const { error } = await sb
@@ -289,5 +261,4 @@ window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
 window.openProfileModal = openProfileModal;
 window.closeProfileModal = closeProfileModal;
-window.handleProfilePhotoChange = handleProfilePhotoChange;
 window.saveProfile = saveProfile;
