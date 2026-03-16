@@ -38,7 +38,10 @@ function switchAdminTab(tabName) {
 }
 
 // ---- DASHBOARD ----
-async function loadAdminDashboard() {
+let dashboardLoaded = false;
+
+async function loadAdminDashboard(forceReload) {
+  if (dashboardLoaded && !forceReload) return;
   try {
     const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
     const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
@@ -127,11 +130,81 @@ async function loadAdminDashboard() {
         new Chart(campusCtx, { type: 'bar', data: { labels: Object.keys(campusCounts), datasets: [{ label: 'Árboles', data: Object.values(campusCounts), backgroundColor: '#2196F3' }] }, options: { responsive: true, plugins: { legend: { display: false } } } });
       }
     }
+    // Load map with tree locations
+    loadAdminMap(treeList);
+
+    dashboardLoaded = true;
     showToast('Dashboard cargado', 'success');
   } catch (err) {
     console.error('Dashboard error:', err);
     showToast('Error cargando dashboard: ' + err.message, 'error');
   }
+}
+
+let adminMapInstance = null;
+
+function loadAdminMap(treeList) {
+  const mapEl = document.getElementById('admin-map');
+  if (!mapEl || typeof L === 'undefined') return;
+
+  // Destroy previous map instance
+  if (adminMapInstance) {
+    adminMapInstance.remove();
+    adminMapInstance = null;
+  }
+
+  // Centro del Estado de México / zona FESI (Tlalnepantla)
+  const defaultCenter = [19.5322, -99.1847];
+  adminMapInstance = L.map('admin-map').setView(defaultCenter, 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(adminMapInstance);
+
+  // Fetch trees with coordinates from DB
+  sb.from('trees_catalog')
+    .select('id, tree_code, common_name, species, location_lat, location_lng, health_score, status, campus')
+    .not('location_lat', 'is', null)
+    .not('location_lng', 'is', null)
+    .then(({ data: geoTrees, error }) => {
+      if (error || !geoTrees || geoTrees.length === 0) {
+        // No trees with coordinates, show message
+        L.popup()
+          .setLatLng(defaultCenter)
+          .setContent('<p>No hay árboles con coordenadas registradas aún.<br>Agrega ubicaciones desde el panel de árboles.</p>')
+          .openOn(adminMapInstance);
+        return;
+      }
+
+      const markers = [];
+      geoTrees.forEach(t => {
+        const healthColor = (t.health_score || 0) >= 70 ? '#4CAF50' : (t.health_score || 0) >= 40 ? '#FFC107' : '#f44336';
+        const icon = L.divIcon({
+          className: 'tree-marker',
+          html: `<div style="background:${healthColor};width:24px;height:24px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:12px;">🌳</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        const marker = L.marker([t.location_lat, t.location_lng], { icon })
+          .addTo(adminMapInstance)
+          .bindPopup(`
+            <b>${escapeHtml(t.common_name || t.species || 'Árbol')}</b><br>
+            Código: ${escapeHtml(t.tree_code || '-')}<br>
+            Campus: ${escapeHtml(t.campus || '-')}<br>
+            Salud: ${t.health_score || 0}%<br>
+            Status: ${escapeHtml(t.status || '-')}
+          `);
+        markers.push(marker);
+      });
+
+      // Fit bounds to show all markers
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        adminMapInstance.fitBounds(group.getBounds().pad(0.2));
+      }
+    });
+
+  // Force map to recalculate size after render
+  setTimeout(() => { adminMapInstance.invalidateSize(); }, 200);
 }
 
 // ---- USERS ----
