@@ -91,7 +91,7 @@ async function loadAdminDashboard(forceReload) {
       if (recentAssign && recentAssign.length > 0) {
         assignHtml += recentAssign.map(a => {
           const tree = treeLookup[a.tree_id] || {};
-          const targetName = a.user_id ? ('👤 ' + (userLookup[a.user_id]?.full_name || 'Usuario')) : ('📂 ' + (groupLookup[a.group_id]?.name || 'Grupo'));
+          const targetName = a.user_id ? ('👤 ' + escapeHtml(userLookup[a.user_id]?.full_name || 'Usuario')) : ('📂 ' + escapeHtml(groupLookup[a.group_id]?.name || 'Grupo'));
           return `<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #eee;">
             <span>🌳 ${escapeHtml(tree.tree_code || '-')} (${escapeHtml(tree.common_name || '')})</span>
             <span>→ ${targetName}</span>
