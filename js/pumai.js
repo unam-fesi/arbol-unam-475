@@ -140,6 +140,11 @@ async function sendPumaiMessage() {
       throw new Error(error.message || 'Error llamando a PUM-AI');
     }
 
+    // Check for error in body (Edge Function always returns 200)
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
     const botReply = data?.reply || 'Sin respuesta del modelo.';
 
     // Simple markdown-like formatting
