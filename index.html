@@ -74,15 +74,16 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 60vw;
-    height: 60vh;
+    width: 50vw;
+    height: 50vh;
     background-image: url('img/fesi-logo.png');
     background-repeat: no-repeat;
     background-position: center;
     background-size: contain;
-    opacity: 0.12;
+    opacity: 0.08;
     pointer-events: none;
     z-index: 0;
+    mix-blend-mode: multiply;
 }
 
         body > * {
@@ -2378,6 +2379,11 @@
                                 <div id="dashboard-assignments" style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
                                     <!-- Filled by JS: recent assignments -->
                                 </div>
+
+                                <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
+                                    <h4 style="margin-bottom: 1rem;"><i class="fas fa-map-marked-alt"></i> Mapa de &Aacute;rboles - Estado de M&eacute;xico</h4>
+                                    <div id="admin-map" style="height: 450px; border-radius: var(--radius); border: 1px solid var(--border-light);"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2395,15 +2401,7 @@
             </div>
 
             <div style="text-align:center;margin-bottom:1.5rem;">
-                <div style="position:relative;display:inline-block;">
-                    <img id="profile-avatar-preview" src="" alt="Avatar" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);background:var(--bg);display:none;">
-                    <div id="profile-avatar-placeholder" style="width:100px;height:100px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:600;margin:0 auto;">U</div>
-                    <label for="profile-photo-input" style="position:absolute;bottom:0;right:0;background:var(--primary);color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid white;font-size:0.8rem;">
-                        <i class="fas fa-camera"></i>
-                    </label>
-                    <input type="file" id="profile-photo-input" accept="image/*" style="display:none;" onchange="handleProfilePhotoChange(this)">
-                </div>
-                <p style="font-size:0.8rem;color:var(--text-light);margin-top:0.5rem;">Haz clic en la cámara para cambiar tu foto</p>
+                <div id="profile-avatar-placeholder" style="width:100px;height:100px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:600;margin:0 auto;">U</div>
             </div>
 
             <form id="profile-form" onsubmit="saveProfile(event)">
@@ -2412,15 +2410,19 @@
                     <input type="text" id="profile-fullname" placeholder="Tu nombre" required>
                 </div>
                 <div class="form-group">
-                    <label>Correo electrónico</label>
+                    <label>Correo electr&oacute;nico</label>
                     <input type="email" id="profile-email" disabled style="background:var(--bg);color:var(--text-light);">
                 </div>
                 <div class="form-group">
-                    <label>Teléfono</label>
-                    <input type="tel" id="profile-phone" placeholder="55 1234 5678">
+                    <label>N&uacute;mero de cuenta</label>
+                    <input type="text" id="profile-account-number" placeholder="Ej: 31700000-0">
                 </div>
                 <div class="form-group">
-                    <label>Estatus Académico</label>
+                    <label>Fecha de nacimiento</label>
+                    <input type="date" id="profile-birth-date">
+                </div>
+                <div class="form-group">
+                    <label>Estatus Acad&eacute;mico</label>
                     <select id="profile-academic-status">
                         <option value="">Seleccionar...</option>
                         <option value="alumno">Alumno</option>
@@ -2433,8 +2435,16 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Departamento / Carrera</label>
-                    <input type="text" id="profile-department" placeholder="Ej: Biología, Enfermería...">
+                    <label>Campus</label>
+                    <select id="profile-campus">
+                        <option value="">Seleccionar...</option>
+                        <option value="FESI">FES Iztacala</option>
+                        <option value="FESA">FES Arag&oacute;n</option>
+                        <option value="FESC">FES Cuautitl&aacute;n</option>
+                        <option value="FESZ">FES Zaragoza</option>
+                        <option value="FESAC">FES Acatl&aacute;n</option>
+                        <option value="CU">Ciudad Universitaria</option>
+                    </select>
                 </div>
                 <div style="display:flex;gap:1rem;margin-top:1.5rem;">
                     <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> Guardar Cambios</button>
