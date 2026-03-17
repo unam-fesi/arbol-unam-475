@@ -14,7 +14,8 @@ function initPumAI() {
   container.innerHTML = `
     <div class="pum-ai-container" style="display:flex;gap:0;flex-direction:column;max-width:800px;margin:0 auto;">
       <div id="pumai-messages" style="background:white;border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--shadow);min-height:350px;max-height:500px;overflow-y:auto;padding:1.5rem;">
-        <div style="margin-bottom:1rem;">
+        <div style="margin-bottom:1rem;display:flex;gap:12px;align-items:flex-start;">
+          <img src="img/pumai-logo.png" alt="PUM-AI" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0;">
           <div style="background:#e8f5e9;padding:12px 16px;border-radius:12px;border-bottom-left-radius:4px;max-width:85%;font-size:0.95rem;">
             ¡Hola! Soy <strong>PUM-AI</strong>, tu consultor de arboricultura. Puedes subir una foto de tu árbol y/o hacerme preguntas sobre cuidados, plagas, diagnósticos, etc.
           </div>
@@ -75,7 +76,16 @@ function addPumaiMessage(content, isUser) {
   if (!container) return;
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = `margin-bottom:1rem;display:flex;${isUser ? 'justify-content:flex-end' : ''}`;
+  wrapper.style.cssText = `margin-bottom:1rem;display:flex;gap:10px;align-items:flex-start;${isUser ? 'justify-content:flex-end' : ''}`;
+
+  // Add PUM-AI avatar for bot messages
+  if (!isUser) {
+    const avatar = document.createElement('img');
+    avatar.src = 'img/pumai-logo.png';
+    avatar.alt = 'PUM-AI';
+    avatar.style.cssText = 'width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0;margin-top:2px;';
+    wrapper.appendChild(avatar);
+  }
 
   const bubble = document.createElement('div');
   bubble.style.cssText = `
@@ -123,10 +133,14 @@ async function sendPumaiMessage() {
       message: message || 'Analiza esta foto de mi árbol y dame un diagnóstico completo.'
     };
 
-    // Add photo if present
+    // Add photo if present — compress first to avoid request size limits
     if (pumaiCurrentPhoto) {
-      requestBody.imageBase64 = pumaiCurrentPhoto.split(',')[1];
-      requestBody.imageType = pumaiCurrentPhoto.split(';')[0].split(':')[1] || 'image/jpeg';
+      let photoToSend = pumaiCurrentPhoto;
+      if (typeof compressImageForAI === 'function') {
+        try { photoToSend = await compressImageForAI(pumaiCurrentPhoto, 1024, 1024, 0.7); } catch(e) {}
+      }
+      requestBody.imageBase64 = photoToSend.split(',')[1];
+      requestBody.imageType = 'image/jpeg';
     }
 
     // Use sb.functions.invoke() - handles auth headers automatically
