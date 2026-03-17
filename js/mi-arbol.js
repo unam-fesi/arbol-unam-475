@@ -453,15 +453,29 @@ async function saveMeasurement(e) {
 
   try {
     let photoUrl = null;
-    if (pendingPhotoFile) {
-      const fileName = `${currentTreeData.id}/${Date.now()}_${pendingPhotoFile.name}`;
-      const { error: uploadError } = await sb.storage.from('tree-photos').upload(fileName, pendingPhotoFile, { contentType: pendingPhotoFile.type });
-      if (uploadError) {
-        console.error('Photo upload error:', uploadError);
-        showToast('Error subiendo foto, se guardará sin ella', 'warning');
-      } else {
-        const { data: urlData } = sb.storage.from('tree-photos').getPublicUrl(fileName);
-        photoUrl = urlData?.publicUrl || null;
+    if (pendingPhotoBase64) {
+      try {
+        // Compress image before uploading to storage (max 1200px, JPEG 80%)
+        const compressed = await compressImageForAI(pendingPhotoBase64, 1200, 1200, 0.8);
+        // Convert data URL to Blob for upload
+        const byteString = atob(compressed.split(',')[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const blob = new Blob([ab], { type: 'image/jpeg' });
+
+        const fileName = `${currentTreeData.id}/${Date.now()}.jpg`;
+        const { error: uploadError } = await sb.storage.from('tree-photos').upload(fileName, blob, { contentType: 'image/jpeg' });
+        if (uploadError) {
+          console.error('Photo upload error:', uploadError);
+          showToast('Error subiendo foto, se guardará sin ella', 'warning');
+        } else {
+          const { data: urlData } = sb.storage.from('tree-photos').getPublicUrl(fileName);
+          photoUrl = urlData?.publicUrl || null;
+        }
+      } catch (compErr) {
+        console.error('Photo compress/upload error:', compErr);
+        showToast('Error procesando foto, se guardará sin ella', 'warning');
       }
     }
 
@@ -508,24 +522,30 @@ function buildTimeline(measurements) {
       cleanObs = cleanObs.replace(/\n?\n?\[RUBROS\].*$/, '').trim();
     }
 
+    // Build measurement info chips (always show what's available)
+    const chips = [];
+    if (m.height_cm) chips.push(`<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Altura</div><strong>${m.height_cm} cm</strong></div>`);
+    if (m.trunk_diameter_cm) chips.push(`<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Tronco</div><strong>${m.trunk_diameter_cm} cm</strong></div>`);
+    if (m.crown_diameter_cm) chips.push(`<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Copa</div><strong>${m.crown_diameter_cm} cm</strong></div>`);
+
+    // Count rubric evaluations
+    const rubricCount = rubricData ? Object.keys(rubricData).filter(k => k !== 'justificacion').length : 0;
+    if (rubricCount > 0) chips.push(`<div style="text-align:center;padding:0.4rem;background:#e8f5e9;border-radius:6px;"><div class="text-small text-muted">Rubros</div><strong>${rubricCount} evaluados</strong></div>`);
+    if (hasPhoto) chips.push(`<div style="text-align:center;padding:0.4rem;background:#e3f2fd;border-radius:6px;"><div class="text-small text-muted">Foto</div><strong><i class="fas fa-camera"></i> Sí</strong></div>`);
+
     return `
       <div class="card" style="padding:1.25rem;margin-bottom:1rem;border-left:4px solid ${i === 0 ? 'var(--primary)' : 'var(--border-light)'};cursor:pointer;transition:box-shadow 0.2s;" onclick="showMeasurementDetail(${m.id})" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow=''">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
           <div>
             <strong><i class="fas fa-calendar"></i> ${dateStr}</strong>
             ${m.health_score != null ? `<span class="badge badge-${m.health_score >= 70 ? 'success' : m.health_score >= 40 ? 'warning' : 'danger'}" style="margin-left:0.5rem;">Salud: ${m.health_score}%</span>` : ''}
-            ${hasPhoto ? '<span style="margin-left:0.5rem;"><i class="fas fa-camera" style="color:var(--primary);"></i></span>' : ''}
           </div>
           <div style="display:flex;gap:0.5rem;align-items:center;">
             ${i === 0 ? '<span class="badge badge-primary">Más reciente</span>' : ''}
             <i class="fas fa-chevron-right" style="color:var(--text-light);"></i>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem;margin-top:0.75rem;">
-          ${m.height_cm ? `<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Altura</div><strong>${m.height_cm} cm</strong></div>` : ''}
-          ${m.trunk_diameter_cm ? `<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Tronco</div><strong>${m.trunk_diameter_cm} cm</strong></div>` : ''}
-          ${m.crown_diameter_cm ? `<div style="text-align:center;padding:0.4rem;background:var(--bg);border-radius:6px;"><div class="text-small text-muted">Copa</div><strong>${m.crown_diameter_cm} cm</strong></div>` : ''}
-        </div>
+        ${chips.length > 0 ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem;margin-top:0.75rem;">${chips.join('')}</div>` : '<p class="text-small text-muted" style="margin-top:0.5rem;">Solo evaluación de salud</p>'}
         ${cleanObs ? `<p class="text-small text-muted" style="margin-top:0.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;"><i class="fas fa-sticky-note"></i> ${escapeHtml(cleanObs.substring(0, 100))}${cleanObs.length > 100 ? '...' : ''}</p>` : ''}
       </div>`;
   }).join('');
@@ -534,7 +554,8 @@ function buildTimeline(measurements) {
 // ========== DETAIL VIEW ==========
 async function showMeasurementDetail(measId) {
   try {
-    const { data: m, error } = await sb.from('tree_measurements').select('*').eq('id', measId).single();
+    const { data: rows, error } = await sb.from('tree_measurements').select('*').eq('id', measId).limit(1);
+    const m = rows && rows.length > 0 ? rows[0] : null;
     if (error || !m) { showToast('Error cargando detalle', 'error'); return; }
 
     const date = new Date(m.measurement_date);
@@ -571,11 +592,11 @@ async function showMeasurementDetail(measId) {
 
       ${m.photo_url ? `<div style="text-align:center;margin-bottom:1rem;"><img src="${m.photo_url}" alt="Foto del árbol" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>` : ''}
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
-        ${m.height_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">Altura</div><strong style="font-size:1.2rem;">${m.height_cm} cm</strong></div>` : '<div></div>'}
-        ${m.trunk_diameter_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">⌀ Tronco</div><strong style="font-size:1.2rem;">${m.trunk_diameter_cm} cm</strong></div>` : '<div></div>'}
-        ${m.crown_diameter_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">⌀ Copa</div><strong style="font-size:1.2rem;">${m.crown_diameter_cm} cm</strong></div>` : '<div></div>'}
-      </div>
+      ${(m.height_cm || m.trunk_diameter_cm || m.crown_diameter_cm) ? `<div style="display:grid;grid-template-columns:repeat(${[m.height_cm, m.trunk_diameter_cm, m.crown_diameter_cm].filter(Boolean).length},1fr);gap:0.75rem;margin-bottom:1rem;">
+        ${m.height_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">Altura</div><strong style="font-size:1.2rem;">${m.height_cm} cm</strong></div>` : ''}
+        ${m.trunk_diameter_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">⌀ Tronco</div><strong style="font-size:1.2rem;">${m.trunk_diameter_cm} cm</strong></div>` : ''}
+        ${m.crown_diameter_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">⌀ Copa</div><strong style="font-size:1.2rem;">${m.crown_diameter_cm} cm</strong></div>` : ''}
+      </div>` : ''}
 
       ${rubricHtml}
 
