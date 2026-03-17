@@ -251,33 +251,22 @@ async function saveAdminUser(e) {
   const campus = document.getElementById('admin-user-campus')?.value || 'FESI';
 
   try {
-    // Guardar sesión actual del admin antes de crear usuario
-    const { data: { session: adminSession } } = await sb.auth.getSession();
-
-    const { data: signUpData, error: signUpError } = await sb.auth.signUp({
-      email: correo,
-      password: password,
-      options: { data: { full_name: nombre, role: role } }
-    });
-    if (signUpError) throw signUpError;
-
-    const newUserId = signUpData.user?.id;
-    if (newUserId) {
-      // Restaurar sesión del admin (signUp puede cambiar la sesión activa)
-      if (adminSession) {
-        await sb.auth.setSession({
-          access_token: adminSession.access_token,
-          refresh_token: adminSession.refresh_token
-        });
-      }
-
-      await sb.from('user_profiles').upsert({
-        id: newUserId, full_name: nombre, role,
+    // Use Edge Function to create user (bypasses signups disabled)
+    const { data, error } = await sb.functions.invoke('create-user', {
+      body: {
+        email: correo,
+        password: password,
+        full_name: nombre,
+        role: role,
         account_number: numCuenta || null,
         birth_date: fechaNac || null,
-        academic_status: estatus, campus
-      });
-    }
+        academic_status: estatus,
+        campus: campus
+      }
+    });
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
     showToast('Usuario creado exitosamente.', 'success');
     document.getElementById('form-admin-user')?.reset();
