@@ -321,6 +321,7 @@ function handleMeasPhoto(input) {
   reader.readAsDataURL(pendingPhotoFile);
 }
 
+
 // ========== GEMINI AI ANALYSIS ==========
 async function analyzePhotoWithAI() {
   if (!pendingPhotoBase64 || !currentTreeData) return;
@@ -331,8 +332,10 @@ async function analyzePhotoWithAI() {
   statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analizando imagen con PUM-AI...';
 
   try {
-    const base64Data = pendingPhotoBase64.split(',')[1];
-    const mimeType = pendingPhotoBase64.split(';')[0].split(':')[1];
+    // Compress image before sending to Edge Function (max 1024px, JPEG 70%)
+    const compressedDataUrl = await compressImageForAI(pendingPhotoBase64, 1024, 1024, 0.7);
+    const base64Data = compressedDataUrl.split(',')[1];
+    const mimeType = 'image/jpeg'; // Always JPEG after compression
 
     const autoRubrics = HEALTH_RUBRICS.filter(r => r.auto);
     const rubricPrompt = autoRubrics.map(r =>
