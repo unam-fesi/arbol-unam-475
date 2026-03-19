@@ -30,7 +30,7 @@ function openARHeightMeasure() {
   overlay.innerHTML = `
     <div style="width: 100%; height: 100%; display: flex; flex-direction: column; position: relative;">
       <!-- Camera Video/Canvas -->
-      <video id="ar-height-video" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;"></video>
+      <video id="ar-height-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;"></video>
       <canvas id="ar-height-canvas" style="display: none;"></canvas>
 
       <!-- Overlay UI -->
@@ -145,25 +145,44 @@ function openARHeightMeasure() {
       width: { ideal: 1280 },
       height: { ideal: 720 }
     }
-  }).then(stream => {
-    const video = document.getElementById('ar-height-video');
+  }).then(function(stream) {
+    var video = document.getElementById('ar-height-video');
     video.srcObject = stream;
-    video.play();
+    video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+    // iOS Safari: play() returns a promise, handle rejection
+    var playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(function(err) {
+        console.warn('AR camera play failed:', err.message);
+      });
+    }
 
-    // Add click handlers to the video
+    // Use touchend for iOS (more reliable than click on video elements)
+    video.addEventListener('touchend', handleARHeightTap);
     video.addEventListener('click', handleARHeightTap);
-  }).catch(err => {
+  }).catch(function(err) {
     console.error('Camera access error:', err);
-    showToast('Error accediendo a la cámara', 'error');
+    showToast('Error accediendo a la cámara. Verifica los permisos.', 'error');
     closeARHeightMeasure();
   });
 }
 
 function handleARHeightTap(event) {
-  // Get click position relative to video
-  const rect = event.target.getBoundingClientRect();
-  const clickY = event.clientY - rect.top;
-  const videoHeight = rect.height;
+  // Prevent double-fire from both touch and click on iOS
+  if (event.type === 'touchend') {
+    event.preventDefault();
+  }
+
+  // Get tap/click position relative to video
+  var rect = event.target.getBoundingClientRect();
+  var clientY = event.clientY;
+  // For touch events, use the changedTouches
+  if (event.changedTouches && event.changedTouches.length > 0) {
+    clientY = event.changedTouches[0].clientY;
+  }
+  var clickY = clientY - rect.top;
+  var videoHeight = rect.height;
 
   if (arHeightData.baseY === null) {
     // Mark base point
@@ -182,6 +201,7 @@ function handleARHeightTap(event) {
     document.getElementById('ar-height-distance-section').style.display = 'block';
     document.getElementById('ar-height-calculate-btn').style.display = 'inline-block';
     document.getElementById('ar-height-video').removeEventListener('click', handleARHeightTap);
+    document.getElementById('ar-height-video').removeEventListener('touchend', handleARHeightTap);
   }
 }
 
@@ -201,7 +221,8 @@ function arHeightReset() {
   document.getElementById('ar-height-step').textContent = 'Paso 1: Toca la BASE del árbol';
   document.getElementById('ar-height-instructions').textContent = 'Alinea la pantalla con la base del árbol y toca la pantalla para marcar.';
 
-  const video = document.getElementById('ar-height-video');
+  var video = document.getElementById('ar-height-video');
+  video.addEventListener('touchend', handleARHeightTap);
   video.addEventListener('click', handleARHeightTap);
 }
 
@@ -381,3 +402,4 @@ function closeARHeightMeasure() {
 
 // Expose to global scope
 window.openARHeightMeasure = openARHeightMeasure;
+
