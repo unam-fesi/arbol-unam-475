@@ -1,127 +1,128 @@
 // ============================================================================
-// AR Height Measurement - Camera-based tree height estimation
-// Live tracking with gyroscope + canvas overlay
+// AR Height Measurement - Camera + Gyroscope tree height estimation
+// Auto-distance calculation + live tracking with visual line
 // ============================================================================
 
-let arHeightData = {
-  baseY: null,
-  topY: null,
-  basePitch: null,
-  currentPitch: null,
-  distance: null,
-  height: null,
+var arH = {
+  step: 0,
+  // 0=setup, 1=aim at base, 2=live tracking (tilt up), 3=done
   stream: null,
-  animFrameId: null,
-  orientationHandler: null,
-  useGyroscope: false,
-  step: 0, // 0=distance, 1=mark base, 2=live tracking, 3=done
-  liveHeight: 0,
-  // Base position stored as fraction of overlay (0–1) for resolution independence
-  baseFracX: null,
-  baseFracY: null,
+  animId: null,
+  gyroHandler: null,
+  hasGyro: false,
+
+  // User's phone holding height (meters above ground)
+  phoneHeight: 1.5,
+
+  // Gyroscope angles (degrees)
+  currentBeta: null,   // live device beta
+  baseBeta: null,      // beta when base was marked
+  topBeta: null,       // beta when top was marked
+
+  // Calculated values
+  distance: null,      // meters from tree (auto or manual)
+  height: null,        // final calculated height (cm)
+  autoDistance: true,   // whether to auto-calculate distance
 };
 
 // ============================================================================
-// Main entry point
+// OPEN — Create overlay + start camera
 // ============================================================================
 function openARHeightMeasure() {
-  arHeightData = {
-    baseY: null, topY: null, basePitch: null, currentPitch: null,
-    distance: null, height: null, stream: null, animFrameId: null,
-    orientationHandler: null, useGyroscope: false, step: 0,
-    liveHeight: 0, baseFracX: null, baseFracY: null,
+  arH = {
+    step: 0, stream: null, animId: null, gyroHandler: null, hasGyro: false,
+    phoneHeight: 1.5, currentBeta: null, baseBeta: null, topBeta: null,
+    distance: null, height: null, autoDistance: true,
   };
 
-  var overlay = document.createElement('div');
-  overlay.id = 'ar-height-overlay';
-  overlay.style.cssText =
-    'position:fixed;top:0;left:0;width:100vw;height:100vh;' +
-    'background:#000;z-index:9999;display:flex;flex-direction:column;';
+  var ov = document.createElement('div');
+  ov.id = 'ar-overlay';
+  ov.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:9999;';
 
-  overlay.innerHTML =
-    '<div id="ar-height-container" style="position:relative;width:100%;height:100%;overflow:hidden;">' +
+  ov.innerHTML =
+    '<div id="ar-box" style="position:relative;width:100%;height:100%;overflow:hidden;">' +
 
-      // Camera feed
-      '<video id="ar-height-video" autoplay playsinline muted ' +
-        'style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"></video>' +
+      '<video id="ar-vid" autoplay playsinline muted style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"></video>' +
+      '<canvas id="ar-cv" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></canvas>' +
 
-      // Canvas overlay — sits on top of video
-      '<canvas id="ar-height-canvas" ' +
-        'style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></canvas>' +
-
-      // Base dot
-      '<div id="ar-base-dot" style="display:none;position:absolute;z-index:4;' +
-        'width:18px;height:18px;border-radius:50%;background:#4CAF50;border:2px solid #fff;' +
-        'box-shadow:0 0 12px rgba(76,175,80,0.8);transform:translate(-50%,-50%);pointer-events:none;"></div>' +
-
-      // Top dot
-      '<div id="ar-top-dot" style="display:none;position:absolute;z-index:4;' +
-        'width:18px;height:18px;border-radius:50%;background:#FFC107;border:2px solid #fff;' +
-        'box-shadow:0 0 12px rgba(255,193,7,0.8);transform:translate(-50%,-50%);pointer-events:none;"></div>' +
-
-      // UI Layer (on top of canvas, pointer-events:none by default)
-      '<div style="position:absolute;top:0;left:0;width:100%;height:100%;' +
-        'display:flex;flex-direction:column;pointer-events:none;z-index:5;">' +
+      // UI layer
+      '<div id="ar-ui" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;pointer-events:none;z-index:5;">' +
 
         // Top bar
-        '<div style="background:rgba(0,0,0,0.75);color:#fff;padding:0.75rem 1rem;text-align:center;pointer-events:auto;">' +
-          '<h2 style="margin:0;font-size:1.15rem;">📐 Medidor de Altura AR</h2>' +
-          '<p id="ar-height-step" style="margin:0.4rem 0 0;font-size:0.85rem;color:#aaa;">' +
-            'Paso 1: Ingresa tu distancia al árbol</p>' +
+        '<div style="background:rgba(0,0,0,0.8);color:#fff;padding:0.6rem 1rem;text-align:center;pointer-events:auto;">' +
+          '<h2 style="margin:0;font-size:1.1rem;">📐 Medidor de Altura AR</h2>' +
+          '<p id="ar-step-label" style="margin:0.3rem 0 0;font-size:0.8rem;color:#aaa;">Paso 1: Configuración</p>' +
         '</div>' +
 
-        // Center area (crosshair + live label) — pointer-events:none so taps go to video
-        '<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;">' +
-          // Crosshair
-          '<div style="position:absolute;width:50px;height:50px;border:2px solid rgba(76,175,80,0.8);' +
-            'border-radius:50%;box-shadow:0 0 15px rgba(76,175,80,0.4);"></div>' +
+        // Center — crosshair + live display
+        '<div id="ar-center" style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;">' +
+          '<div style="position:absolute;width:50px;height:50px;border:2px solid rgba(76,175,80,0.8);border-radius:50%;box-shadow:0 0 15px rgba(76,175,80,0.4);"></div>' +
           '<div style="position:absolute;width:30px;height:2px;background:rgba(76,175,80,0.8);"></div>' +
           '<div style="position:absolute;width:2px;height:30px;background:rgba(76,175,80,0.8);"></div>' +
-          // Live measurement floating label
-          '<div id="ar-live-measurement" style="display:none;position:absolute;top:35%;right:1rem;' +
-            'background:rgba(0,0,0,0.85);color:#4CAF50;padding:0.6rem 1rem;border-radius:8px;' +
-            'font-size:1.4rem;font-weight:700;border:2px solid rgba(76,175,80,0.6);' +
-            'text-shadow:0 0 10px rgba(76,175,80,0.5);z-index:6;">' +
-            '<div id="ar-live-height-value" style="font-size:1.6rem;">0 cm</div>' +
-            '<div style="font-size:0.75rem;color:#aaa;margin-top:2px;">≈ <span id="ar-live-meters-value">0.00</span> m</div>' +
+          // Live measurement (hidden until step 2)
+          '<div id="ar-live-box" style="display:none;position:absolute;top:20%;right:0.75rem;' +
+            'background:rgba(0,0,0,0.85);color:#4CAF50;padding:0.5rem 0.8rem;border-radius:10px;' +
+            'border:2px solid rgba(76,175,80,0.6);text-shadow:0 0 8px rgba(76,175,80,0.4);z-index:6;">' +
+            '<div id="ar-live-h" style="font-size:1.8rem;font-weight:700;">0 cm</div>' +
+            '<div style="font-size:0.7rem;color:#aaa;">≈ <span id="ar-live-m">0.00</span> m</div>' +
           '</div>' +
+          // Distance badge (shown in step 2)
+          '<div id="ar-dist-badge" style="display:none;position:absolute;bottom:10%;left:50%;transform:translateX(-50%);' +
+            'background:rgba(0,0,0,0.7);color:#aaa;padding:0.3rem 0.8rem;border-radius:20px;font-size:0.75rem;">' +
+            '📏 Distancia: <span id="ar-dist-val">?</span> m</div>' +
         '</div>' +
 
         // Bottom panel
-        '<div id="ar-bottom-panel" style="background:rgba(0,0,0,0.85);color:#fff;padding:1.25rem;text-align:center;pointer-events:auto;">' +
+        '<div id="ar-bottom" style="background:rgba(0,0,0,0.85);color:#fff;padding:1rem;text-align:center;pointer-events:auto;">' +
 
-          // Step 0: Distance
-          '<div id="ar-distance-step">' +
-            '<p style="margin:0 0 0.75rem;font-size:0.9rem;">¿A cuántos metros estás del árbol?</p>' +
-            '<div style="display:flex;align-items:center;justify-content:center;gap:0.75rem;margin-bottom:1rem;">' +
-              '<input type="number" id="ar-height-distance-input" placeholder="Ej: 5" ' +
-                'min="0.5" max="100" step="0.5" style="width:120px;padding:0.75rem;border:2px solid #4CAF50;' +
-                'border-radius:8px;font-size:1.1rem;text-align:center;background:rgba(255,255,255,0.95);color:#333;">' +
-              '<span style="font-size:1rem;color:#ccc;">metros</span>' +
+          // === STEP 0: Setup ===
+          '<div id="ar-setup">' +
+            '<p style="margin:0 0 0.6rem;font-size:0.85rem;font-weight:600;">¿Cómo quieres medir la distancia al árbol?</p>' +
+
+            // Auto option
+            '<div id="ar-opt-auto" onclick="arSelectMode(true)" style="background:rgba(76,175,80,0.15);border:2px solid #4CAF50;' +
+              'border-radius:10px;padding:0.6rem;margin-bottom:0.5rem;cursor:pointer;">' +
+              '<div style="font-size:0.9rem;font-weight:600;color:#4CAF50;">🤖 Automático (recomendado)</div>' +
+              '<div style="font-size:0.75rem;color:#aaa;margin-top:0.2rem;">Usa el giroscopio para calcular la distancia</div>' +
             '</div>' +
-            '<button onclick="arHeightSetDistance()" style="background:#4CAF50;color:#fff;border:none;' +
-              'padding:0.75rem 2rem;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:600;">Continuar →</button>' +
+
+            // Manual option
+            '<div id="ar-opt-manual" onclick="arSelectMode(false)" style="background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.2);' +
+              'border-radius:10px;padding:0.6rem;margin-bottom:0.5rem;cursor:pointer;">' +
+              '<div style="font-size:0.9rem;font-weight:600;color:#ccc;">📏 Manual</div>' +
+              '<div style="font-size:0.75rem;color:#888;margin-top:0.2rem;">Ingresa la distancia tú mismo</div>' +
+            '</div>' +
+
+            // Auto: height input (hidden initially)
+            '<div id="ar-auto-cfg" style="display:none;margin-top:0.6rem;">' +
+              '<p style="margin:0 0 0.4rem;font-size:0.8rem;color:#aaa;">¿A qué altura sostienes el teléfono?</p>' +
+              '<div style="display:flex;gap:0.4rem;justify-content:center;flex-wrap:wrap;margin-bottom:0.5rem;">' +
+                '<button onclick="arSetHeight(1.2)" class="ar-h-btn" style="padding:0.4rem 0.7rem;border-radius:6px;border:1px solid #555;background:transparent;color:#ccc;font-size:0.8rem;cursor:pointer;">1.2m</button>' +
+                '<button onclick="arSetHeight(1.4)" class="ar-h-btn" style="padding:0.4rem 0.7rem;border-radius:6px;border:1px solid #555;background:transparent;color:#ccc;font-size:0.8rem;cursor:pointer;">1.4m</button>' +
+                '<button onclick="arSetHeight(1.5)" class="ar-h-btn" id="ar-h-default" style="padding:0.4rem 0.7rem;border-radius:6px;border:2px solid #4CAF50;background:rgba(76,175,80,0.15);color:#4CAF50;font-size:0.8rem;cursor:pointer;">1.5m</button>' +
+                '<button onclick="arSetHeight(1.6)" class="ar-h-btn" style="padding:0.4rem 0.7rem;border-radius:6px;border:1px solid #555;background:transparent;color:#ccc;font-size:0.8rem;cursor:pointer;">1.6m</button>' +
+                '<button onclick="arSetHeight(1.7)" class="ar-h-btn" style="padding:0.4rem 0.7rem;border-radius:6px;border:1px solid #555;background:transparent;color:#ccc;font-size:0.8rem;cursor:pointer;">1.7m</button>' +
+              '</div>' +
+              '<button onclick="arStartMeasure()" style="background:#4CAF50;color:#fff;border:none;padding:0.6rem 1.5rem;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">Continuar →</button>' +
+            '</div>' +
+
+            // Manual: distance input (hidden initially)
+            '<div id="ar-manual-cfg" style="display:none;margin-top:0.6rem;">' +
+              '<div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-bottom:0.5rem;">' +
+                '<input type="number" id="ar-dist-input" placeholder="Ej: 5" min="0.5" max="100" step="0.5" ' +
+                  'style="width:100px;padding:0.5rem;border:2px solid #4CAF50;border-radius:8px;font-size:1rem;text-align:center;background:rgba(255,255,255,0.9);color:#333;">' +
+                '<span style="color:#ccc;">metros</span>' +
+              '</div>' +
+              '<button onclick="arStartManual()" style="background:#4CAF50;color:#fff;border:none;padding:0.6rem 1.5rem;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;">Continuar →</button>' +
+            '</div>' +
           '</div>' +
 
-          // Step 1+: Tracking controls
-          '<div id="ar-tracking-controls" style="display:none;">' +
-            '<p id="ar-height-instructions" style="margin:0 0 0.75rem;font-size:0.9rem;">' +
-              'Apunta a la BASE del árbol y toca la pantalla.</p>' +
-            '<div style="display:flex;gap:0.75rem;justify-content:center;margin-bottom:0.75rem;font-size:0.8rem;">' +
-              '<div id="ar-height-base-marker" style="padding:0.4rem 0.75rem;background:rgba(255,255,255,0.08);' +
-                'border-radius:6px;border:1px solid rgba(76,175,80,0);">⬜ Base: Sin marcar</div>' +
-              '<div id="ar-height-top-marker" style="padding:0.4rem 0.75rem;background:rgba(255,255,255,0.08);' +
-                'border-radius:6px;border:1px solid rgba(255,193,7,0);">⬜ Cima: Sin marcar</div>' +
-            '</div>' +
-            '<div style="margin-bottom:0.75rem;">' +
-              '<span style="background:rgba(76,175,80,0.2);color:#4CAF50;padding:0.3rem 0.75rem;border-radius:20px;font-size:0.8rem;">' +
-                '📏 Distancia: <span id="ar-distance-badge">?</span> m</span>' +
-            '</div>' +
+          // === STEP 1+: Tracking controls ===
+          '<div id="ar-controls" style="display:none;">' +
+            '<p id="ar-instr" style="margin:0 0 0.5rem;font-size:0.85rem;"></p>' +
             '<div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">' +
-              '<button onclick="arHeightReset()" style="background:#555;color:#fff;border:none;' +
-                'padding:0.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:0.9rem;">🔄 Reiniciar</button>' +
-              '<button onclick="closeARHeightMeasure()" style="background:#d62828;color:#fff;border:none;' +
-                'padding:0.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:0.9rem;">✕ Cerrar</button>' +
+              '<button onclick="arReset()" style="background:#555;color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">🔄 Reiniciar</button>' +
+              '<button onclick="closeARHeightMeasure()" style="background:#d62828;color:#fff;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">✕ Cerrar</button>' +
             '</div>' +
           '</div>' +
 
@@ -129,510 +130,438 @@ function openARHeightMeasure() {
       '</div>' +
     '</div>';
 
-  document.body.appendChild(overlay);
+  document.body.appendChild(ov);
 
-  // Start camera
+  // Camera
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
   }).then(function(stream) {
-    arHeightData.stream = stream;
-    var video = document.getElementById('ar-height-video');
-    if (!video) return;
-    video.srcObject = stream;
-    var p = video.play();
-    if (p && p.catch) p.catch(function(e) { console.warn('AR play:', e.message); });
-    arHeightRequestOrientation();
+    arH.stream = stream;
+    var v = document.getElementById('ar-vid');
+    if (!v) return;
+    v.srcObject = stream;
+    var p = v.play();
+    if (p && p.catch) p.catch(function() {});
+
+    // Start gyro
+    arInitGyro();
   }).catch(function(err) {
     console.error('Camera error:', err);
-    if (typeof showToast === 'function') showToast('Error accediendo a la cámara. Verifica los permisos.', 'error');
+    if (typeof showToast === 'function') showToast('Error accediendo a la cámara.', 'error');
     closeARHeightMeasure();
   });
 }
 
 // ============================================================================
-// Device Orientation (Gyroscope)
+// GYROSCOPE
 // ============================================================================
-function arHeightRequestOrientation() {
+function arInitGyro() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    arHeightData.useGyroscope = false; // wait for user gesture
+    // iOS — need user gesture, will request in arStartMeasure
+    arH.hasGyro = false;
   } else if ('DeviceOrientationEvent' in window) {
-    arHeightStartOrientationListener();
+    arListenGyro();
   }
 }
 
-function arHeightRequestiOSPermission() {
+function arRequestGyroiOS() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission().then(function(state) {
-      if (state === 'granted') arHeightStartOrientationListener();
+    DeviceOrientationEvent.requestPermission().then(function(s) {
+      if (s === 'granted') arListenGyro();
     }).catch(function() {});
   }
 }
 
-function arHeightStartOrientationListener() {
-  var handler = function(e) {
+function arListenGyro() {
+  var h = function(e) {
     if (e.beta !== null) {
-      arHeightData.useGyroscope = true;
-      arHeightData.currentPitch = e.beta;
+      arH.hasGyro = true;
+      arH.currentBeta = e.beta;
     }
   };
-  window.addEventListener('deviceorientation', handler);
-  arHeightData.orientationHandler = handler;
+  window.addEventListener('deviceorientation', h);
+  arH.gyroHandler = h;
+}
+
+// Helper: beta → angle from horizontal (degrees)
+// Phone vertical: beta≈90 → angle=0
+// Phone tilted back (looking up): beta<90 → angle>0
+// Phone tilted forward (looking down): beta>90 → angle<0
+function betaToAngle(beta) {
+  return 90 - beta; // degrees from horizontal
 }
 
 // ============================================================================
-// Step 0: Set distance
+// SETUP: Mode selection
 // ============================================================================
-function arHeightSetDistance() {
-  var dist = parseFloat(document.getElementById('ar-height-distance-input').value);
-  if (!dist || dist < 0.5) {
+function arSelectMode(auto) {
+  arH.autoDistance = auto;
+
+  // Visual feedback
+  var optAuto = document.getElementById('ar-opt-auto');
+  var optMan = document.getElementById('ar-opt-manual');
+  var cfgAuto = document.getElementById('ar-auto-cfg');
+  var cfgMan = document.getElementById('ar-manual-cfg');
+
+  if (auto) {
+    optAuto.style.borderColor = '#4CAF50';
+    optAuto.style.background = 'rgba(76,175,80,0.15)';
+    optMan.style.borderColor = 'rgba(255,255,255,0.2)';
+    optMan.style.background = 'rgba(255,255,255,0.05)';
+    cfgAuto.style.display = 'block';
+    cfgMan.style.display = 'none';
+  } else {
+    optMan.style.borderColor = '#4CAF50';
+    optMan.style.background = 'rgba(76,175,80,0.15)';
+    optAuto.style.borderColor = 'rgba(255,255,255,0.2)';
+    optAuto.style.background = 'rgba(255,255,255,0.05)';
+    cfgMan.style.display = 'block';
+    cfgAuto.style.display = 'none';
+  }
+}
+
+function arSetHeight(h) {
+  arH.phoneHeight = h;
+  // Highlight selected button
+  var btns = document.querySelectorAll('.ar-h-btn');
+  btns.forEach(function(b) {
+    b.style.border = '1px solid #555';
+    b.style.background = 'transparent';
+    b.style.color = '#ccc';
+  });
+  event.target.style.border = '2px solid #4CAF50';
+  event.target.style.background = 'rgba(76,175,80,0.15)';
+  event.target.style.color = '#4CAF50';
+}
+
+// ============================================================================
+// START MEASURING (auto mode)
+// ============================================================================
+function arStartMeasure() {
+  // iOS gyro permission
+  arRequestGyroiOS();
+
+  arH.step = 1;
+  document.getElementById('ar-setup').style.display = 'none';
+  document.getElementById('ar-controls').style.display = 'block';
+  document.getElementById('ar-step-label').textContent = 'Paso 2: Apunta a la BASE del árbol';
+  document.getElementById('ar-instr').textContent = 'Apunta el centro de la pantalla a la base del árbol y toca.';
+
+  // Enable taps
+  var box = document.getElementById('ar-box');
+  box.addEventListener('touchend', arTap, false);
+  box.addEventListener('click', arTap, false);
+}
+
+// START MEASURING (manual mode)
+function arStartManual() {
+  var d = parseFloat(document.getElementById('ar-dist-input').value);
+  if (!d || d < 0.5) {
     if (typeof showToast === 'function') showToast('Ingresa una distancia válida (mínimo 0.5 m)', 'warning');
     return;
   }
+  arH.distance = d;
+  arH.autoDistance = false;
 
-  arHeightData.distance = dist;
-  arHeightData.step = 1;
+  // iOS gyro permission
+  arRequestGyroiOS();
 
-  // iOS: request gyroscope on user gesture
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    arHeightRequestiOSPermission();
-  }
+  // Skip to step 1 (mark base) — but base just records the angle
+  arH.step = 1;
+  document.getElementById('ar-setup').style.display = 'none';
+  document.getElementById('ar-controls').style.display = 'block';
+  document.getElementById('ar-step-label').textContent = 'Paso 2: Apunta a la BASE del árbol';
+  document.getElementById('ar-instr').textContent = 'Apunta el centro de la pantalla a la base del árbol y toca.';
 
-  // UI
-  document.getElementById('ar-distance-step').style.display = 'none';
-  document.getElementById('ar-tracking-controls').style.display = 'block';
-  document.getElementById('ar-distance-badge').textContent = dist.toFixed(1);
-  document.getElementById('ar-height-step').textContent = 'Paso 2: Toca la BASE del árbol';
-
-  // Enable tap on container (not just video, to avoid event issues)
-  var container = document.getElementById('ar-height-container');
-  container.addEventListener('touchend', handleARHeightTap, false);
-  container.addEventListener('click', handleARHeightTap, false);
+  var box = document.getElementById('ar-box');
+  box.addEventListener('touchend', arTap, false);
+  box.addEventListener('click', arTap, false);
 }
 
 // ============================================================================
-// Ensure canvas buffer matches display size
+// TAP HANDLER
 // ============================================================================
-function arHeightSyncCanvas() {
-  var canvas = document.getElementById('ar-height-canvas');
-  if (!canvas) return null;
-
-  var rect = canvas.getBoundingClientRect();
-  var dpr = window.devicePixelRatio || 1;
-  var needW = Math.round(rect.width * dpr);
-  var needH = Math.round(rect.height * dpr);
-
-  // Only resize if difference is significant (>5px) to avoid flicker.
-  // Setting canvas.width/height CLEARS the canvas, so we avoid doing it every frame.
-  if (Math.abs(canvas.width - needW) > 5 || Math.abs(canvas.height - needH) > 5) {
-    canvas.width = needW;
-    canvas.height = needH;
-  }
-  return canvas;
-}
-
-// ============================================================================
-// Get position relative to container (as fraction 0-1)
-// ============================================================================
-function arHeightGetPos(event) {
-  var container = document.getElementById('ar-height-container');
-  var rect = container.getBoundingClientRect();
-  var cx, cy;
-  if (event.changedTouches && event.changedTouches.length > 0) {
-    cx = event.changedTouches[0].clientX;
-    cy = event.changedTouches[0].clientY;
-  } else {
-    cx = event.clientX;
-    cy = event.clientY;
-  }
-  return {
-    fracX: (cx - rect.left) / rect.width,
-    fracY: (cy - rect.top) / rect.height,
-    absX: cx - rect.left,
-    absY: cy - rect.top,
-    containerW: rect.width,
-    containerH: rect.height,
-  };
-}
-
-// ============================================================================
-// Tap handler
-// ============================================================================
-function handleARHeightTap(event) {
-  // Ignore taps on buttons/inputs
-  var tag = (event.target.tagName || '').toLowerCase();
+function arTap(e) {
+  var tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'button' || tag === 'input') return;
+  if (e.type === 'touchend') e.preventDefault();
 
-  if (event.type === 'touchend') event.preventDefault();
-
-  var pos = arHeightGetPos(event);
-
-  if (arHeightData.step === 1) {
+  if (arH.step === 1) {
     // === MARK BASE ===
-    arHeightData.baseFracX = pos.fracX;
-    arHeightData.baseFracY = pos.fracY;
-    arHeightData.baseY = pos.absY; // pixel Y relative to container
-
-    // Record gyroscope pitch
-    if (arHeightData.useGyroscope && arHeightData.currentPitch !== null) {
-      arHeightData.basePitch = arHeightData.currentPitch;
+    if (arH.hasGyro && arH.currentBeta !== null) {
+      arH.baseBeta = arH.currentBeta;
+    } else {
+      // No gyro — we can't do much, use screen-based fallback
+      arH.baseBeta = 90; // assume phone is vertical
     }
 
-    // Show base dot
-    var baseDot = document.getElementById('ar-base-dot');
-    baseDot.style.display = 'block';
-    baseDot.style.left = (pos.fracX * 100) + '%';
-    baseDot.style.top = (pos.fracY * 100) + '%';
+    // Auto-calculate distance from phone height + tilt angle
+    if (arH.autoDistance) {
+      var angleFromHoriz = betaToAngle(arH.baseBeta); // degrees
+      var angleRad = Math.abs(angleFromHoriz) * Math.PI / 180;
 
-    // UI
-    document.getElementById('ar-height-base-marker').innerHTML = '✅ Base: Marcada';
-    document.getElementById('ar-height-base-marker').style.borderColor = '#4CAF50';
-    document.getElementById('ar-height-step').textContent = 'Paso 3: Apunta a la CIMA y toca';
-    document.getElementById('ar-height-instructions').textContent =
-      'Mueve la cámara hacia arriba. La línea y medida se actualizan en tiempo real. Toca para fijar.';
-    document.getElementById('ar-live-measurement').style.display = 'block';
+      if (angleRad > 0.05) { // at least ~3° of tilt
+        arH.distance = arH.phoneHeight / Math.tan(angleRad);
+      } else {
+        // Phone is nearly horizontal — can't calculate reliably, use default
+        arH.distance = 5;
+      }
+      // Clamp to reasonable range
+      arH.distance = Math.max(1, Math.min(arH.distance, 50));
+    }
 
-    arHeightData.step = 2;
+    // Show distance
+    document.getElementById('ar-dist-badge').style.display = 'block';
+    document.getElementById('ar-dist-val').textContent = arH.distance.toFixed(1);
 
-    // Sync canvas and start animation
-    arHeightSyncCanvas();
-    arHeightStartLiveTracking();
+    // UI update
+    document.getElementById('ar-step-label').textContent = 'Paso 3: Apunta a la CIMA del árbol';
+    document.getElementById('ar-instr').textContent = 'Inclina el teléfono hacia arriba hasta la cima. La medida se actualiza en vivo. Toca para fijar.';
+    document.getElementById('ar-live-box').style.display = 'block';
 
-  } else if (arHeightData.step === 2) {
+    arH.step = 2;
+    arSyncCanvas();
+    arStartAnim();
+
+  } else if (arH.step === 2) {
     // === MARK TOP ===
-    arHeightData.topY = pos.absY;
-    arHeightData.step = 3;
+    if (arH.hasGyro && arH.currentBeta !== null) {
+      arH.topBeta = arH.currentBeta;
+    }
 
-    // Show top dot
-    var topDot = document.getElementById('ar-top-dot');
-    topDot.style.display = 'block';
-    topDot.style.left = (pos.fracX * 100) + '%';
-    topDot.style.top = (pos.fracY * 100) + '%';
-
-    // UI
-    document.getElementById('ar-height-top-marker').innerHTML = '✅ Cima: Marcada';
-    document.getElementById('ar-height-top-marker').style.borderColor = '#FFC107';
-
-    // Stop animation
-    arHeightStopLiveTracking();
+    arH.step = 3;
+    arStopAnim();
 
     // Remove tap listeners
-    var container = document.getElementById('ar-height-container');
-    container.removeEventListener('click', handleARHeightTap);
-    container.removeEventListener('touchend', handleARHeightTap);
+    var box = document.getElementById('ar-box');
+    box.removeEventListener('click', arTap);
+    box.removeEventListener('touchend', arTap);
 
     // Calculate final height
-    var finalHeight = arHeightCalculateFinal(pos.absY, pos.containerH);
-    arHeightData.height = finalHeight;
-
-    // Draw final line
-    arHeightDrawFinalLine(pos.fracX, pos.fracY);
+    var h = arCalcHeight(arH.topBeta || arH.currentBeta || arH.baseBeta);
+    arH.height = Math.max(Math.abs(h), 1);
 
     // Show result
-    showARHeightResult(finalHeight);
+    arShowResult(arH.height);
   }
 }
 
 // ============================================================================
-// Live tracking animation
+// CANVAS SYNC (only resize if big diff to avoid flicker)
 // ============================================================================
-function arHeightStartLiveTracking() {
+function arSyncCanvas() {
+  var c = document.getElementById('ar-cv');
+  if (!c) return null;
+  var r = c.getBoundingClientRect();
+  var dpr = window.devicePixelRatio || 1;
+  var nw = Math.round(r.width * dpr);
+  var nh = Math.round(r.height * dpr);
+  if (Math.abs(c.width - nw) > 5 || Math.abs(c.height - nh) > 5) {
+    c.width = nw;
+    c.height = nh;
+  }
+  return c;
+}
+
+// ============================================================================
+// HEIGHT CALCULATION
+// ============================================================================
+function arCalcHeight(currentBeta) {
+  if (!arH.distance || !arH.baseBeta) return 0;
+
+  var baseAngle = betaToAngle(arH.baseBeta) * Math.PI / 180;
+  var curAngle = betaToAngle(currentBeta) * Math.PI / 180;
+
+  // height = distance × (tan(curAngle) - tan(baseAngle))
+  var hMeters = arH.distance * (Math.tan(curAngle) - Math.tan(baseAngle));
+  return hMeters * 100; // cm
+}
+
+// ============================================================================
+// ANIMATION — Live line + measurement
+// ============================================================================
+function arStartAnim() {
   function frame() {
     try {
-      if (arHeightData.step !== 2) return;
+      if (arH.step !== 2) return;
 
-      var canvas = arHeightSyncCanvas();
-      if (!canvas || canvas.width === 0 || canvas.height === 0) {
-        arHeightData.animFrameId = requestAnimationFrame(frame);
+      var c = arSyncCanvas();
+      if (!c || c.width < 10 || c.height < 10) {
+        arH.animId = requestAnimationFrame(frame);
         return;
       }
 
-      var ctx = canvas.getContext('2d');
-      var cw = canvas.width;
-      var ch = canvas.height;
-      ctx.clearRect(0, 0, cw, ch);
+      var ctx = c.getContext('2d');
+      var W = c.width;
+      var H = c.height;
+      ctx.clearRect(0, 0, W, H);
 
-      // Base point in canvas-buffer coords
-      var bx = arHeightData.baseFracX * cw;
-      var by = arHeightData.baseFracY * ch;
+      // Calculate current height
+      var beta = arH.hasGyro ? arH.currentBeta : arH.baseBeta;
+      var liveH = Math.abs(arCalcHeight(beta || arH.baseBeta));
 
-      // Target = crosshair center (center of canvas)
-      var tx = cw / 2;
-      var ty = ch / 2;
+      // Update live display
+      var hEl = document.getElementById('ar-live-h');
+      var mEl = document.getElementById('ar-live-m');
+      if (hEl) hEl.textContent = liveH >= 100 ? liveH.toFixed(0) + ' cm' : liveH.toFixed(1) + ' cm';
+      if (mEl) mEl.textContent = (liveH / 100).toFixed(2);
 
-      // Calculate live height
-      var container = document.getElementById('ar-height-container');
-      var containerH = container ? container.getBoundingClientRect().height : (ch / (window.devicePixelRatio || 1));
-      var liveHeight = arHeightCalculateLive(containerH);
-      var absH = Math.abs(liveHeight);
-      arHeightData.liveHeight = liveHeight;
+      // ---- VISUAL: Vertical line from BOTTOM of camera area to CROSSHAIR ----
+      // This always spans a large visible area regardless of where base was tapped
+      var cx = W / 2;     // center X
+      var cy = H / 2;     // crosshair Y (center)
 
-      // Update floating label
-      var hValEl = document.getElementById('ar-live-height-value');
-      var mValEl = document.getElementById('ar-live-meters-value');
-      if (hValEl) hValEl.textContent = absH >= 100 ? absH.toFixed(0) + ' cm' : absH.toFixed(1) + ' cm';
-      if (mValEl) mValEl.textContent = (absH / 100).toFixed(2);
+      // Bottom edge of the camera visible area (above the bottom panel)
+      // The bottom panel covers roughly the bottom 20-25% of the overlay
+      var bottomY = H * 0.88; // just above the bottom panel
 
-      // ---- DRAW VERTICAL LINE from base UP to crosshair Y level ----
-      // Use base X for both points (vertical measurement line)
-      var lineTopY = ty; // crosshair Y level
+      // Animated dash offset (marching ants)
+      var dashOff = -(Date.now() / 30) % 28;
 
       // Glow layer
       ctx.save();
-      ctx.setLineDash([14, 10]);
-      ctx.lineDashOffset = -(Date.now() / 35) % 24; // animated marching
-      ctx.strokeStyle = 'rgba(76,175,80,0.3)';
-      ctx.lineWidth = 12;
+      ctx.setLineDash([16, 12]);
+      ctx.lineDashOffset = dashOff;
+      ctx.strokeStyle = 'rgba(76,175,80,0.25)';
+      ctx.lineWidth = 14;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx, lineTopY);
+      ctx.moveTo(cx, bottomY);
+      ctx.lineTo(cx, cy);
       ctx.stroke();
       ctx.restore();
 
-      // Main dashed line (bright, thick)
+      // Main line
       ctx.save();
-      ctx.setLineDash([14, 10]);
-      ctx.lineDashOffset = -(Date.now() / 35) % 24;
+      ctx.setLineDash([16, 12]);
+      ctx.lineDashOffset = dashOff;
       ctx.strokeStyle = '#4CAF50';
       ctx.lineWidth = 4;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx, lineTopY);
+      ctx.moveTo(cx, bottomY);
+      ctx.lineTo(cx, cy);
       ctx.stroke();
       ctx.restore();
 
-      // Also draw a subtle horizontal connector from line top to crosshair
-      if (Math.abs(bx - tx) > 5) {
-        ctx.save();
-        ctx.setLineDash([6, 6]);
-        ctx.strokeStyle = 'rgba(76,175,80,0.4)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(bx, lineTopY);
-        ctx.lineTo(tx, ty);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // Base circle (pulsing green)
-      var pulse = 1 + 0.2 * Math.sin(Date.now() / 250);
+      // Arrows/ticks at ends
+      // Bottom: green circle (BASE)
       ctx.beginPath();
-      ctx.arc(bx, by, 14 * pulse, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,0.5)';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // Top target circle (where the line reaches)
-      ctx.beginPath();
-      ctx.arc(bx, lineTopY, 8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,193,7,0.6)';
+      ctx.arc(cx, bottomY, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#4CAF50';
       ctx.fill();
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // ---- MEASUREMENT LABEL next to the line ----
-      var labelText = absH >= 100 ? absH.toFixed(0) + ' cm' : absH.toFixed(1) + ' cm';
-      var labelY = (by + lineTopY) / 2; // midpoint of line
-      var labelX = bx + 25; // offset to the right of the line
+      // Top: yellow pulsing circle (where you're aiming)
+      var pulse = 1 + 0.2 * Math.sin(Date.now() / 200);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,193,7,0.7)';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-      ctx.font = 'bold 18px sans-serif';
-      var tw = ctx.measureText(labelText).width;
-      var padX = 10;
-      var padY = 8;
+      // Labels: "BASE ▼" at bottom, "CIMA ▲" at crosshair
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
 
-      // Label background
-      ctx.fillStyle = 'rgba(0,0,0,0.8)';
-      ctx.fillRect(labelX - padX, labelY - 12 - padY, tw + padX * 2, 24 + padY * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(cx - 35, bottomY + 14, 70, 20);
+      ctx.fillStyle = '#4CAF50';
+      ctx.fillText('▲ BASE', cx, bottomY + 24);
 
-      // Label border
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(cx - 30, cy - 34, 60, 20);
+      ctx.fillStyle = '#FFC107';
+      ctx.fillText('CIMA ▼', cx, cy - 24);
+
+      // ---- MEASUREMENT LABEL at midpoint of line ----
+      var midY = (bottomY + cy) / 2;
+      var labelX = cx + 35;
+      var txt = liveH >= 100 ? liveH.toFixed(0) + ' cm' : liveH.toFixed(1) + ' cm';
+
+      ctx.font = 'bold 20px sans-serif';
+      var tw = ctx.measureText(txt).width;
+      var px = 10, py = 8;
+
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
+      // Border
       ctx.save();
       ctx.setLineDash([]);
       ctx.strokeStyle = '#4CAF50';
       ctx.lineWidth = 2;
-      ctx.strokeRect(labelX - padX, labelY - 12 - padY, tw + padX * 2, 24 + padY * 2);
+      ctx.strokeRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
       ctx.restore();
-
-      // Label text
+      // Text
       ctx.fillStyle = '#4CAF50';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, labelX, labelY);
+      ctx.fillText(txt, labelX, midY);
 
-      arHeightData.animFrameId = requestAnimationFrame(frame);
+      // Small connector line from label to main line
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(76,175,80,0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx + 12, midY);
+      ctx.lineTo(labelX - px, midY);
+      ctx.stroke();
+      ctx.restore();
+
+      arH.animId = requestAnimationFrame(frame);
     } catch (err) {
       console.error('AR frame error:', err);
-      // Keep the loop alive even on error
-      arHeightData.animFrameId = requestAnimationFrame(frame);
+      arH.animId = requestAnimationFrame(frame);
     }
   }
-
-  arHeightData.animFrameId = requestAnimationFrame(frame);
+  arH.animId = requestAnimationFrame(frame);
 }
 
-function arHeightStopLiveTracking() {
-  if (arHeightData.animFrameId) {
-    cancelAnimationFrame(arHeightData.animFrameId);
-    arHeightData.animFrameId = null;
+function arStopAnim() {
+  if (arH.animId) {
+    cancelAnimationFrame(arH.animId);
+    arH.animId = null;
   }
 }
 
 // ============================================================================
-// Height calculations
+// RESULT
 // ============================================================================
-function arHeightCalculateLive(containerH) {
-  var distance = arHeightData.distance;
-  if (!distance) return 0;
-
-  // Gyroscope path (more accurate)
-  if (arHeightData.useGyroscope && arHeightData.basePitch !== null && arHeightData.currentPitch !== null) {
-    return arHeightCalcFromGyroscope(arHeightData.basePitch, arHeightData.currentPitch, distance);
-  }
-
-  // Fallback: screen position
-  var basePixelY = arHeightData.baseY;
-  var centerY = containerH / 2; // crosshair is at center
-  return arHeightCalcFromScreen(basePixelY, centerY, containerH, distance);
-}
-
-function arHeightCalculateFinal(topPixelY, containerH) {
-  var distance = arHeightData.distance;
-  if (!distance) return 10;
-
-  // Gyroscope
-  if (arHeightData.useGyroscope && arHeightData.basePitch !== null && arHeightData.currentPitch !== null) {
-    return Math.max(Math.abs(arHeightCalcFromGyroscope(arHeightData.basePitch, arHeightData.currentPitch, distance)), 1);
-  }
-
-  // Screen
-  return Math.max(Math.abs(arHeightCalcFromScreen(arHeightData.baseY, topPixelY, containerH, distance)), 1);
-}
-
-function arHeightCalcFromGyroscope(basePitch, currentPitch, distanceMeters) {
-  var baseAngle = (90 - basePitch) * Math.PI / 180;
-  var curAngle = (90 - currentPitch) * Math.PI / 180;
-  return distanceMeters * (Math.tan(curAngle) - Math.tan(baseAngle)) * 100;
-}
-
-function arHeightCalcFromScreen(basePixelY, targetPixelY, viewportH, distanceMeters) {
-  var fovDeg = 60;
-  var halfFov = (fovDeg / 2) * Math.PI / 180;
-  var center = viewportH / 2;
-  var half = viewportH / 2;
-
-  var baseAngle = Math.atan(((center - basePixelY) / half) * Math.tan(halfFov));
-  var topAngle = Math.atan(((center - targetPixelY) / half) * Math.tan(halfFov));
-
-  return distanceMeters * (Math.tan(topAngle) - Math.tan(baseAngle)) * 100;
-}
-
-// ============================================================================
-// Draw final locked line
-// ============================================================================
-function arHeightDrawFinalLine(topFracX, topFracY) {
-  var canvas = arHeightSyncCanvas();
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  var cw = canvas.width;
-  var ch = canvas.height;
-
-  var bx = arHeightData.baseFracX * cw;
-  var by = arHeightData.baseFracY * ch;
-  var ty = topFracY * ch;
-
-  ctx.clearRect(0, 0, cw, ch);
-
-  // Solid vertical line (from base to top, same X)
-  ctx.save();
-  ctx.strokeStyle = '#4CAF50';
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.shadowColor = 'rgba(76,175,80,0.5)';
-  ctx.shadowBlur = 12;
-  ctx.beginPath();
-  ctx.moveTo(bx, by);
-  ctx.lineTo(bx, ty);
-  ctx.stroke();
-  ctx.restore();
-
-  // Base circle (green)
-  ctx.beginPath();
-  ctx.arc(bx, by, 14, 0, Math.PI * 2);
-  ctx.fillStyle = '#4CAF50';
-  ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  // Top circle (yellow)
-  ctx.beginPath();
-  ctx.arc(bx, ty, 14, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFC107';
-  ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  // Labels "BASE" and "CIMA"
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('BASE', bx + 20, by);
-  ctx.fillText('CIMA', bx + 20, ty);
-
-  // Measurement label at midpoint
-  var midY = (by + ty) / 2;
-  var labelX = bx + 25;
-  var h = arHeightData.height || 0;
-  var label = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
-
-  ctx.font = 'bold 20px sans-serif';
-  var tw = ctx.measureText(label).width;
-  var px = 12, py = 10;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.85)';
-  ctx.fillRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
-  ctx.strokeStyle = '#4CAF50';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
-
-  ctx.fillStyle = '#4CAF50';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, labelX, midY);
-}
-
-// ============================================================================
-// Result display
-// ============================================================================
-function showARHeightResult(height) {
+function arShowResult(height) {
   var el = document.createElement('div');
-  el.id = 'ar-height-result-overlay';
-  el.style.cssText =
-    'position:fixed;top:0;left:0;width:100%;height:100%;' +
-    'background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  el.id = 'ar-result';
+  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:10000;';
 
   var disp = height >= 100 ? height.toFixed(0) : height.toFixed(1);
-  var gyroLabel = arHeightData.useGyroscope ? '🔄 Giroscopio: Sí' : '📱 Giroscopio: No';
+  var meters = (height / 100).toFixed(2);
+  var distTxt = arH.distance ? arH.distance.toFixed(1) : '?';
+  var modeTxt = arH.autoDistance ? '🤖 Auto' : '📏 Manual';
+  var gyroTxt = arH.hasGyro ? '✅ Giroscopio activo' : '⚠️ Sin giroscopio';
 
   el.innerHTML =
-    '<div style="background:#fff;border-radius:16px;padding:2rem;text-align:center;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3);">' +
-      '<div style="font-size:3rem;margin-bottom:0.75rem;">📐</div>' +
-      '<h3 style="margin:0 0 0.5rem;color:#333;">Altura Estimada</h3>' +
-      '<div style="font-size:2.5rem;font-weight:700;color:#4CAF50;margin:0.75rem 0;">' + disp + ' cm</div>' +
-      '<p style="color:#888;margin:0.3rem 0;font-size:1rem;">≈ ' + (height / 100).toFixed(2) + ' metros</p>' +
-      '<p style="color:#888;margin:0.3rem 0;font-size:0.85rem;">📏 Distancia: ' + arHeightData.distance.toFixed(1) + ' m &nbsp;|&nbsp; ' + gyroLabel + '</p>' +
-      '<p style="color:#aaa;margin:1rem 0 0;font-size:0.8rem;font-style:italic;">Estimación óptica aproximada.</p>' +
-      '<div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem;">' +
-        '<button onclick="arHeightUseValue(' + height.toFixed(1) + ')" style="background:#4CAF50;color:#fff;border:none;padding:0.75rem 1.5rem;border-radius:8px;cursor:pointer;font-size:0.95rem;font-weight:600;">✓ Usar Este Valor</button>' +
-        '<button onclick="arHeightRetry()" style="background:#666;color:#fff;border:none;padding:0.75rem 1.5rem;border-radius:8px;cursor:pointer;font-size:0.95rem;">🔄 Reintentar</button>' +
+    '<div style="background:#fff;border-radius:16px;padding:1.5rem;text-align:center;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3);">' +
+      '<div style="font-size:2.5rem;margin-bottom:0.5rem;">📐</div>' +
+      '<h3 style="margin:0 0 0.3rem;color:#333;font-size:1.1rem;">Altura Estimada</h3>' +
+      '<div style="font-size:2.5rem;font-weight:700;color:#4CAF50;margin:0.5rem 0;">' + disp + ' cm</div>' +
+      '<p style="color:#888;margin:0.2rem 0;font-size:0.95rem;">≈ ' + meters + ' metros</p>' +
+      '<div style="background:#f5f5f5;border-radius:8px;padding:0.5rem;margin:0.75rem 0;font-size:0.8rem;color:#666;">' +
+        '<div>📏 Distancia: ' + distTxt + ' m (' + modeTxt + ')</div>' +
+        '<div>' + gyroTxt + '</div>' +
+      '</div>' +
+      '<p style="color:#aaa;margin:0.5rem 0;font-size:0.75rem;font-style:italic;">Estimación aproximada basada en óptica y giroscopio.</p>' +
+      '<div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;">' +
+        '<button onclick="arUseValue(' + height.toFixed(1) + ')" style="background:#4CAF50;color:#fff;border:none;padding:0.7rem 1.3rem;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;">✓ Usar</button>' +
+        '<button onclick="arRetry()" style="background:#666;color:#fff;border:none;padding:0.7rem 1.3rem;border-radius:8px;cursor:pointer;font-size:0.9rem;">🔄 Reintentar</button>' +
       '</div>' +
     '</div>';
 
@@ -640,108 +569,84 @@ function showARHeightResult(height) {
 }
 
 // ============================================================================
-// Use value
+// USE VALUE / RETRY / RESET / CLOSE
 // ============================================================================
-function arHeightUseValue(height) {
+function arUseValue(h) {
   var inp = document.getElementById('meas-height');
   if (inp) {
-    inp.value = height;
+    inp.value = h;
     inp.dispatchEvent(new Event('change', { bubbles: true }));
   }
   closeARHeightMeasure();
   if (typeof showToast === 'function') showToast('Altura cargada en el formulario', 'success');
 }
 
-// ============================================================================
-// Retry
-// ============================================================================
-function arHeightRetry() {
-  var r = document.getElementById('ar-height-result-overlay');
+function arRetry() {
+  var r = document.getElementById('ar-result');
   if (r) r.remove();
-  arHeightReset();
+  arReset();
 }
 
-// ============================================================================
-// Reset (back to step 1, keeps distance)
-// ============================================================================
-function arHeightReset() {
-  arHeightStopLiveTracking();
-
-  arHeightData.baseY = null;
-  arHeightData.topY = null;
-  arHeightData.basePitch = null;
-  arHeightData.height = null;
-  arHeightData.liveHeight = 0;
-  arHeightData.baseFracX = null;
-  arHeightData.baseFracY = null;
-  arHeightData.step = 1;
+function arReset() {
+  arStopAnim();
+  arH.baseBeta = null;
+  arH.topBeta = null;
+  arH.distance = null;
+  arH.height = null;
+  arH.step = 0;
 
   // Clear canvas
-  var canvas = document.getElementById('ar-height-canvas');
-  if (canvas) {
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  var c = document.getElementById('ar-cv');
+  if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+
+  // Hide live elements
+  var lb = document.getElementById('ar-live-box');
+  if (lb) lb.style.display = 'none';
+  var db = document.getElementById('ar-dist-badge');
+  if (db) db.style.display = 'none';
+
+  // Show setup, hide controls
+  var setup = document.getElementById('ar-setup');
+  var ctrl = document.getElementById('ar-controls');
+  if (setup) setup.style.display = 'block';
+  if (ctrl) ctrl.style.display = 'none';
+
+  var sl = document.getElementById('ar-step-label');
+  if (sl) sl.textContent = 'Paso 1: Configuración';
+
+  // Remove tap listeners
+  var box = document.getElementById('ar-box');
+  if (box) {
+    box.removeEventListener('click', arTap);
+    box.removeEventListener('touchend', arTap);
   }
 
-  // Hide dots
-  var bd = document.getElementById('ar-base-dot');
-  var td = document.getElementById('ar-top-dot');
-  if (bd) bd.style.display = 'none';
-  if (td) td.style.display = 'none';
-
-  // Hide live label
-  var lm = document.getElementById('ar-live-measurement');
-  if (lm) lm.style.display = 'none';
-
-  // Reset markers
-  var bm = document.getElementById('ar-height-base-marker');
-  var tm = document.getElementById('ar-height-top-marker');
-  if (bm) { bm.innerHTML = '⬜ Base: Sin marcar'; bm.style.borderColor = 'rgba(76,175,80,0)'; }
-  if (tm) { tm.innerHTML = '⬜ Cima: Sin marcar'; tm.style.borderColor = 'rgba(255,193,7,0)'; }
-
-  var step = document.getElementById('ar-height-step');
-  var inst = document.getElementById('ar-height-instructions');
-  if (step) step.textContent = 'Paso 2: Toca la BASE del árbol';
-  if (inst) inst.textContent = 'Apunta a la BASE del árbol y toca la pantalla.';
-
-  // Re-attach tap listeners
-  var container = document.getElementById('ar-height-container');
-  if (container) {
-    container.addEventListener('touchend', handleARHeightTap, false);
-    container.addEventListener('click', handleARHeightTap, false);
-  }
-
-  // Remove result if present
-  var r = document.getElementById('ar-height-result-overlay');
+  // Remove result
+  var r = document.getElementById('ar-result');
   if (r) r.remove();
 }
 
-// ============================================================================
-// Close
-// ============================================================================
 function closeARHeightMeasure() {
-  arHeightStopLiveTracking();
+  arStopAnim();
 
-  if (arHeightData.orientationHandler) {
-    window.removeEventListener('deviceorientation', arHeightData.orientationHandler);
-    arHeightData.orientationHandler = null;
+  if (arH.gyroHandler) {
+    window.removeEventListener('deviceorientation', arH.gyroHandler);
+    arH.gyroHandler = null;
   }
 
-  if (arHeightData.stream) {
-    arHeightData.stream.getTracks().forEach(function(t) { t.stop(); });
-    arHeightData.stream = null;
+  if (arH.stream) {
+    arH.stream.getTracks().forEach(function(t) { t.stop(); });
+    arH.stream = null;
   }
 
-  var overlay = document.getElementById('ar-height-overlay');
-  if (overlay) {
-    var video = overlay.querySelector('#ar-height-video');
-    if (video && video.srcObject) {
-      video.srcObject.getTracks().forEach(function(t) { t.stop(); });
-    }
-    overlay.remove();
+  var ov = document.getElementById('ar-overlay');
+  if (ov) {
+    var v = ov.querySelector('#ar-vid');
+    if (v && v.srcObject) v.srcObject.getTracks().forEach(function(t) { t.stop(); });
+    ov.remove();
   }
 
-  var r = document.getElementById('ar-height-result-overlay');
+  var r = document.getElementById('ar-result');
   if (r) r.remove();
 }
 
