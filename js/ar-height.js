@@ -140,11 +140,17 @@ function openARHeightMeasure() {
 // ============================================================================
 function _arListenGyro() {
   if (arM.gyroH) return; // already listening
+  var smoothing = 0.15; // Low-pass filter: 0=ignore new data, 1=no smoothing. 0.15 = very smooth.
   var h = function(e) {
     if (e.beta !== null) {
       arM.hasGyro = true;
       arM.gyroReady = true;
-      arM.curBeta = e.beta;
+      // Low-pass filter to eliminate jitter and stabilize the base point
+      if (arM.curBeta === null) {
+        arM.curBeta = e.beta; // first reading, take directly
+      } else {
+        arM.curBeta = arM.curBeta * (1 - smoothing) + e.beta * smoothing;
+      }
       // Hide warning if shown
       var gs = document.getElementById('ar-gyro-status');
       if (gs) gs.style.display = 'none';
@@ -635,3 +641,4 @@ function closeARHeightMeasure() {
 }
 
 window.openARHeightMeasure = openARHeightMeasure;
+
