@@ -4,29 +4,20 @@
 // ============================================================================
 
 var arM = {
-  step: 0,         // 0=ready, 1=base marked (live tracking), 2=done
+  step: 0,         // 0=ready to mark base, 1=tracking (tilt up), 2=done
   stream: null,
   animId: null,
   gyroH: null,
   hasGyro: false,
+  gyroReady: false, // true once we've received at least one gyro event
 
-  // Gyroscope
   curBeta: null,    // current device beta (live)
   baseBeta: null,   // beta when base was tapped
   topBeta: null,    // beta when top was tapped
 
-  // Base point screen position (fraction 0–1 of the camera area)
-  baseFracX: 0.5,
-  baseFracY: 0.5,
-
-  // Calculations
-  phoneH: 1.5,     // assumed phone height above ground (m)
+  phoneH: 1.5,     // phone height above ground (m)
   dist: null,       // auto-calculated distance (m)
   height: null,     // final height (cm)
-
-  // Camera area bounds (excluding UI bars)
-  camTop: 0,
-  camBot: 0,
 };
 
 // ============================================================================
@@ -34,76 +25,89 @@ var arM = {
 // ============================================================================
 function openARHeightMeasure() {
   arM = {
-    step: 0, stream: null, animId: null, gyroH: null, hasGyro: false,
+    step: 0, stream: null, animId: null, gyroH: null,
+    hasGyro: false, gyroReady: false,
     curBeta: null, baseBeta: null, topBeta: null,
-    baseFracX: 0.5, baseFracY: 0.5,
-    phoneH: 1.5, dist: null, height: null, camTop: 0, camBot: 0,
+    phoneH: 1.5, dist: null, height: null,
   };
 
+  // ---- REQUEST GYROSCOPE PERMISSION IMMEDIATELY (user gesture context) ----
+  // This is critical for iOS 13+ — must be in the click handler
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(function(state) {
+      if (state === 'granted') _arListenGyro();
+    }).catch(function(e) {
+      console.warn('Gyro permission denied:', e);
+    });
+  } else if ('DeviceOrientationEvent' in window) {
+    _arListenGyro();
+  }
+
+  // ---- CREATE OVERLAY ----
   var ov = document.createElement('div');
   ov.id = 'ar-ov';
   ov.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:9999;';
   ov.innerHTML =
     '<div id="ar-box" style="position:relative;width:100%;height:100%;overflow:hidden;">' +
 
-      // Video
       '<video id="ar-vid" autoplay playsinline muted ' +
         'style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"></video>' +
 
-      // Canvas (for line drawing)
-      '<canvas id="ar-cv" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2;"></canvas>' +
+      '<canvas id="ar-cv" style="position:absolute;top:0;left:0;width:100%;height:100%;' +
+        'pointer-events:none;z-index:2;"></canvas>' +
 
-      // ---- MINIMAL UI (like Measure app) ----
-
-      // Top instruction bar (translucent, compact)
-      '<div id="ar-top" style="position:absolute;top:0;left:0;width:100%;z-index:10;' +
-        'background:linear-gradient(rgba(0,0,0,0.6),transparent);padding:0.6rem 1rem 1.5rem;pointer-events:none;">' +
+      // Top hint (gradient overlay)
+      '<div style="position:absolute;top:0;left:0;width:100%;z-index:10;' +
+        'background:linear-gradient(rgba(0,0,0,0.5),transparent);padding:0.5rem 1rem 1.5rem;pointer-events:none;">' +
         '<p id="ar-hint" style="margin:0;text-align:center;color:rgba(255,255,255,0.9);' +
-          'font-size:0.85rem;font-weight:500;text-shadow:0 1px 4px rgba(0,0,0,0.7);">' +
-          'Apunta a la base del árbol y presiona <b>+</b></p>' +
+          'font-size:0.85rem;text-shadow:0 1px 4px rgba(0,0,0,0.8);">' +
+          'Apunta a la <b>base</b> del árbol y presiona <b>+</b></p>' +
       '</div>' +
 
+      // Gyro status (shows briefly if no gyro)
+      '<div id="ar-gyro-status" style="display:none;position:absolute;top:3rem;left:50%;transform:translateX(-50%);' +
+        'z-index:10;background:rgba(200,50,50,0.8);color:#fff;padding:0.3rem 0.8rem;border-radius:20px;' +
+        'font-size:0.75rem;pointer-events:none;"></div>' +
+
       // Close button (top-right)
-      '<button id="ar-close" onclick="closeARHeightMeasure()" style="position:absolute;top:0.6rem;right:0.6rem;z-index:11;' +
-        'width:40px;height:40px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);' +
-        'color:#fff;font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+      '<button onclick="closeARHeightMeasure()" style="position:absolute;top:0.5rem;right:0.5rem;z-index:11;' +
+        'width:38px;height:38px;border-radius:50%;border:none;background:rgba(60,60,60,0.7);' +
+        'color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
         'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">✕</button>' +
 
-      // Crosshair (center, like Measure app — subtle white circle + dot)
-      '<div id="ar-cross" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;">' +
-        '<div style="width:40px;height:40px;border:1.5px solid rgba(255,255,255,0.7);border-radius:50%;' +
-          'position:relative;display:flex;align-items:center;justify-content:center;">' +
-          '<div style="width:6px;height:6px;background:#fff;border-radius:50%;"></div>' +
+      // Crosshair (center — white circle + dot, Measure style)
+      '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;">' +
+        '<div style="width:36px;height:36px;border:1.5px solid rgba(255,255,255,0.6);border-radius:50%;' +
+          'display:flex;align-items:center;justify-content:center;">' +
+          '<div style="width:5px;height:5px;background:rgba(255,255,255,0.9);border-radius:50%;"></div>' +
         '</div>' +
       '</div>' +
 
-      // Bottom controls (minimal — + button center, undo left)
+      // Bottom bar (+ button, undo)
       '<div id="ar-btm" style="position:absolute;bottom:0;left:0;width:100%;z-index:10;' +
-        'background:linear-gradient(transparent,rgba(0,0,0,0.7));padding:1.5rem 1rem 1.2rem;' +
+        'background:linear-gradient(transparent,rgba(0,0,0,0.6));padding:1.5rem 1rem 1.2rem;' +
         'display:flex;align-items:center;justify-content:center;gap:2rem;">' +
 
-        // Undo button (left)
-        '<button id="ar-undo" onclick="arUndo()" style="width:44px;height:44px;border-radius:50%;border:none;' +
-          'background:rgba(255,255,255,0.15);color:#fff;font-size:1.2rem;cursor:pointer;' +
+        '<button id="ar-undo" onclick="_arUndo()" style="width:42px;height:42px;border-radius:50%;border:none;' +
+          'background:rgba(255,255,255,0.15);color:#fff;font-size:1.1rem;cursor:pointer;' +
           'display:none;align-items:center;justify-content:center;' +
           'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">↩</button>' +
 
-        // + button (center, large)
-        '<button id="ar-add" onclick="arAdd()" style="width:64px;height:64px;border-radius:50%;border:3px solid #fff;' +
-          'background:rgba(255,255,255,0.2);color:#fff;font-size:2rem;cursor:pointer;' +
-          'display:flex;align-items:center;justify-content:center;font-weight:300;' +
-          'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);' +
+        '<button id="ar-add" onclick="_arAdd()" style="width:60px;height:60px;border-radius:50%;' +
+          'border:3px solid rgba(255,255,255,0.9);background:rgba(255,255,255,0.15);color:#fff;' +
+          'font-size:1.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
+          'font-weight:300;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);' +
           'box-shadow:0 2px 12px rgba(0,0,0,0.3);">+</button>' +
 
-        // Spacer (right, to balance undo)
-        '<div style="width:44px;height:44px;"></div>' +
+        '<div style="width:42px;"></div>' +
       '</div>' +
 
     '</div>';
 
   document.body.appendChild(ov);
 
-  // Start camera
+  // ---- START CAMERA ----
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
   }).then(function(s) {
@@ -111,10 +115,19 @@ function openARHeightMeasure() {
     var v = document.getElementById('ar-vid');
     if (!v) return;
     v.srcObject = s;
-    var p = v.play();
-    if (p && p.catch) p.catch(function() {});
-    arInitGyro();
-    arSyncCv();
+    v.play().catch(function() {});
+    _arSyncCv();
+
+    // Check gyro status after 1.5s
+    setTimeout(function() {
+      if (!arM.gyroReady) {
+        var gs = document.getElementById('ar-gyro-status');
+        if (gs) {
+          gs.style.display = 'block';
+          gs.textContent = '⚠ Sin giroscopio — medición menos precisa';
+        }
+      }
+    }, 1500);
   }).catch(function(e) {
     console.error('Cam:', e);
     if (typeof showToast === 'function') showToast('Error accediendo a la cámara.', 'error');
@@ -123,48 +136,31 @@ function openARHeightMeasure() {
 }
 
 // ============================================================================
-// GYROSCOPE
+// GYROSCOPE LISTENER
 // ============================================================================
-function arInitGyro() {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS — request on first user gesture (the + button tap)
-    arM.hasGyro = false;
-  } else if ('DeviceOrientationEvent' in window) {
-    arListenGyro();
-  }
-}
-
-function arReqGyroiOS() {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission().then(function(s) {
-      if (s === 'granted') arListenGyro();
-    }).catch(function() {});
-  }
-}
-
-function arListenGyro() {
+function _arListenGyro() {
+  if (arM.gyroH) return; // already listening
   var h = function(e) {
     if (e.beta !== null) {
       arM.hasGyro = true;
+      arM.gyroReady = true;
       arM.curBeta = e.beta;
+      // Hide warning if shown
+      var gs = document.getElementById('ar-gyro-status');
+      if (gs) gs.style.display = 'none';
     }
   };
   window.addEventListener('deviceorientation', h);
   arM.gyroH = h;
 }
 
-// beta → angle from horizontal in degrees
-// vertical phone: beta≈90 → angle=0°
-// tilted back (looking up): beta<90 → positive angle
-// tilted forward (looking down): beta>90 → negative angle
-function b2a(beta) { return 90 - beta; }
+// beta → angle from horizontal (degrees)
+function _b2a(beta) { return 90 - beta; }
 
 // ============================================================================
 // CANVAS SYNC
 // ============================================================================
-function arSyncCv() {
+function _arSyncCv() {
   var c = document.getElementById('ar-cv');
   if (!c) return null;
   var r = c.getBoundingClientRect();
@@ -172,127 +168,175 @@ function arSyncCv() {
   var nw = Math.round(r.width * d);
   var nh = Math.round(r.height * d);
   if (Math.abs(c.width - nw) > 5 || Math.abs(c.height - nh) > 5) {
-    c.width = nw;
-    c.height = nh;
+    c.width = nw; c.height = nh;
   }
   return c;
 }
 
 // ============================================================================
-// + BUTTON — Add point (base or top)
+// + BUTTON
 // ============================================================================
-function arAdd() {
-  // iOS: request gyro on first tap
-  if (!arM.hasGyro) arReqGyroiOS();
-
+function _arAdd() {
   if (arM.step === 0) {
-    // ==== MARK BASE ====
+    // ---- MARK BASE ----
+
+    // Check if gyro is ready
+    if (!arM.gyroReady || arM.curBeta === null) {
+      // No gyro — try to use it anyway, or warn
+      if (!arM.hasGyro) {
+        // Show manual distance prompt as fallback
+        _arShowManualFallback();
+        return;
+      }
+    }
+
     arM.baseBeta = arM.curBeta;
 
-    // Base is at center of screen (where crosshair is)
-    arM.baseFracX = 0.5;
-    arM.baseFracY = 0.5;
-
-    // Auto-calculate distance from phone height + tilt angle
-    if (arM.hasGyro && arM.baseBeta !== null) {
-      var angleDown = Math.abs(b2a(arM.baseBeta)); // degrees below horizontal
-      var angleRad = angleDown * Math.PI / 180;
-      if (angleRad > 0.05) { // need at least ~3° tilt
-        arM.dist = arM.phoneH / Math.tan(angleRad);
-        arM.dist = Math.max(0.5, Math.min(arM.dist, 100));
-      } else {
-        arM.dist = 5; // fallback
-      }
+    // Auto-calculate distance: dist = phoneHeight / tan(angle_below_horizontal)
+    var angleDeg = _b2a(arM.baseBeta); // negative means looking down
+    var angleRad = Math.abs(angleDeg) * Math.PI / 180;
+    if (angleRad > 0.05) { // at least ~3°
+      arM.dist = arM.phoneH / Math.tan(angleRad);
+      arM.dist = Math.max(0.5, Math.min(arM.dist, 80));
     } else {
-      arM.dist = 5; // no gyro fallback
+      arM.dist = 5; // nearly horizontal, use default
     }
 
     arM.step = 1;
 
     // Update UI
     document.getElementById('ar-hint').innerHTML =
-      'Mueve hacia la cima del árbol y presiona <b>+</b>';
+      'Mueve hacia la <b>cima</b> y presiona <b>+</b>';
     document.getElementById('ar-undo').style.display = 'flex';
-
-    // Change + button color to indicate "active measurement"
     var btn = document.getElementById('ar-add');
     btn.style.borderColor = '#4CAF50';
-    btn.style.background = 'rgba(76,175,80,0.3)';
+    btn.style.background = 'rgba(76,175,80,0.25)';
 
     // Start animation
-    arSyncCv();
-    arStartAnim();
+    _arSyncCv();
+    _arStartAnim();
 
   } else if (arM.step === 1) {
-    // ==== MARK TOP ====
+    // ---- MARK TOP ----
     arM.topBeta = arM.curBeta;
     arM.step = 2;
 
-    arStopAnim();
+    _arStopAnim();
 
-    // Calculate final height
-    var h = arCalcH(arM.topBeta || arM.baseBeta);
+    var h = _arCalcH(arM.topBeta);
     arM.height = Math.max(Math.abs(h), 1);
 
-    // Draw final state on canvas
-    arDrawFinal();
-
-    // Show result
-    arShowResult(arM.height);
+    _arDrawFinal();
+    _arShowResult(arM.height);
   }
 }
 
 // ============================================================================
-// UNDO — go back to step 0
+// MANUAL FALLBACK (when no gyroscope)
 // ============================================================================
-function arUndo() {
-  arStopAnim();
-  arM.step = 0;
-  arM.baseBeta = null;
-  arM.topBeta = null;
-  arM.dist = null;
-  arM.height = null;
+function _arShowManualFallback() {
+  var hint = document.getElementById('ar-hint');
+  if (hint) {
+    hint.innerHTML =
+      'Giroscopio no disponible.<br>' +
+      '<span style="font-size:0.75rem;">Toca la BASE en la pantalla, luego la CIMA.</span>';
+  }
+  // Switch to tap-based mode
+  arM.dist = 5; // default distance
+  arM.step = 10; // special step for manual mode
 
-  // Clear canvas
-  var c = document.getElementById('ar-cv');
-  if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  // Enable direct screen taps
+  var box = document.getElementById('ar-box');
+  box.addEventListener('touchend', _arManualTap, false);
+  box.addEventListener('click', _arManualTap, false);
 
-  // Reset UI
-  document.getElementById('ar-hint').innerHTML =
-    'Apunta a la base del árbol y presiona <b>+</b>';
-  document.getElementById('ar-undo').style.display = 'none';
-  var btn = document.getElementById('ar-add');
-  btn.style.borderColor = '#fff';
-  btn.style.background = 'rgba(255,255,255,0.2)';
+  // Show distance input
+  var btm = document.getElementById('ar-btm');
+  btm.innerHTML =
+    '<div style="text-align:center;width:100%;">' +
+      '<div style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-bottom:0.5rem;">' +
+        '<span style="color:#aaa;font-size:0.8rem;">Distancia:</span>' +
+        '<input type="number" id="ar-man-dist" value="5" min="0.5" max="100" step="0.5" ' +
+          'style="width:70px;padding:0.4rem;border:1.5px solid #4CAF50;border-radius:6px;' +
+          'font-size:0.9rem;text-align:center;background:rgba(255,255,255,0.9);color:#333;">' +
+        '<span style="color:#aaa;font-size:0.8rem;">m</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:0.5rem;justify-content:center;">' +
+        '<button onclick="_arUndo()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;' +
+          'padding:0.4rem 1rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">↩ Reiniciar</button>' +
+        '<button onclick="closeARHeightMeasure()" style="background:rgba(200,50,50,0.7);color:#fff;border:none;' +
+          'padding:0.4rem 1rem;border-radius:6px;cursor:pointer;font-size:0.8rem;">✕ Cerrar</button>' +
+      '</div>' +
+    '</div>';
+}
 
-  // Remove result
-  var r = document.getElementById('ar-result');
-  if (r) r.remove();
+var _arManualBase = null;
+function _arManualTap(e) {
+  var tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'button' || tag === 'input') return;
+  if (e.type === 'touchend') e.preventDefault();
+
+  var box = document.getElementById('ar-box');
+  var rect = box.getBoundingClientRect();
+  var cy = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY) - rect.top;
+  var fracY = cy / rect.height;
+
+  if (!_arManualBase) {
+    // Mark base
+    _arManualBase = fracY;
+    document.getElementById('ar-hint').innerHTML =
+      'Ahora toca la <b>CIMA</b> del árbol en la pantalla.';
+  } else {
+    // Mark top
+    var topFracY = fracY;
+    var distInput = document.getElementById('ar-man-dist');
+    var dist = distInput ? parseFloat(distInput.value) || 5 : 5;
+
+    // Calculate using FOV
+    var vfov = 60;
+    var halfFov = (vfov / 2) * Math.PI / 180;
+    var center = 0.5;
+
+    var baseAngle = Math.atan(((center - _arManualBase) / 0.5) * Math.tan(halfFov));
+    var topAngle = Math.atan(((center - topFracY) / 0.5) * Math.tan(halfFov));
+    var hMeters = dist * (Math.tan(topAngle) - Math.tan(baseAngle));
+    var hCm = Math.max(Math.abs(hMeters) * 100, 1);
+
+    arM.height = hCm;
+    arM.dist = dist;
+    arM.step = 2;
+
+    // Remove listeners
+    box.removeEventListener('touchend', _arManualTap);
+    box.removeEventListener('click', _arManualTap);
+    _arManualBase = null;
+
+    _arShowResult(hCm);
+  }
 }
 
 // ============================================================================
-// HEIGHT CALCULATION
+// HEIGHT CALCULATION (gyro mode)
 // ============================================================================
-function arCalcH(currentBeta) {
+function _arCalcH(currentBeta) {
   if (!arM.dist || arM.baseBeta === null || currentBeta === null) return 0;
-  var baseA = b2a(arM.baseBeta) * Math.PI / 180;
-  var curA = b2a(currentBeta) * Math.PI / 180;
+  var baseA = _b2a(arM.baseBeta) * Math.PI / 180;
+  var curA = _b2a(currentBeta) * Math.PI / 180;
   return arM.dist * (Math.tan(curA) - Math.tan(baseA)) * 100; // cm
 }
 
 // ============================================================================
-// ANIMATION — Live line + measurement (Measure-app style)
+// ANIMATION — Live tracking
 // ============================================================================
-function arStartAnim() {
-  var vfov = 60; // degrees — approximate smartphone vertical FOV
-  var pixPerDeg; // will calculate based on canvas height
+function _arStartAnim() {
+  var vfov = 60;
 
   function frame() {
     try {
       if (arM.step !== 1) return;
 
-      var c = arSyncCv();
-      if (!c || c.width < 10 || c.height < 10) {
+      var c = _arSyncCv();
+      if (!c || c.width < 10) {
         arM.animId = requestAnimationFrame(frame);
         return;
       }
@@ -303,104 +347,98 @@ function arStartAnim() {
       var dpr = window.devicePixelRatio || 1;
       ctx.clearRect(0, 0, W, H);
 
-      // Pixels per degree of tilt
-      pixPerDeg = H / vfov;
+      var pixPerDeg = H / vfov;
 
-      // ---- Track base point position ----
-      // When user marked base, it was at center (0.5, 0.5).
-      // As they tilt up (baseBeta decreases), the base moves DOWN on screen.
-      var baseX = W / 2;
-      var baseY = H / 2; // start at center
+      // ---- Calculate where the base APPEARS on screen ----
+      // Base was at center when tapped. As user tilts up, base moves DOWN.
+      var baseScreenX = W / 2;
+      var baseScreenY = H / 2; // starts at center
 
       if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
         var deltaDeg = arM.baseBeta - arM.curBeta;
-        // positive deltaDeg = tilted up = base should move down
-        baseY = H / 2 + (deltaDeg * pixPerDeg);
+        // Positive = user tilted UP → base should move DOWN
+        baseScreenY = H / 2 + (deltaDeg * pixPerDeg);
       }
 
-      // Crosshair position (always center)
+      // Clamp base so line is always visible
+      var clampedBaseY = Math.min(baseScreenY, H + 30 * dpr);
+
+      // Crosshair center
       var crossX = W / 2;
       var crossY = H / 2;
 
       // Calculate live height
-      var liveH = Math.abs(arCalcH(arM.curBeta || arM.baseBeta));
+      var liveH = Math.abs(_arCalcH(arM.curBeta));
 
-      // ---- DRAW DOTTED LINE from base to crosshair ----
-      // Clamp base Y to stay on screen (but allow slightly off for effect)
-      var drawBaseY = Math.min(baseY, H + 20 * dpr);
+      // ---- DRAW THE MEASUREMENT LINE ----
+      // Only draw if there's meaningful distance between points
+      var lineLen = Math.abs(clampedBaseY - crossY);
 
-      // Line style: white dotted chain (like Measure app)
-      // Outer glow
-      ctx.save();
-      ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.lineDashOffset = -(Date.now() / 60) % (8 * dpr);
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 8 * dpr;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(baseX, drawBaseY);
-      ctx.lineTo(crossX, crossY);
-      ctx.stroke();
-      ctx.restore();
-
-      // Main dotted line (white, like Measure app)
-      ctx.save();
-      ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.lineDashOffset = -(Date.now() / 60) % (8 * dpr);
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.lineWidth = 2 * dpr;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(baseX, drawBaseY);
-      ctx.lineTo(crossX, crossY);
-      ctx.stroke();
-      ctx.restore();
-
-      // ---- BASE DOT (if still on screen) ----
-      if (drawBaseY < H) {
+      if (lineLen > 3) {
+        // Glow
+        ctx.save();
+        ctx.setLineDash([4 * dpr, 4 * dpr]);
+        ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 10 * dpr;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(baseX, drawBaseY, 5 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.moveTo(baseScreenX, clampedBaseY);
+        ctx.lineTo(crossX, crossY);
+        ctx.stroke();
+        ctx.restore();
+
+        // Main dotted line (white, Measure style)
+        ctx.save();
+        ctx.setLineDash([4 * dpr, 4 * dpr]);
+        ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 2.5 * dpr;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(baseScreenX, clampedBaseY);
+        ctx.lineTo(crossX, crossY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ---- BASE DOT (white, on screen) ----
+      if (clampedBaseY <= H) {
+        ctx.beginPath();
+        ctx.arc(baseScreenX, clampedBaseY, 4 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.fill();
       }
 
-      // ---- MEASUREMENT LABEL (floating near line midpoint, like Measure) ----
-      var midY = (drawBaseY + crossY) / 2;
-      // Position label to the right of the line
-      var labelX = baseX + 20 * dpr;
-
+      // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
       if (liveH >= 100) {
         txt = liveH.toFixed(0) + ' cm';
-      } else {
+      } else if (liveH >= 1) {
         txt = liveH.toFixed(1) + ' cm';
+      } else {
+        txt = '0 cm';
       }
 
-      ctx.font = (15 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+      // Position: near the midpoint of the line, offset right
+      var labelMidY = (Math.min(clampedBaseY, H) + crossY) / 2;
+      var labelX = crossX + 25 * dpr;
+
+      ctx.font = (14 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
       var tw = ctx.measureText(txt).width;
-      var px = 8 * dpr;
-      var py = 5 * dpr;
-      var lh = 18 * dpr;
-
-      // Pill-shaped background (like Measure app label)
+      var px = 8 * dpr, py = 5 * dpr;
       var pillW = tw + px * 2;
-      var pillH = lh + py * 2;
-      var pillX = labelX;
-      var pillY = midY - pillH / 2;
-      var pillR = pillH / 2; // fully rounded ends
+      var pillH = 16 * dpr + py * 2;
+      var pillR = pillH / 2;
 
-      ctx.fillStyle = 'rgba(50,50,50,0.85)';
+      // Pill background
+      ctx.fillStyle = 'rgba(45,45,45,0.88)';
       ctx.beginPath();
-      // Rounded rect manually
-      ctx.moveTo(pillX + pillR, pillY);
-      ctx.lineTo(pillX + pillW - pillR, pillY);
-      ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
-      ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
-      ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
-      ctx.lineTo(pillX + pillR, pillY + pillH);
-      ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
-      ctx.lineTo(pillX, pillY + pillR);
-      ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+      ctx.moveTo(labelX + pillR, labelMidY - pillH / 2);
+      ctx.lineTo(labelX + pillW - pillR, labelMidY - pillH / 2);
+      ctx.arc(labelX + pillW - pillR, labelMidY, pillR, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(labelX + pillR, labelMidY + pillH / 2);
+      ctx.arc(labelX + pillR, labelMidY, pillR, Math.PI / 2, -Math.PI / 2);
       ctx.closePath();
       ctx.fill();
 
@@ -408,15 +446,21 @@ function arStartAnim() {
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(txt, pillX + px, midY);
+      ctx.fillText(txt, labelX + px, labelMidY);
 
-      // If height is very small and user hasn't moved, show hint
-      if (liveH < 5) {
-        ctx.font = (12 * dpr) + 'px -apple-system, sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      // ---- HINT if user hasn't moved ----
+      if (liveH < 2 && lineLen < 10) {
+        ctx.font = (11 * dpr) + 'px -apple-system, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.textAlign = 'center';
-        ctx.fillText('↑ Inclina hacia arriba', W / 2, crossY - 50 * dpr);
+        ctx.fillText('↑ Inclina hacia arriba', W / 2, crossY - 40 * dpr);
       }
+
+      // ---- Distance info (small, bottom-right) ----
+      ctx.font = (10 * dpr) + 'px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.textAlign = 'right';
+      ctx.fillText('dist: ' + arM.dist.toFixed(1) + 'm', W - 10 * dpr, H - 80 * dpr);
 
       arM.animId = requestAnimationFrame(frame);
     } catch (e) {
@@ -427,134 +471,145 @@ function arStartAnim() {
   arM.animId = requestAnimationFrame(frame);
 }
 
-function arStopAnim() {
-  if (arM.animId) {
-    cancelAnimationFrame(arM.animId);
-    arM.animId = null;
-  }
+function _arStopAnim() {
+  if (arM.animId) { cancelAnimationFrame(arM.animId); arM.animId = null; }
 }
 
 // ============================================================================
-// DRAW FINAL (locked measurement)
+// FINAL DRAW
 // ============================================================================
-function arDrawFinal() {
-  var c = arSyncCv();
+function _arDrawFinal() {
+  var c = _arSyncCv();
   if (!c) return;
   var ctx = c.getContext('2d');
-  var W = c.width;
-  var H = c.height;
+  var W = c.width, H = c.height;
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
   var pixPerDeg = H / 60;
-
-  // Base position
-  var baseX = W / 2;
   var baseY = H / 2;
   if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    var delta = arM.baseBeta - arM.topBeta;
-    baseY = H / 2 + (delta * pixPerDeg);
+    baseY = H / 2 + ((arM.baseBeta - arM.topBeta) * pixPerDeg);
   }
   baseY = Math.min(baseY, H - 10);
-  var crossY = H / 2;
 
-  // Solid line
+  // Line
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 2 * dpr;
   ctx.setLineDash([4 * dpr, 4 * dpr]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2.5 * dpr;
   ctx.beginPath();
-  ctx.moveTo(baseX, baseY);
-  ctx.lineTo(baseX, crossY);
+  ctx.moveTo(W / 2, baseY);
+  ctx.lineTo(W / 2, H / 2);
   ctx.stroke();
   ctx.restore();
 
   // Dots
-  ctx.beginPath();
-  ctx.arc(baseX, baseY, 5 * dpr, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(baseX, crossY, 5 * dpr, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
+  [baseY, H / 2].forEach(function(y) {
+    ctx.beginPath();
+    ctx.arc(W / 2, y, 5 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+  });
 
   // Label
-  var midY = (baseY + crossY) / 2;
+  var midY = (baseY + H / 2) / 2;
   var h = arM.height || 0;
   var txt = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
-
-  ctx.font = 'bold ' + (16 * dpr) + 'px -apple-system, sans-serif';
+  ctx.font = 'bold ' + (15 * dpr) + 'px -apple-system, sans-serif';
   var tw = ctx.measureText(txt).width;
   var px = 10 * dpr, py = 6 * dpr;
-  var pillW = tw + px * 2;
-  var pillH = 20 * dpr + py * 2;
-  var pillX = baseX + 20 * dpr;
-  var pillY = midY - pillH / 2;
-  var pillR = pillH / 2;
+  var pillW = tw + px * 2, pillH = 18 * dpr + py * 2;
+  var lx = W / 2 + 20 * dpr, pillR = pillH / 2;
 
-  ctx.fillStyle = 'rgba(50,50,50,0.9)';
+  ctx.fillStyle = 'rgba(45,45,45,0.9)';
   ctx.beginPath();
-  ctx.moveTo(pillX + pillR, pillY);
-  ctx.lineTo(pillX + pillW - pillR, pillY);
-  ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
-  ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
-  ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
-  ctx.lineTo(pillX + pillR, pillY + pillH);
-  ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
-  ctx.lineTo(pillX, pillY + pillR);
-  ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+  ctx.moveTo(lx + pillR, midY - pillH / 2);
+  ctx.lineTo(lx + pillW - pillR, midY - pillH / 2);
+  ctx.arc(lx + pillW - pillR, midY, pillR, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(lx + pillR, midY + pillH / 2);
+  ctx.arc(lx + pillR, midY, pillR, Math.PI / 2, -Math.PI / 2);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(txt, pillX + px, midY);
+  ctx.fillText(txt, lx + px, midY);
 }
 
 // ============================================================================
-// RESULT
+// RESULT CARD
 // ============================================================================
-function arShowResult(height) {
+function _arShowResult(height) {
   var el = document.createElement('div');
   el.id = 'ar-result';
   el.style.cssText = 'position:fixed;bottom:0;left:0;width:100%;z-index:10001;' +
-    'display:flex;justify-content:center;padding:1rem;';
+    'display:flex;justify-content:center;padding:0.8rem;';
 
   var disp = height >= 100 ? height.toFixed(0) : height.toFixed(1);
   var m = (height / 100).toFixed(2);
-  var d = arM.dist ? arM.dist.toFixed(1) : '?';
 
   el.innerHTML =
-    '<div style="background:#fff;border-radius:16px;padding:1.2rem 1.5rem;text-align:center;' +
-      'max-width:340px;width:100%;box-shadow:0 -4px 24px rgba(0,0,0,0.3);">' +
+    '<div style="background:#fff;border-radius:14px;padding:1rem 1.2rem;text-align:center;' +
+      'max-width:320px;width:100%;box-shadow:0 -2px 20px rgba(0,0,0,0.25);">' +
       '<div style="display:flex;align-items:baseline;justify-content:center;gap:0.3rem;">' +
         '<span style="font-size:2rem;font-weight:700;color:#333;">' + disp + '</span>' +
-        '<span style="font-size:1rem;color:#888;">cm</span>' +
-        '<span style="font-size:0.9rem;color:#aaa;margin-left:0.5rem;">(' + m + ' m)</span>' +
+        '<span style="font-size:0.9rem;color:#888;">cm</span>' +
+        '<span style="font-size:0.85rem;color:#aaa;margin-left:0.4rem;">(' + m + ' m)</span>' +
       '</div>' +
-      '<div style="font-size:0.75rem;color:#999;margin:0.3rem 0 0.8rem;">Dist. estimada: ' + d + ' m' +
-        (arM.hasGyro ? ' · Giroscopio ✓' : ' · Sin giroscopio') + '</div>' +
-      '<div style="display:flex;gap:0.5rem;justify-content:center;">' +
-        '<button onclick="arUseVal(' + height.toFixed(1) + ')" style="flex:1;background:#4CAF50;color:#fff;border:none;' +
-          'padding:0.65rem;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer;">Usar</button>' +
-        '<button onclick="arUndo()" style="flex:1;background:#f0f0f0;color:#333;border:none;' +
-          'padding:0.65rem;border-radius:10px;font-size:0.9rem;cursor:pointer;">Reintentar</button>' +
+      '<div style="display:flex;gap:0.5rem;justify-content:center;margin-top:0.8rem;">' +
+        '<button onclick="arUseVal(' + height.toFixed(1) + ')" style="flex:1;max-width:140px;background:#4CAF50;color:#fff;' +
+          'border:none;padding:0.6rem;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer;">Usar</button>' +
+        '<button onclick="_arUndo()" style="flex:1;max-width:140px;background:#f0f0f0;color:#333;' +
+          'border:none;padding:0.6rem;border-radius:10px;font-size:0.9rem;cursor:pointer;">Reintentar</button>' +
       '</div>' +
     '</div>';
 
   document.body.appendChild(el);
-
-  // Hide the + button
   var addBtn = document.getElementById('ar-add');
   if (addBtn) addBtn.style.display = 'none';
 }
 
 // ============================================================================
-// USE VALUE
+// UNDO / USE / CLOSE
 // ============================================================================
+function _arUndo() {
+  _arStopAnim();
+  arM.step = 0;
+  arM.baseBeta = null;
+  arM.topBeta = null;
+  arM.dist = null;
+  arM.height = null;
+  _arManualBase = null;
+
+  var c = document.getElementById('ar-cv');
+  if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+
+  document.getElementById('ar-hint').innerHTML =
+    'Apunta a la <b>base</b> del árbol y presiona <b>+</b>';
+
+  var undo = document.getElementById('ar-undo');
+  if (undo) undo.style.display = 'none';
+
+  var addBtn = document.getElementById('ar-add');
+  if (addBtn) {
+    addBtn.style.display = 'flex';
+    addBtn.style.borderColor = 'rgba(255,255,255,0.9)';
+    addBtn.style.background = 'rgba(255,255,255,0.15)';
+  }
+
+  var r = document.getElementById('ar-result');
+  if (r) r.remove();
+
+  // Re-check if we need manual fallback mode
+  var box = document.getElementById('ar-box');
+  if (box) {
+    box.removeEventListener('touchend', _arManualTap);
+    box.removeEventListener('click', _arManualTap);
+  }
+}
+
 function arUseVal(h) {
   var inp = document.getElementById('meas-height');
   if (inp) {
@@ -565,32 +620,18 @@ function arUseVal(h) {
   if (typeof showToast === 'function') showToast('Altura cargada en el formulario', 'success');
 }
 
-// ============================================================================
-// CLOSE
-// ============================================================================
 function closeARHeightMeasure() {
-  arStopAnim();
-
-  if (arM.gyroH) {
-    window.removeEventListener('deviceorientation', arM.gyroH);
-    arM.gyroH = null;
-  }
-
-  if (arM.stream) {
-    arM.stream.getTracks().forEach(function(t) { t.stop(); });
-    arM.stream = null;
-  }
-
+  _arStopAnim();
+  if (arM.gyroH) { window.removeEventListener('deviceorientation', arM.gyroH); arM.gyroH = null; }
+  if (arM.stream) { arM.stream.getTracks().forEach(function(t) { t.stop(); }); arM.stream = null; }
   var ov = document.getElementById('ar-ov');
   if (ov) {
     var v = ov.querySelector('#ar-vid');
     if (v && v.srcObject) v.srcObject.getTracks().forEach(function(t) { t.stop(); });
     ov.remove();
   }
-
   var r = document.getElementById('ar-result');
   if (r) r.remove();
 }
 
-// Expose
 window.openARHeightMeasure = openARHeightMeasure;
