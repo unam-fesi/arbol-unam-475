@@ -80,7 +80,7 @@
     background-repeat: no-repeat;
     background-position: center;
     background-size: contain;
-    opacity: 0.08;
+    opacity: 0.15;
     pointer-events: none;
     z-index: 0;
     mix-blend-mode: multiply;
@@ -1648,8 +1648,26 @@
     </style>
 </head>
 <body>
+    <!-- ========== INTRO VIDEO OVERLAY ========== -->
+    <div id="intro-video-overlay" style="
+      position:fixed; top:0; left:0; width:100vw; height:100vh;
+      background:#000; z-index:99999; display:flex; align-items:center;
+      justify-content:center; flex-direction:column;">
+      <video id="intro-video" autoplay playsinline muted
+        style="max-width:100%; max-height:90vh; object-fit:contain;">
+        <source src="video/intro.mp4" type="video/mp4">
+      </video>
+      <button id="skip-intro-btn" onclick="skipIntro()" style="
+        position:absolute; bottom:2rem; right:2rem;
+        background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.4);
+        padding:0.5rem 1.5rem; border-radius:8px; cursor:pointer;
+        font-size:0.9rem; backdrop-filter:blur(4px); transition:all 0.3s;">
+        Omitir <i class="fas fa-forward"></i>
+      </button>
+    </div>
+
     <!-- ========== LOGIN SCREEN ========== -->
-    <div id="login-screen" class="login-container">
+    <div id="login-screen" class="login-container" style="display:none;">
         <div class="login-box">
             <div class="login-logo">
                 <img src="img/fesi-logo.png" alt="FESI UNAM" style="width:120px;height:auto;margin:0 auto 1rem;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
@@ -2224,6 +2242,25 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label for="assign-specialist">Especialista</label>
+                    <select id="assign-specialist">
+                        <option value="">Ninguno</option>
+                        <option value="Dr. Fernando Calderón Guzmán">Dr. Fernando Calderón Guzmán - Arboricultura Urbana y Fitosanidad</option>
+                        <option value="Mtra. Patricia Rivera Torres">Mtra. Patricia Rivera Torres - Ecología Forestal y Restauración</option>
+                        <option value="Dr. Carlos Méndez Alonzo">Dr. Carlos Méndez Alonzo - Fisiología Vegetal y Estrés Hídrico</option>
+                        <option value="Ing. Ambiental Laura Sánchez Valdés">Ing. Ambiental Laura Sánchez Valdés - Control de Plagas y Enfermedades</option>
+                        <option value="Otro">Otro</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" id="specialist-custom-row" style="display:none;">
+                <div class="form-group">
+                    <label for="assign-specialist-custom">Nombre del Especialista</label>
+                    <input type="text" id="assign-specialist-custom" placeholder="Ingresa nombre personalizado">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
                     <label for="assign-notes">Notas</label>
                     <input type="text" id="assign-notes" placeholder="Opcional">
                 </div>
@@ -2269,6 +2306,7 @@
                 <th>Árbol</th>
                 <th>Asignado a</th>
                 <th>Tipo</th>
+                <th>Especialista</th>
                 <th>Fecha</th>
                 <th>Acciones</th>
             </tr>
@@ -2403,6 +2441,7 @@
     <script src="js/navigation.js"></script>
     <script src="js/mi-arbol.js"></script>
     <script src="js/pumai.js"></script>
+    <script src="js/ar-height.js"></script>
     <script src="js/admin.js"></script>
 
     <script>
