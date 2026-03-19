@@ -13,8 +13,11 @@ function initPumAI() {
 
   container.innerHTML = `
     <div class="pum-ai-container" style="display:flex;gap:0;flex-direction:column;max-width:800px;margin:0 auto;">
-      <div id="pumai-messages" style="background:white;border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--shadow);min-height:350px;max-height:500px;overflow-y:auto;padding:1.5rem;">
-        <div style="margin-bottom:1rem;display:flex;gap:12px;align-items:flex-start;">
+      <div id="pumai-messages" style="position:relative;background:white;border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--shadow);min-height:350px;max-height:500px;overflow-y:auto;padding:1.5rem;">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.12;pointer-events:none;z-index:0;">
+          <img src="img/pumai-logo.png" alt="" style="width:200px;height:200px;object-fit:contain;">
+        </div>
+        <div style="position:relative;z-index:1;margin-bottom:1rem;display:flex;gap:12px;align-items:flex-start;">
           <img src="img/pumai-logo.png" alt="PUM-AI" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex-shrink:0;">
           <div style="background:#e8f5e9;padding:12px 16px;border-radius:12px;border-bottom-left-radius:4px;max-width:85%;font-size:0.95rem;">
             ¡Hola! Soy <strong>PUM-AI</strong>, tu consultor de arboricultura. Puedes subir una foto de tu árbol y/o hacerme preguntas sobre cuidados, plagas, diagnósticos, etc.
