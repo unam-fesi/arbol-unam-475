@@ -2,16 +2,106 @@
 // AUTH - Login, Logout, Session Management, Profile
 // ============================================================================
 
+let introFinished = false;
+let pendingAfterIntro = null; // 'login' or 'app'
+
+function initIntroVideo() {
+  const overlay = document.getElementById('intro-video-overlay');
+  const video = document.getElementById('intro-video');
+  if (!overlay || !video) {
+    // No video element, skip intro
+    introFinished = true;
+    return;
+  }
+
+  // When video ends, dismiss overlay and show what's pending
+  video.addEventListener('ended', function() { dismissIntro(); });
+
+  // If video fails to load (no file), skip intro
+  video.addEventListener('error', function() {
+    console.warn('Intro video not found, skipping...');
+    dismissIntro();
+  });
+
+  // Also handle source error
+  var source = video.querySelector('source');
+  if (source) {
+    source.addEventListener('error', function() {
+      console.warn('Intro video source not found, skipping...');
+      dismissIntro();
+    });
+  }
+
+  // iOS Safari: autoplay may be silently blocked (no error event fires).
+  // Fallback: if video hasn't started playing within 3 seconds, dismiss.
+  var safariTimeout = setTimeout(function() {
+    if (!introFinished && (video.paused || video.readyState < 2)) {
+      console.warn('Video autoplay blocked or stalled, skipping intro...');
+      dismissIntro();
+    }
+  }, 3000);
+
+  // Also try to explicitly play and catch rejection (iOS Safari)
+  var playPromise = video.play();
+  if (playPromise !== undefined) {
+    playPromise.catch(function(err) {
+      console.warn('Video autoplay rejected:', err.message);
+      clearTimeout(safariTimeout);
+      dismissIntro();
+    });
+  }
+
+  // Clear timeout once video starts playing normally
+  video.addEventListener('playing', function() {
+    clearTimeout(safariTimeout);
+  });
+}
+
+function dismissIntro() {
+  if (introFinished) return;
+  introFinished = true;
+  const overlay = document.getElementById('intro-video-overlay');
+  if (overlay) {
+    overlay.style.transition = 'opacity 0.5s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => { overlay.style.display = 'none'; }, 500);
+  }
+  const video = document.getElementById('intro-video');
+  if (video) { try { video.pause(); } catch(e) {} }
+
+  // Show pending screen
+  if (pendingAfterIntro === 'app') {
+    showMainApp();
+  } else {
+    showLoginScreen();
+  }
+}
+
+function skipIntro() {
+  dismissIntro();
+}
+
 async function initApp() {
+  // Start intro video
+  initIntroVideo();
+
   // Check for existing session
   const { data: { session }, error } = await sb.auth.getSession();
 
   if (session) {
     currentUser = session.user;
     await loadUserProfile();
-    showMainApp();
+    if (introFinished) {
+      showMainApp();
+    } else {
+      pendingAfterIntro = 'app';
+    }
   } else {
-    showLoginScreen();
+    if (introFinished) {
+      showLoginScreen();
+    } else {
+      pendingAfterIntro = 'login';
+    }
   }
 
   // Listen for auth state changes
@@ -262,3 +352,4 @@ window.handleLogout = handleLogout;
 window.openProfileModal = openProfileModal;
 window.closeProfileModal = closeProfileModal;
 window.saveProfile = saveProfile;
+window.skipIntro = skipIntro;
