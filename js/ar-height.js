@@ -224,8 +224,9 @@ function arHeightSyncCanvas() {
   var needW = Math.round(rect.width * dpr);
   var needH = Math.round(rect.height * dpr);
 
-  // Only resize if needed (avoids clearing existing content)
-  if (canvas.width !== needW || canvas.height !== needH) {
+  // Only resize if difference is significant (>5px) to avoid flicker.
+  // Setting canvas.width/height CLEARS the canvas, so we avoid doing it every frame.
+  if (Math.abs(canvas.width - needW) > 5 || Math.abs(canvas.height - needH) > 5) {
     canvas.width = needW;
     canvas.height = needH;
   }
@@ -357,7 +358,7 @@ function arHeightStartLiveTracking() {
       var bx = arHeightData.baseFracX * cw;
       var by = arHeightData.baseFracY * ch;
 
-      // Target = center of canvas (crosshair)
+      // Target = crosshair center (center of canvas)
       var tx = cw / 2;
       var ty = ch / 2;
 
@@ -374,67 +375,95 @@ function arHeightStartLiveTracking() {
       if (hValEl) hValEl.textContent = absH >= 100 ? absH.toFixed(0) + ' cm' : absH.toFixed(1) + ' cm';
       if (mValEl) mValEl.textContent = (absH / 100).toFixed(2);
 
-      // ---- DRAW DOTTED LINE (base → crosshair) ----
+      // ---- DRAW VERTICAL LINE from base UP to crosshair Y level ----
+      // Use base X for both points (vertical measurement line)
+      var lineTopY = ty; // crosshair Y level
 
       // Glow layer
       ctx.save();
-      ctx.setLineDash([12, 10]);
-      ctx.lineDashOffset = -(Date.now() / 40) % 22;
-      ctx.strokeStyle = 'rgba(76,175,80,0.25)';
-      ctx.lineWidth = 10;
+      ctx.setLineDash([14, 10]);
+      ctx.lineDashOffset = -(Date.now() / 35) % 24; // animated marching
+      ctx.strokeStyle = 'rgba(76,175,80,0.3)';
+      ctx.lineWidth = 12;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(bx, by);
-      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx, lineTopY);
       ctx.stroke();
       ctx.restore();
 
-      // Main dashed line
+      // Main dashed line (bright, thick)
       ctx.save();
-      ctx.setLineDash([12, 10]);
-      ctx.lineDashOffset = -(Date.now() / 40) % 22;
-      ctx.strokeStyle = 'rgba(76,175,80,0.9)';
-      ctx.lineWidth = 3;
+      ctx.setLineDash([14, 10]);
+      ctx.lineDashOffset = -(Date.now() / 35) % 24;
+      ctx.strokeStyle = '#4CAF50';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(bx, by);
-      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx, lineTopY);
       ctx.stroke();
       ctx.restore();
 
-      // Base circle (pulsing)
+      // Also draw a subtle horizontal connector from line top to crosshair
+      if (Math.abs(bx - tx) > 5) {
+        ctx.save();
+        ctx.setLineDash([6, 6]);
+        ctx.strokeStyle = 'rgba(76,175,80,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bx, lineTopY);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Base circle (pulsing green)
       var pulse = 1 + 0.2 * Math.sin(Date.now() / 250);
       ctx.beginPath();
-      ctx.arc(bx, by, 12 * pulse, 0, Math.PI * 2);
+      ctx.arc(bx, by, 14 * pulse, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(76,175,80,0.5)';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Top target circle (where the line reaches)
+      ctx.beginPath();
+      ctx.arc(bx, lineTopY, 8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,193,7,0.6)';
       ctx.fill();
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // ---- MIDPOINT LABEL ----
-      var mx = (bx + tx) / 2;
-      var my = (by + ty) / 2;
+      // ---- MEASUREMENT LABEL next to the line ----
       var labelText = absH >= 100 ? absH.toFixed(0) + ' cm' : absH.toFixed(1) + ' cm';
+      var labelY = (by + lineTopY) / 2; // midpoint of line
+      var labelX = bx + 25; // offset to the right of the line
 
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = 'bold 18px sans-serif';
       var tw = ctx.measureText(labelText).width;
       var padX = 10;
-      var padY = 6;
+      var padY = 8;
 
-      // Label background (simple rect, no roundRect needed)
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(mx - tw / 2 - padX, my - 10 - padY, tw + padX * 2, 20 + padY * 2);
+      // Label background
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      ctx.fillRect(labelX - padX, labelY - 12 - padY, tw + padX * 2, 24 + padY * 2);
 
       // Label border
-      ctx.strokeStyle = 'rgba(76,175,80,0.6)';
-      ctx.lineWidth = 1;
+      ctx.save();
       ctx.setLineDash([]);
-      ctx.strokeRect(mx - tw / 2 - padX, my - 10 - padY, tw + padX * 2, 20 + padY * 2);
+      ctx.strokeStyle = '#4CAF50';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(labelX - padX, labelY - 12 - padY, tw + padX * 2, 24 + padY * 2);
+      ctx.restore();
 
       // Label text
       ctx.fillStyle = '#4CAF50';
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, mx, my);
+      ctx.fillText(labelText, labelX, labelY);
 
       arHeightData.animFrameId = requestAnimationFrame(frame);
     } catch (err) {
@@ -515,61 +544,69 @@ function arHeightDrawFinalLine(topFracX, topFracY) {
 
   var bx = arHeightData.baseFracX * cw;
   var by = arHeightData.baseFracY * ch;
-  var tx = topFracX * cw;
   var ty = topFracY * ch;
 
   ctx.clearRect(0, 0, cw, ch);
 
-  // Solid line
+  // Solid vertical line (from base to top, same X)
   ctx.save();
   ctx.strokeStyle = '#4CAF50';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
   ctx.shadowColor = 'rgba(76,175,80,0.5)';
   ctx.shadowBlur = 12;
   ctx.beginPath();
   ctx.moveTo(bx, by);
-  ctx.lineTo(tx, ty);
+  ctx.lineTo(bx, ty);
   ctx.stroke();
   ctx.restore();
 
-  // Base circle
+  // Base circle (green)
   ctx.beginPath();
-  ctx.arc(bx, by, 12, 0, Math.PI * 2);
+  ctx.arc(bx, by, 14, 0, Math.PI * 2);
   ctx.fillStyle = '#4CAF50';
   ctx.fill();
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Top circle
+  // Top circle (yellow)
   ctx.beginPath();
-  ctx.arc(tx, ty, 12, 0, Math.PI * 2);
+  ctx.arc(bx, ty, 14, 0, Math.PI * 2);
   ctx.fillStyle = '#FFC107';
   ctx.fill();
   ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Label at midpoint
-  var mx = (bx + tx) / 2;
-  var my = (by + ty) / 2;
+  // Labels "BASE" and "CIMA"
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('BASE', bx + 20, by);
+  ctx.fillText('CIMA', bx + 20, ty);
+
+  // Measurement label at midpoint
+  var midY = (by + ty) / 2;
+  var labelX = bx + 25;
   var h = arHeightData.height || 0;
   var label = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
 
-  ctx.font = 'bold 18px sans-serif';
+  ctx.font = 'bold 20px sans-serif';
   var tw = ctx.measureText(label).width;
-  var px = 12, py = 8;
+  var px = 12, py = 10;
 
   ctx.fillStyle = 'rgba(0,0,0,0.85)';
-  ctx.fillRect(mx - tw / 2 - px, my - 12 - py, tw + px * 2, 24 + py * 2);
+  ctx.fillRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
   ctx.strokeStyle = '#4CAF50';
   ctx.lineWidth = 2;
-  ctx.strokeRect(mx - tw / 2 - px, my - 12 - py, tw + px * 2, 24 + py * 2);
+  ctx.strokeRect(labelX - px, midY - 14 - py, tw + px * 2, 28 + py * 2);
 
   ctx.fillStyle = '#4CAF50';
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, mx, my);
+  ctx.fillText(label, labelX, midY);
 }
 
 // ============================================================================
