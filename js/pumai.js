@@ -51,18 +51,53 @@ function initPumAI() {
 }
 
 function handlePumaiPhoto() {
-  const fileInput = document.getElementById('pumai-file');
+  var fileInput = document.getElementById('pumai-file');
   if (!fileInput.files || fileInput.files.length === 0) return;
 
-  const file = fileInput.files[0];
-  const reader = new FileReader();
+  var file = fileInput.files[0];
+
+  // Check file size before even reading (>15MB is too large for any processing)
+  if (file.size > 15 * 1024 * 1024) {
+    showToast('La imagen es demasiado grande. Usa una foto de menor resolución.', 'warning');
+    fileInput.value = '';
+    return;
+  }
+
+  showToast('Procesando imagen...', 'info');
+
+  var reader = new FileReader();
   reader.onload = function(e) {
-    pumaiCurrentPhoto = e.target.result;
-    const bar = document.getElementById('pumai-photo-bar');
-    const thumb = document.getElementById('pumai-thumb');
-    if (bar) bar.style.display = 'flex';
-    if (thumb) thumb.src = pumaiCurrentPhoto;
-    showToast('Foto adjunta lista', 'success');
+    var rawDataUrl = e.target.result;
+    // Pre-compress immediately on attach to avoid huge memory usage later
+    if (typeof compressImageForAI === 'function') {
+      compressImageForAI(rawDataUrl, 800, 800, 0.65).then(function(compressed) {
+        pumaiCurrentPhoto = compressed;
+        var bar = document.getElementById('pumai-photo-bar');
+        var thumb = document.getElementById('pumai-thumb');
+        if (bar) bar.style.display = 'flex';
+        if (thumb) thumb.src = compressed;
+        showToast('Foto adjunta lista (' + Math.round(compressed.length / 1024) + ' KB)', 'success');
+      }).catch(function(err) {
+        console.error('Pre-compression failed:', err);
+        // Store raw if compression fails - will try again on send
+        pumaiCurrentPhoto = rawDataUrl;
+        var bar = document.getElementById('pumai-photo-bar');
+        var thumb = document.getElementById('pumai-thumb');
+        if (bar) bar.style.display = 'flex';
+        if (thumb) thumb.src = rawDataUrl;
+        showToast('Foto adjunta (sin comprimir)', 'warning');
+      });
+    } else {
+      pumaiCurrentPhoto = rawDataUrl;
+      var bar = document.getElementById('pumai-photo-bar');
+      var thumb = document.getElementById('pumai-thumb');
+      if (bar) bar.style.display = 'flex';
+      if (thumb) thumb.src = rawDataUrl;
+      showToast('Foto adjunta lista', 'success');
+    }
+  };
+  reader.onerror = function() {
+    showToast('Error al leer la imagen', 'error');
   };
   reader.readAsDataURL(file);
 }
@@ -140,9 +175,31 @@ async function sendPumaiMessage() {
     if (pumaiCurrentPhoto) {
       let photoToSend = pumaiCurrentPhoto;
       if (typeof compressImageForAI === 'function') {
-        try { photoToSend = await compressImageForAI(pumaiCurrentPhoto, 1024, 1024, 0.7); } catch(e) {}
+        try {
+          photoToSend = await compressImageForAI(pumaiCurrentPhoto, 800, 800, 0.65);
+        } catch(compressErr) {
+          console.warn('Image compression failed, trying smaller size:', compressErr);
+          // Fallback: try even smaller
+          try {
+            photoToSend = await compressImageForAI(pumaiCurrentPhoto, 512, 512, 0.5);
+          } catch(e2) {
+            console.error('Image compression failed completely:', e2);
+            document.getElementById(typingId)?.remove();
+            addPumaiMessage('<span style="color:var(--danger);">Error: No se pudo procesar la imagen. Intenta con una foto más pequeña.</span>', false);
+            removePumaiPhoto();
+            return;
+          }
+        }
       }
-      requestBody.imageBase64 = photoToSend.split(',')[1];
+      // Final size check — base64 string should be under ~2MB for safe transmission
+      var base64Only = photoToSend.split(',')[1] || photoToSend;
+      if (base64Only.length > 2 * 1024 * 1024) {
+        document.getElementById(typingId)?.remove();
+        addPumaiMessage('<span style="color:var(--danger);">Error: La imagen es demasiado grande incluso después de comprimirla. Intenta con una foto de menor resolución.</span>', false);
+        removePumaiPhoto();
+        return;
+      }
+      requestBody.imageBase64 = base64Only;
       requestBody.imageType = 'image/jpeg';
     }
 
