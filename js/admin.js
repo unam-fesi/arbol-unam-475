@@ -729,12 +729,21 @@ async function loadAssignments() {
     // Garden assignment target dropdown
     populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
 
+    // Load existing tree assignments to mark those as disabled
+    const { data: treeAssignmentsData } = await sb.from('tree_assignments')
+      .select('tree_id')
+      .order('assigned_at', { ascending: false });
+    const assignedTreeIds = new Set((treeAssignmentsData || []).map(a => a.tree_id));
+
     // Tree dropdown
     const treeSelect = document.getElementById('assign-tree');
     if (treeSelect) {
       treeSelect.innerHTML = '<option value="">Selecciona árbol...</option>';
       (trees || []).forEach(t => {
-        treeSelect.innerHTML += `<option value="${t.id}">${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}</option>`;
+        const isAssigned = assignedTreeIds.has(t.id);
+        const suffix = isAssigned ? ' (Ya asignado)' : '';
+        const disabled = isAssigned ? 'disabled' : '';
+        treeSelect.innerHTML += `<option value="${t.id}" ${disabled}>${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}${suffix}</option>`;
       });
     }
 
@@ -753,6 +762,18 @@ async function loadAssignments() {
     });
     document.getElementById('assign-garden-target-type')?.addEventListener('change', function() {
       populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
+    });
+
+    // Listen for specialist dropdown changes to show/hide custom specialist input
+    document.getElementById('assign-specialist')?.addEventListener('change', function() {
+      const customRow = document.getElementById('specialist-custom-row');
+      if (this.value === 'Otro') {
+        customRow.style.display = 'block';
+        document.getElementById('assign-specialist-custom')?.focus();
+      } else {
+        customRow.style.display = 'none';
+        document.getElementById('assign-specialist-custom').value = '';
+      }
     });
 
     // Load existing tree assignments (simple query, then lookup names)
@@ -788,17 +809,26 @@ async function loadAssignments() {
         const targetName = a.user_id ? (taUserMap[a.user_id]?.full_name || 'Usuario') : (taGroupMap[a.group_id]?.name || 'Grupo');
         const type = a.user_id ? 'Usuario' : 'Grupo';
         const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
+
+        // Extract specialist from notes if it exists
+        let specialist = '-';
+        if (a.notes && a.notes.startsWith('[ESPECIALISTA:')) {
+          const match = a.notes.match(/\[ESPECIALISTA:\s*([^\]]+)\]/);
+          if (match) specialist = escapeHtml(match[1].trim());
+        }
+
         row.innerHTML = `
           <td>🌳 ${escapeHtml(tree.tree_code || '-')} - ${escapeHtml(tree.common_name || '')}</td>
           <td>${escapeHtml(targetName)}</td>
           <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
+          <td>${specialist}</td>
           <td>${formatDate(a.assigned_at)}</td>
           <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${a.id}')">Quitar</button></td>
         `;
         treeBody.appendChild(row);
       });
       if (!treeAssignments || treeAssignments.length === 0) {
-        treeBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de árboles</td></tr>';
+        treeBody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de árboles</td></tr>';
       }
     }
 
@@ -876,14 +906,34 @@ async function doAssignTreeFromTab() {
   const targetType = document.getElementById('assign-target-type')?.value;
   const targetId = document.getElementById('assign-target')?.value;
   const treeId = document.getElementById('assign-tree')?.value;
+  const specialist = document.getElementById('assign-specialist')?.value;
+  const specialistCustom = document.getElementById('assign-specialist-custom')?.value.trim();
   const notes = document.getElementById('assign-notes')?.value.trim();
 
   if (!targetId || !treeId) { showToast('Selecciona destinatario y árbol', 'warning'); return; }
 
+  // Determine final specialist name
+  let finalSpecialist = '';
+  if (specialist === 'Otro') {
+    if (!specialistCustom) { showToast('Ingresa nombre del especialista personalizado', 'warning'); return; }
+    finalSpecialist = specialistCustom;
+  } else if (specialist && specialist !== '') {
+    finalSpecialist = specialist;
+  }
+
+  // Build notes with specialist prefix if specialist is selected
+  let finalNotes = '';
+  if (finalSpecialist) {
+    finalNotes = `[ESPECIALISTA: ${finalSpecialist}] `;
+  }
+  if (notes) {
+    finalNotes += notes;
+  }
+
   const data = {
     tree_id: parseInt(treeId),
     assigned_by: currentUser?.id,
-    notes: notes || null
+    notes: finalNotes || null
   };
   if (targetType === 'user') data.user_id = targetId;
   else data.group_id = targetId;
@@ -893,6 +943,7 @@ async function doAssignTreeFromTab() {
     if (error) throw error;
     showToast('Árbol asignado exitosamente', 'success');
     document.getElementById('form-assign-tree')?.reset();
+    document.getElementById('specialist-custom-row').style.display = 'none';
     loadAssignments();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
