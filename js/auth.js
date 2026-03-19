@@ -231,7 +231,15 @@ async function handleLogout() {
     // Force cleanup even on error
     currentUser = null;
     currentUserProfile = null;
-    localStorage.clear();
+    // Only remove Supabase keys (don't clear all — shared domain on GitHub Pages)
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('sb-') || key.startsWith('supabase'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
     showLoginScreen();
   }
