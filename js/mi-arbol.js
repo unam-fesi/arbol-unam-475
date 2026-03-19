@@ -130,6 +130,26 @@ let currentTreeData = null;
 let pendingPhotoBase64 = null;
 let pendingPhotoFile = null;
 
+// ========== PHOTO URL RESOLVER ==========
+// Handles both legacy full URLs and new relative paths (for signed URLs)
+async function resolvePhotoUrl(photoUrlOrPath) {
+  if (!photoUrlOrPath) return null;
+  // If it's already a full URL (legacy data), return as-is
+  if (photoUrlOrPath.startsWith('http://') || photoUrlOrPath.startsWith('https://')) {
+    return photoUrlOrPath;
+  }
+  // Otherwise it's a relative path in tree-photos bucket — create signed URL (1 hour)
+  try {
+    const { data, error } = await sb.storage.from('tree-photos')
+      .createSignedUrl(photoUrlOrPath, 3600);
+    if (error) { console.error('Signed URL error:', error); return null; }
+    return data?.signedUrl || null;
+  } catch (e) {
+    console.error('resolvePhotoUrl error:', e);
+    return null;
+  }
+}
+
 // ========== MAIN LOAD ==========
 async function loadMyTree(forceReload) {
   const container = document.getElementById('mi-arbol-content');
@@ -170,6 +190,16 @@ async function loadMyTree(forceReload) {
       .order('measurement_date', { ascending: false });
     const meas = measurements || [];
 
+    // Pre-resolve all photo URLs (signed URLs for private bucket)
+    for (const m of meas) {
+      if (m.photo_url) {
+        m._resolvedPhotoUrl = await resolvePhotoUrl(m.photo_url);
+      }
+    }
+
+    // Resolve tree catalog photo URL
+    const treePhotoResolved = await resolvePhotoUrl(tree.photo_url);
+
     const refMatch = ENDEMIC_TREE_REFERENCE.find(r =>
       tree.species && r.species.toLowerCase().includes(tree.species.toLowerCase().split(' ')[0])
     );
@@ -207,7 +237,7 @@ async function loadMyTree(forceReload) {
               <div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">Copa ⌀</div><strong>${tree.initial_crown_diameter_cm || '-'} cm</strong></div>
             </div>
           </div>` : ''}
-          ${tree.photo_url ? `<div style="margin-top:1rem;"><img src="${tree.photo_url}" alt="Foto" style="max-width:100%;max-height:400px;border-radius:8px;object-fit:cover;"></div>` : ''}
+          ${treePhotoResolved ? `<div style="margin-top:1rem;"><img src="${treePhotoResolved}" alt="Foto" style="max-width:100%;max-height:400px;border-radius:8px;object-fit:cover;"></div>` : ''}
         </div>
         ${refMatch ? `<div class="tree-card" style="border-left:4px solid var(--accent);margin-top:1rem;"><h4 style="margin-bottom:0.75rem;">${refMatch.icon} Referencia</h4><p><strong>${refMatch.common_name}</strong> (<em>${refMatch.species}</em>)</p><p style="margin:0.5rem 0;">${refMatch.description}</p><div style="background:#e8f5e9;padding:0.75rem;border-radius:8px;">💡 ${refMatch.care}</div></div>` : ''}
         <div class="tree-card" style="margin-top:1rem;"><h4 style="margin-bottom:1rem;">Ubicación</h4><div id="treeMapContainer" style="height:300px;border-radius:8px;overflow:hidden;"></div></div>
@@ -225,6 +255,13 @@ async function loadMyTree(forceReload) {
         <div class="card" style="padding:1.5rem;">
           <form id="form-new-measurement" onsubmit="saveMeasurement(event)">
 
+            <!-- FECHA DE REGISTRO -->
+            <div class="form-group" style="margin-bottom:1.5rem;">
+              <label><i class="fas fa-calendar-alt"></i> Fecha del Registro</label>
+              <input type="date" id="meas-date" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:0.5rem;" required>
+              <small class="text-muted">No se permiten fechas futuras</small>
+            </div>
+
             <!-- FOTO + análisis IA -->
             <div style="background:linear-gradient(135deg,#e8f5e9,#e3f2fd);padding:1.25rem;border-radius:12px;margin-bottom:1.5rem;">
               <h4 style="margin-bottom:0.75rem;"><i class="fas fa-camera"></i> Foto del Árbol</h4>
@@ -240,7 +277,7 @@ async function loadMyTree(forceReload) {
             <!-- MEDIDAS MANUALES -->
             <h4 style="margin-bottom:0.75rem;"><i class="fas fa-ruler"></i> Medidas Biométricas</h4>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:1.5rem;">
-              <div class="form-group"><label>Altura (cm)</label><input type="number" id="meas-height" step="0.1" style="width:100%;padding:0.5rem;"></div>
+              <div class="form-group"><label>Altura (cm)</label><div style="display:flex;gap:0.5rem;"><input type="number" id="meas-height" step="0.1" style="flex:1;padding:0.5rem;"><button type="button" class="btn btn-sm" style="background:var(--accent);color:white;padding:0.5rem 0.75rem;white-space:nowrap;" onclick="openARHeightMeasure()" title="Medir con cámara">📐</button></div></div>
               <div class="form-group"><label>⌀ Tronco (cm)</label><input type="number" id="meas-trunk" step="0.1" style="width:100%;padding:0.5rem;"></div>
               <div class="form-group"><label>⌀ Copa (cm)</label><input type="number" id="meas-crown" step="0.1" style="width:100%;padding:0.5rem;"></div>
             </div>
@@ -433,6 +470,13 @@ async function saveMeasurement(e) {
   if (e) e.preventDefault();
   if (!currentTreeData || !currentUser) return;
 
+  const measDate = document.getElementById('meas-date')?.value;
+  const today = new Date().toISOString().split('T')[0];
+  if (measDate && measDate > today) {
+    showToast('No se permiten fechas futuras', 'warning');
+    return;
+  }
+
   const height = parseFloat(document.getElementById('meas-height')?.value) || null;
   const trunk = parseFloat(document.getElementById('meas-trunk')?.value) || null;
   const crown = parseFloat(document.getElementById('meas-crown')?.value) || null;
@@ -470,8 +514,8 @@ async function saveMeasurement(e) {
           console.error('Photo upload error:', uploadError);
           showToast('Error subiendo foto, se guardará sin ella', 'warning');
         } else {
-          const { data: urlData } = sb.storage.from('tree-photos').getPublicUrl(fileName);
-          photoUrl = urlData?.publicUrl || null;
+          // Guardar solo el path relativo — la URL firmada se genera al consultar
+          photoUrl = fileName;
         }
       } catch (compErr) {
         console.error('Photo compress/upload error:', compErr);
@@ -482,6 +526,7 @@ async function saveMeasurement(e) {
     const { error } = await sb.from('tree_measurements').insert([{
       tree_id: currentTreeData.id,
       user_id: currentUser.id,
+      measurement_date: measDate || today,
       height_cm: height,
       trunk_diameter_cm: trunk,
       crown_diameter_cm: crown,
@@ -533,6 +578,17 @@ function buildTimeline(measurements) {
     if (rubricCount > 0) chips.push(`<div style="text-align:center;padding:0.4rem;background:#e8f5e9;border-radius:6px;"><div class="text-small text-muted">Rubros</div><strong>${rubricCount} evaluados</strong></div>`);
     if (hasPhoto) chips.push(`<div style="text-align:center;padding:0.4rem;background:#e3f2fd;border-radius:6px;"><div class="text-small text-muted">Foto</div><strong><i class="fas fa-camera"></i> Sí</strong></div>`);
 
+    // Build mini rubric bar if data exists
+    let rubricBar = '';
+    if (rubricData && rubricCount > 0) {
+      const rubricItems = HEALTH_RUBRICS.filter(r => rubricData[r.key]).map(r => {
+        const val = rubricData[r.key];
+        const color = val >= 4 ? '#4CAF50' : val >= 3 ? '#FFC107' : '#f44336';
+        return `<span title="${r.label}: ${val}/5" style="display:inline-flex;align-items:center;gap:2px;padding:2px 6px;background:${color}22;border-radius:4px;font-size:0.75rem;"><span>${r.icon}</span><strong style="color:${color};">${val}</strong></span>`;
+      });
+      rubricBar = `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:0.5rem;">${rubricItems.join('')}</div>`;
+    }
+
     return `
       <div class="card" style="padding:1.25rem;margin-bottom:1rem;border-left:4px solid ${i === 0 ? 'var(--primary)' : 'var(--border-light)'};cursor:pointer;transition:box-shadow 0.2s;" onclick="showMeasurementDetail(${m.id})" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.boxShadow=''">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
@@ -546,6 +602,7 @@ function buildTimeline(measurements) {
           </div>
         </div>
         ${chips.length > 0 ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem;margin-top:0.75rem;">${chips.join('')}</div>` : '<p class="text-small text-muted" style="margin-top:0.5rem;">Solo evaluación de salud</p>'}
+        ${rubricBar}
         ${cleanObs ? `<p class="text-small text-muted" style="margin-top:0.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;"><i class="fas fa-sticky-note"></i> ${escapeHtml(cleanObs.substring(0, 100))}${cleanObs.length > 100 ? '...' : ''}</p>` : ''}
       </div>`;
   }).join('');
@@ -560,6 +617,9 @@ async function showMeasurementDetail(measId) {
 
     const date = new Date(m.measurement_date);
     const dateStr = date.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Resolve photo URL (signed URL for private bucket)
+    const resolvedPhotoUrl = await resolvePhotoUrl(m.photo_url);
 
     let rubricData = null;
     let cleanObs = m.observations || '';
@@ -590,7 +650,7 @@ async function showMeasurementDetail(measId) {
         ${m.health_score != null ? `<div style="font-size:2.5rem;font-weight:700;color:${m.health_score >= 70 ? '#4CAF50' : m.health_score >= 40 ? '#FFC107' : '#f44336'};">${m.health_score}%</div><div class="text-muted">Salud Estimada</div>` : ''}
       </div>
 
-      ${m.photo_url ? `<div style="text-align:center;margin-bottom:1rem;"><img src="${m.photo_url}" alt="Foto del árbol" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>` : ''}
+      ${resolvedPhotoUrl ? `<div style="text-align:center;margin-bottom:1rem;"><img src="${resolvedPhotoUrl}" alt="Foto del árbol" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>` : ''}
 
       ${(m.height_cm || m.trunk_diameter_cm || m.crown_diameter_cm) ? `<div style="display:grid;grid-template-columns:repeat(${[m.height_cm, m.trunk_diameter_cm, m.crown_diameter_cm].filter(Boolean).length},1fr);gap:0.75rem;margin-bottom:1rem;">
         ${m.height_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">Altura</div><strong style="font-size:1.2rem;">${m.height_cm} cm</strong></div>` : ''}
