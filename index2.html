@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Proyecto Árbol UNAM 475 — FES Iztacala</title>
 
-    <!-- Security Headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org; font-src fonts.gstatic.com cdnjs.cloudflare.com; frame-ancestors 'none'">
-    <meta http-equiv="X-Frame-Options" content="DENY">
+    <!-- Security Headers (frame-ancestors y X-Frame-Options se setean a nivel HTTP en GH Pages) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net; font-src fonts.gstatic.com cdnjs.cloudflare.com; worker-src 'self' blob:">
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2e7d32">
-    <link rel="apple-touch-icon" href="icon-192.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+    <link rel="apple-touch-icon" href="icon192v1.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon192v1.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon512v1.png">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
@@ -54,23 +54,7 @@
     <link rel="stylesheet" href="forest-theme.css">
 </head>
 <body>
-    <!-- ========== INTRO VIDEO OVERLAY ========== -->
-    <div id="intro-video-overlay" style="
-      position:fixed; top:0; left:0; width:100vw; height:100vh;
-      background:#000; z-index:99999; display:flex; align-items:center;
-      justify-content:center; flex-direction:column;">
-      <video id="intro-video" autoplay playsinline muted
-        style="max-width:100%; max-height:90vh; object-fit:contain;">
-        <source src="video/intro.mp4" type="video/mp4">
-      </video>
-      <button id="skip-intro-btn" onclick="skipIntro()" style="
-        position:absolute; bottom:2rem; right:2rem;
-        background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.4);
-        padding:0.5rem 1.5rem; border-radius:8px; cursor:pointer;
-        font-size:0.9rem; backdrop-filter:blur(4px); transition:all 0.3s;">
-        Omitir <i class="fas fa-forward"></i>
-      </button>
-    </div>
+    <!-- (Video intro removido por petición del usuario) -->
 
     <!-- ========== LOGIN SCREEN ========== -->
     <div id="login-screen" class="login-container" style="display:none;">
