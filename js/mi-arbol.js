@@ -13,12 +13,32 @@ const ENDEMIC_TREE_REFERENCE = [
   { species: 'Erythrina coralloides', common_name: 'Colorín / Zompantle', description: 'Árbol caducifolio con flores rojas espectaculares. Sagrado para culturas mesoamericanas. Crece 5-10m.', care: 'Requiere pleno sol. Riego bajo. Semillas tóxicas - manejar con precaución.', icon: '🌺' },
   { species: 'Schinus molle', common_name: 'Pirú / Pirul', description: 'Árbol perenne de rápido crecimiento, muy extendido en el Valle de México. Hojas aromáticas. Alcanza 15m.', care: 'Extremadamente resistente. Riego mínimo. Podar ramas secas. Cuidado: invasivo en algunos ecosistemas.', icon: '🌴' }
 ];
-const SPECIALIST_CONTACTS = [
-  { name: 'Dr. Fernando Calderón Guzmán', specialty: 'Arboricultura Urbana y Fitosanidad', department: 'Departamento de Biología, FES Iztacala', contact: 'Laboratorio de Botánica Aplicada', icon: '🔬' },
-  { name: 'Mtra. Patricia Rivera Torres', specialty: 'Ecología Forestal y Restauración', department: 'Jardín Botánico, UNAM', contact: 'Programa de Reforestación UNAM', icon: '🌱' },
-  { name: 'Dr. Carlos Méndez Alonzo', specialty: 'Fisiología Vegetal y Estrés Hídrico', department: 'Instituto de Ecología, UNAM', contact: 'Laboratorio de Ecofisiología', icon: '💧' },
-  { name: 'Ing. Ambiental Laura Sánchez Valdés', specialty: 'Control de Plagas y Enfermedades Forestales', department: 'CONAFOR / Colaboración UNAM', contact: 'Programa de Sanidad Forestal', icon: '🐛' }
-];
+// Specialists are loaded dynamically from user_profiles where role='specialist'
+// (see loadSpecialistsFromDB below). Hardcoded mock list removed.
+let SPECIALIST_CONTACTS = [];
+
+async function loadSpecialistsFromDB() {
+  try {
+    const { data, error } = await sb
+      .from('user_profiles')
+      .select('full_name, specialty, department, contact_info, campus')
+      .eq('role', 'specialist')
+      .order('full_name');
+    if (error) throw error;
+    SPECIALIST_CONTACTS = (data || []).map(s => ({
+      name: s.full_name || 'Especialista',
+      specialty: s.specialty || 'Especialidad no definida',
+      department: s.department || (s.campus ? 'Campus ' + s.campus : 'UNAM'),
+      contact: s.contact_info || 'Contacto vía plataforma',
+      icon: '🔬'
+    }));
+    return SPECIALIST_CONTACTS;
+  } catch (err) {
+    console.warn('No se pudieron cargar especialistas:', err.message);
+    SPECIALIST_CONTACTS = [];
+    return SPECIALIST_CONTACTS;
+  }
+}
 
 // ========== HEALTH RUBRICS ==========
 // auto: true = Gemini puede evaluar desde foto
@@ -240,24 +260,71 @@ async function loadMyTree(forceReload) {
           ${treePhotoResolved ? `<div style="margin-top:1rem;"><img src="${treePhotoResolved}" alt="Foto" style="max-width:100%;max-height:400px;border-radius:8px;object-fit:cover;"></div>` : ''}
         </div>
         ${refMatch ? `<div class="tree-card" style="border-left:4px solid var(--accent);margin-top:1rem;"><h4 style="margin-bottom:0.75rem;">${refMatch.icon} Referencia</h4><p><strong>${refMatch.common_name}</strong> (<em>${refMatch.species}</em>)</p><p style="margin:0.5rem 0;">${refMatch.description}</p><div style="background:#e8f5e9;padding:0.75rem;border-radius:8px;">💡 ${refMatch.care}</div></div>` : ''}
+
+        <!-- Badges (#9) -->
+        <div class="tree-card" style="margin-top:1rem;"><div id="user-badges-container">Cargando insignias...</div></div>
+
+        <!-- Citizen report button (#12) -->
+        <div style="margin-top:1rem;">
+          <button class="btn btn-outline" onclick="openCitizenReport(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')">
+            <i class="fas fa-flag"></i> Reportar problema con este árbol
+          </button>
+        </div>
+
+        <!-- Calendar of care (#11) -->
+        <div class="tree-card" style="margin-top:1rem;"><div id="care-calendar-container">Cargando calendario...</div></div>
+
         <div class="tree-card" style="margin-top:1rem;"><h4 style="margin-bottom:1rem;">Ubicación</h4><div id="treeMapContainer" style="height:300px;border-radius:8px;overflow:hidden;"></div></div>
       </div>
 
       <!-- TAB: Seguimiento -->
       <div id="tab-seguimiento" class="mi-arbol-tab-content" style="display:none;">
         <h3 style="margin-bottom:1.5rem;"><i class="fas fa-chart-line"></i> Historial de Seguimiento</h3>
+        ${meas.length >= 2 ? `
+          <div class="card" style="padding:1rem;margin-bottom:1rem;">
+            <h4 style="margin-bottom:0.5rem;"><i class="fas fa-chart-area"></i> Evolución temporal</h4>
+            <div style="height:280px;"><canvas id="health-timeline-chart"></canvas></div>
+          </div>
+        ` : ''}
         ${meas.length === 0 ? '<div class="card" style="text-align:center;padding:2rem;"><p class="text-muted">No hay registros aún. Haz tu primer registro en "Nuevo Registro".</p></div>' : buildTimeline(meas)}
       </div>
 
       <!-- TAB: Nuevo Registro -->
       <div id="tab-registro" class="mi-arbol-tab-content" style="display:none;">
-        <h3 style="margin-bottom:1rem;"><i class="fas fa-plus-circle"></i> Nuevo Registro de Seguimiento</h3>
+        <h3 style="margin-bottom:1rem;"><i class="fas fa-plus-circle"></i> ${meas.length === 0 ? 'Primer Registro: Plantación' : 'Nuevo Registro de Seguimiento'}</h3>
         <div class="card" style="padding:1.5rem;">
           <form id="form-new-measurement" onsubmit="saveMeasurement(event)">
 
+            ${meas.length === 0 ? `
+            <!-- PRIMER REGISTRO: UBICACIÓN OBLIGATORIA -->
+            <div style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:2px solid #ff9800;border-radius:12px;padding:1.25rem;margin-bottom:1.5rem;">
+              <h4 style="margin-bottom:0.5rem;color:#e65100;"><i class="fas fa-map-marker-alt"></i> Ubicación de plantación</h4>
+              <p class="text-small" style="margin-bottom:1rem;color:#bf360c;">
+                Este es el <b>primer registro</b> del árbol. Debes indicar dónde fue plantado.
+                Usa el botón GPS si estás físicamente en el lugar, o ingresa las coordenadas manualmente.
+              </p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+                <button type="button" class="btn btn-sm btn-primary" onclick="captureGpsLocation()" id="btn-gps-capture">
+                  <i class="fas fa-location-arrow"></i> Usar mi ubicación actual (GPS)
+                </button>
+                <span class="text-small text-muted" style="align-self:center;" id="gps-status"></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+                <div class="form-group"><label>Latitud <span style="color:var(--danger);">*</span></label><input type="number" step="any" id="meas-lat" required style="width:100%;padding:0.5rem;" placeholder="19.5322" oninput="updatePlantingMap()"></div>
+                <div class="form-group"><label>Longitud <span style="color:var(--danger);">*</span></label><input type="number" step="any" id="meas-lng" required style="width:100%;padding:0.5rem;" placeholder="-99.1847" oninput="updatePlantingMap()"></div>
+              </div>
+              <div class="form-group" style="margin-bottom:0.75rem;">
+                <label>Descripción del sitio (opcional)</label>
+                <input type="text" id="meas-location-desc" style="width:100%;padding:0.5rem;" placeholder="Ej: Junto al edificio A2, en el área verde central">
+              </div>
+              <div id="plantingMapContainer" style="height:280px;border-radius:8px;overflow:hidden;border:1px solid #ddd;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:var(--text-light);">
+                <p>El mapa aparecerá cuando ingreses coordenadas. El marcador es arrastrable para ajustes finos.</p>
+              </div>
+            </div>` : ''}
+
             <!-- FECHA DE REGISTRO -->
             <div class="form-group" style="margin-bottom:1.5rem;">
-              <label><i class="fas fa-calendar-alt"></i> Fecha del Registro</label>
+              <label><i class="fas fa-calendar-alt"></i> Fecha ${meas.length === 0 ? 'de plantación' : 'del registro'}</label>
               <input type="date" id="meas-date" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:0.5rem;" required>
               <small class="text-muted">No se permiten fechas futuras</small>
             </div>
@@ -331,6 +398,13 @@ async function loadMyTree(forceReload) {
 
     // Init map
     initTreeMap(tree);
+
+    // Innovation hooks
+    setTimeout(() => {
+      if (typeof renderHealthTimeline === 'function') renderHealthTimeline(meas);
+      if (typeof renderUserBadges === 'function') renderUserBadges();
+      if (typeof renderCareCalendar === 'function' && tree.species) renderCareCalendar(tree.species);
+    }, 200);
 
     // Bind rubric change events to recalculate
     HEALTH_RUBRICS.forEach(r => {
@@ -477,6 +551,29 @@ async function saveMeasurement(e) {
     return;
   }
 
+  // Detect first measurement: count existing for this tree+user.
+  // First registration is the "plantación" — requires location.
+  const { count: existingCount } = await sb
+    .from('tree_measurements')
+    .select('id', { count: 'exact', head: true })
+    .eq('tree_id', currentTreeData.id);
+  const isFirst = (existingCount || 0) === 0;
+
+  let plantingLat = null, plantingLng = null, plantingDesc = null;
+  if (isFirst) {
+    plantingLat = parseFloat(document.getElementById('meas-lat')?.value);
+    plantingLng = parseFloat(document.getElementById('meas-lng')?.value);
+    plantingDesc = document.getElementById('meas-location-desc')?.value.trim() || null;
+    if (!isFinite(plantingLat) || !isFinite(plantingLng)) {
+      showToast('Captura la ubicación de plantación (GPS o coordenadas manuales)', 'warning');
+      return;
+    }
+    if (plantingLat < -90 || plantingLat > 90 || plantingLng < -180 || plantingLng > 180) {
+      showToast('Coordenadas fuera de rango', 'error');
+      return;
+    }
+  }
+
   const height = parseFloat(document.getElementById('meas-height')?.value) || null;
   const trunk = parseFloat(document.getElementById('meas-trunk')?.value) || null;
   const crown = parseFloat(document.getElementById('meas-crown')?.value) || null;
@@ -490,7 +587,9 @@ async function saveMeasurement(e) {
     if (val) rubricScores[r.key] = val;
   });
 
-  if (!height && !trunk && !crown && !observations && Object.keys(rubricScores).length === 0) {
+  // For first measurement, location alone is enough — measurements optional.
+  // For subsequent ones, require at least one input.
+  if (!isFirst && !height && !trunk && !crown && !observations && Object.keys(rubricScores).length === 0) {
     showToast('Ingresa al menos una medida, evaluación u observación', 'warning');
     return;
   }
@@ -523,7 +622,18 @@ async function saveMeasurement(e) {
       }
     }
 
-    const { error } = await sb.from('tree_measurements').insert([{
+    // Build observations string with [RUBROS] tag and [PLANTACION] tag if first
+    let obsParts = [];
+    if (observations) obsParts.push(observations);
+    if (Object.keys(rubricScores).length > 0) obsParts.push('[RUBROS] ' + JSON.stringify(rubricScores));
+    if (isFirst) {
+      obsParts.push('[PLANTACION] ' + JSON.stringify({
+        lat: plantingLat, lng: plantingLng, desc: plantingDesc
+      }));
+    }
+    const obsText = obsParts.length > 0 ? obsParts.join('\n\n') : null;
+
+    const measRow = {
       tree_id: currentTreeData.id,
       user_id: currentUser.id,
       measurement_date: measDate || today,
@@ -532,15 +642,50 @@ async function saveMeasurement(e) {
       crown_diameter_cm: crown,
       health_score: healthScore,
       photo_url: photoUrl,
-      observations: observations ? (observations + (Object.keys(rubricScores).length > 0 ? '\n\n[RUBROS] ' + JSON.stringify(rubricScores) : '')) : (Object.keys(rubricScores).length > 0 ? '[RUBROS] ' + JSON.stringify(rubricScores) : null)
-    }]);
+      observations: obsText
+    };
+    if (isFirst) {
+      measRow.location_lat = plantingLat;
+      measRow.location_lng = plantingLng;
+      measRow.location_source = 'manual';
+    }
+
+    // If offline, queue locally and notify
+    if (!navigator.onLine && window.OfflineQueue) {
+      const plantingUpdate = isFirst ? {
+        location_lat: plantingLat, location_lng: plantingLng,
+        location_desc: plantingDesc || currentTreeData.location_desc,
+        planting_date: currentTreeData.planting_date || (measDate || today),
+        status: currentTreeData.status === 'nuevo' ? 'activo' : currentTreeData.status,
+        updated_at: new Date().toISOString()
+      } : null;
+      await window.OfflineQueue.enqueue({ payload: measRow, plantingUpdate });
+      showToast('Sin conexión: medición encolada. Se sincronizará al reconectar.', 'warning');
+      pendingPhotoBase64 = null; pendingPhotoFile = null;
+      return;
+    }
+
+    const { error } = await sb.from('tree_measurements').insert([measRow]);
     if (error) throw error;
+
+    // First measurement also updates the catalog with planting location
+    if (isFirst) {
+      const { error: locErr } = await sb.from('trees_catalog').update({
+        location_lat: plantingLat,
+        location_lng: plantingLng,
+        location_desc: plantingDesc || currentTreeData.location_desc,
+        planting_date: currentTreeData.planting_date || (measDate || today),
+        status: currentTreeData.status === 'nuevo' ? 'activo' : currentTreeData.status,
+        updated_at: new Date().toISOString()
+      }).eq('id', currentTreeData.id);
+      if (locErr) console.warn('No se pudo actualizar la ubicación del catálogo:', locErr.message);
+    }
 
     if (healthScore) {
       await sb.from('trees_catalog').update({ health_score: healthScore }).eq('id', currentTreeData.id);
     }
 
-    showToast('Registro de seguimiento guardado', 'success');
+    showToast(isFirst ? 'Plantación registrada con ubicación' : 'Registro de seguimiento guardado', 'success');
     pendingPhotoBase64 = null;
     pendingPhotoFile = null;
     myTreeLoaded = false;
@@ -708,6 +853,77 @@ function switchMiArbolTab(tabId) {
   if (btn) { btn.classList.add('active', 'btn-primary'); btn.classList.remove('btn-outline'); }
 }
 
+// ========== GPS + PLANTING MAP (first measurement) ==========
+let _plantingMapInstance = null;
+let _plantingMapMarker = null;
+
+function captureGpsLocation() {
+  const status = document.getElementById('gps-status');
+  const btn = document.getElementById('btn-gps-capture');
+  if (!navigator.geolocation) {
+    if (status) status.textContent = 'Tu navegador no soporta geolocalización';
+    showToast('Geolocalización no disponible', 'error');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Obteniendo...'; }
+  if (status) status.textContent = 'Permite acceso a la ubicación...';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = pos.coords.accuracy;
+      const latInput = document.getElementById('meas-lat');
+      const lngInput = document.getElementById('meas-lng');
+      if (latInput) latInput.value = lat.toFixed(6);
+      if (lngInput) lngInput.value = lng.toFixed(6);
+      if (status) status.textContent = `✓ Capturado (precisión ±${Math.round(acc)} m)`;
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-location-arrow"></i> Recapturar ubicación'; }
+      updatePlantingMap();
+      showToast('Ubicación capturada del GPS', 'success');
+    },
+    err => {
+      if (status) status.textContent = 'Error: ' + err.message;
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-location-arrow"></i> Usar mi ubicación actual (GPS)'; }
+      showToast('No se pudo obtener ubicación: ' + err.message, 'error');
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
+}
+
+function updatePlantingMap() {
+  const latInput = document.getElementById('meas-lat');
+  const lngInput = document.getElementById('meas-lng');
+  if (!latInput || !lngInput) return;
+  const lat = parseFloat(latInput.value);
+  const lng = parseFloat(lngInput.value);
+  const c = document.getElementById('plantingMapContainer');
+  if (!c || typeof L === 'undefined') return;
+  if (!isFinite(lat) || !isFinite(lng)) return;
+
+  // Lazy init map
+  if (!_plantingMapInstance) {
+    c.innerHTML = '';
+    _plantingMapInstance = L.map('plantingMapContainer').setView([lat, lng], 18);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 19 }).addTo(_plantingMapInstance);
+    _plantingMapMarker = L.marker([lat, lng], { draggable: true }).addTo(_plantingMapInstance);
+    _plantingMapMarker.on('dragend', e => {
+      const { lat: nlat, lng: nlng } = e.target.getLatLng();
+      latInput.value = nlat.toFixed(6);
+      lngInput.value = nlng.toFixed(6);
+    });
+    // Click on map to relocate marker
+    _plantingMapInstance.on('click', e => {
+      _plantingMapMarker.setLatLng(e.latlng);
+      latInput.value = e.latlng.lat.toFixed(6);
+      lngInput.value = e.latlng.lng.toFixed(6);
+    });
+    setTimeout(() => _plantingMapInstance.invalidateSize(), 200);
+  } else {
+    _plantingMapInstance.setView([lat, lng], _plantingMapInstance.getZoom() < 16 ? 18 : _plantingMapInstance.getZoom());
+    if (_plantingMapMarker) _plantingMapMarker.setLatLng([lat, lng]);
+  }
+}
+
 // ========== MAP ==========
 function initTreeMap(tree) {
   if (tree.location_lat && tree.location_lng) {
@@ -726,7 +942,7 @@ function initTreeMap(tree) {
 }
 
 // ========== INFORMACIÓN SECTION ==========
-function loadInfoSection() {
+async function loadInfoSection() {
   const endemicEl = document.getElementById('info-endemic-trees');
   const specialistEl = document.getElementById('info-specialists');
   if (endemicEl) {
@@ -741,10 +957,19 @@ function loadInfoSection() {
       </div>`;
   }
   if (specialistEl) {
+    // Show loading state while fetching specialists
+    specialistEl.innerHTML = `<h3 style="margin-bottom:1.5rem;">👨‍🔬 Especialistas de Apoyo</h3>
+      <p class="text-muted">Cargando especialistas registrados…</p>`;
+    await loadSpecialistsFromDB();
+    if (SPECIALIST_CONTACTS.length === 0) {
+      specialistEl.innerHTML = `<h3 style="margin-bottom:1.5rem;">👨‍🔬 Especialistas de Apoyo</h3>
+        <p class="text-muted">Aún no hay especialistas registrados. El administrador puede dar de alta especialistas desde el panel de administración.</p>`;
+      return;
+    }
     specialistEl.innerHTML = `<h3 style="margin-bottom:1.5rem;">👨‍🔬 Especialistas de Apoyo</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;">
         ${SPECIALIST_CONTACTS.map(s => `<div style="background:white;border-radius:12px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:flex;gap:1rem;">
-          <div style="font-size:2rem;">${s.icon}</div><div><strong>${escapeHtml(s.name)}</strong><div class="text-small" style="color:var(--primary);">${escapeHtml(s.specialty)}</div><div class="text-small text-muted">${escapeHtml(s.department)}</div></div>
+          <div style="font-size:2rem;">${s.icon}</div><div><strong>${escapeHtml(s.name)}</strong><div class="text-small" style="color:var(--primary);">${escapeHtml(s.specialty)}</div><div class="text-small text-muted">${escapeHtml(s.department)}</div><div class="text-small text-muted">📞 ${escapeHtml(s.contact)}</div></div>
         </div>`).join('')}
       </div>`;
   }
@@ -759,3 +984,158 @@ window.analyzePhotoWithAI = analyzePhotoWithAI;
 window.handleMeasPhoto = handleMeasPhoto;
 window.recalcHealth = recalcHealth;
 window.loadInfoSection = loadInfoSection;
+window.loadSpecialistsFromDB = loadSpecialistsFromDB;
+window.captureGpsLocation = captureGpsLocation;
+window.updatePlantingMap = updatePlantingMap;
+
+// =============================================================
+// INNOVACIÓN #6 — Gráfica temporal de salud
+// =============================================================
+let _healthChartInstance = null;
+function renderHealthTimeline(measurements) {
+  const ctx = document.getElementById('health-timeline-chart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (_healthChartInstance) { _healthChartInstance.destroy(); _healthChartInstance = null; }
+  if (!measurements || measurements.length < 2) return;
+  const sorted = [...measurements].sort((a,b) => new Date(a.measurement_date) - new Date(b.measurement_date));
+  const labels = sorted.map(m => new Date(m.measurement_date).toLocaleDateString('es-MX', { month:'short', day:'numeric' }));
+  const data = sorted.map(m => m.health_score || 0);
+  const heights = sorted.map(m => m.height_cm || null);
+  _healthChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Salud (%)', data, borderColor: '#2d6a4f', backgroundColor: 'rgba(45,106,79,0.15)', tension: 0.25, fill: true, yAxisID: 'y' },
+        { label: 'Altura (cm)', data: heights, borderColor: '#0288d1', backgroundColor: 'transparent', tension: 0.25, yAxisID: 'y1', spanGaps: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, max: 100, position: 'left', title: { display: true, text: 'Salud (%)' } },
+        y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'Altura (cm)' }, grid: { drawOnChartArea: false } }
+      },
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+}
+
+// =============================================================
+// INNOVACIÓN #9 — Badges del usuario
+// =============================================================
+async function renderUserBadges() {
+  const container = document.getElementById('user-badges-container');
+  if (!container || !currentUser) return;
+  try {
+    const { data: userBadges } = await sb.from('user_badges')
+      .select('*, badges_catalog(*)').eq('user_id', currentUser.id).order('earned_at', { ascending: false });
+    if (!userBadges || userBadges.length === 0) {
+      container.innerHTML = '<p class="text-muted text-small">Aún no has ganado insignias. ¡Registra tu primer seguimiento!</p>';
+      return;
+    }
+    container.innerHTML = `<h4 style="margin-bottom:0.75rem;"><i class="fas fa-medal"></i> Tus insignias</h4>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        ${userBadges.map(b => {
+          const c = b.badges_catalog || {};
+          return `<div title="${escapeHtml(c.description || '')}" style="background:linear-gradient(135deg,#fff8e1,#ffe082);padding:0.5rem 0.75rem;border-radius:8px;font-size:0.85rem;display:flex;align-items:center;gap:0.4rem;border:1px solid #fbc02d;">
+            <span style="font-size:1.2rem;">${c.icon || '🏅'}</span>
+            <strong>${escapeHtml(c.name || b.badge_id)}</strong>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (err) {
+    container.innerHTML = `<p class="text-small text-muted">Insignias no disponibles aún (corre 02-innovations.sql)</p>`;
+  }
+}
+
+// =============================================================
+// INNOVACIÓN #11 — Calendario de cuidados por especie
+// =============================================================
+const MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+async function renderCareCalendar(species) {
+  const container = document.getElementById('care-calendar-container');
+  if (!container || !species) return;
+  try {
+    const { data, error } = await sb.from('species_care')
+      .select('*').eq('species', species).order('month');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="text-muted text-small">Sin calendario de cuidados específico para esta especie aún.</p>';
+      return;
+    }
+    const byMonth = {};
+    data.forEach(t => { if (!byMonth[t.month]) byMonth[t.month] = []; byMonth[t.month].push(t); });
+    let html = `<h4 style="margin-bottom:0.5rem;"><i class="fas fa-calendar-check"></i> Calendario anual de cuidados — <em>${escapeHtml(species)}</em></h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem;">`;
+    for (let m = 1; m <= 12; m++) {
+      const tasks = byMonth[m];
+      html += `<div style="background:#f5f5f5;padding:0.6rem;border-radius:6px;font-size:0.82rem;${tasks ? 'border-left:3px solid var(--primary);' : 'opacity:0.5;'}">
+        <strong>${MONTHS_ES[m-1]}</strong>`;
+      if (tasks) {
+        html += '<ul style="margin:0.3rem 0 0;padding-left:1rem;">' +
+          tasks.map(t => `<li><strong>${escapeHtml(t.task_type)}:</strong> ${escapeHtml(t.description)}</li>`).join('') +
+          '</ul>';
+      } else {
+        html += '<div style="font-size:0.75rem;color:var(--text-light);">Sin tareas</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p class="text-small text-muted">Calendario no disponible</p>`;
+  }
+}
+
+// =============================================================
+// INNOVACIÓN #12 — Reporte ciudadano (desde la ficha del árbol)
+// =============================================================
+function openCitizenReport(treeId, treeCode, commonName) {
+  showModal(`Reportar problema — ${treeCode}`, `
+    <p class="text-muted text-small">${escapeHtml(commonName || 'Árbol')}: describe el problema. Un especialista o admin lo revisará.</p>
+    <form id="citizen-report-form">
+      <div class="form-group" style="margin-bottom:0.75rem;">
+        <label>Título</label>
+        <input type="text" id="cr-title" required style="width:100%;padding:0.5rem;" placeholder="Ej: Rama caída, plaga visible...">
+      </div>
+      <div class="form-group" style="margin-bottom:0.75rem;">
+        <label>Urgencia</label>
+        <select id="cr-urgency" style="width:100%;padding:0.5rem;">
+          <option value="low">Baja</option>
+          <option value="normal" selected>Normal</option>
+          <option value="high">Alta</option>
+          <option value="critical">Crítica</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0.75rem;">
+        <label>Descripción</label>
+        <textarea id="cr-desc" required rows="4" style="width:100%;padding:0.5rem;" placeholder="Describe lo que observaste..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Enviar reporte</button>
+    </form>
+  `);
+  document.getElementById('citizen-report-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const title = document.getElementById('cr-title').value.trim();
+    const desc = document.getElementById('cr-desc').value.trim();
+    const urgency = document.getElementById('cr-urgency').value;
+    if (!title || !desc) { showToast('Título y descripción requeridos', 'warning'); return; }
+    try {
+      const { error } = await sb.from('problem_reports').insert([{
+        tree_id: treeId, title, description: desc, urgency, status: 'open',
+        reported_by: currentUser?.id || null
+      }]);
+      if (error) throw error;
+      showToast('Reporte enviado. Gracias.', 'success');
+      closeModal();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+}
+
+window.renderHealthTimeline = renderHealthTimeline;
+window.renderUserBadges = renderUserBadges;
+window.renderCareCalendar = renderCareCalendar;
+window.openCitizenReport = openCitizenReport;
