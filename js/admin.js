@@ -1838,7 +1838,8 @@ function switchVisTab(which) {
       bosque: 'Cada árbol del bosque representa uno real del proyecto. Color = salud, tamaño = altura medida.',
       mapa: 'Cada árbol plotteado en sus coordenadas reales del campus. Click → abre detalles.',
       mosaico: 'Tres zonas según salud: verde (sano), ámbar (atención) y rojo (crítico). Cada foto es un árbol.',
-      heatmap: 'Mapa de calor por salud. Zonas cálidas = árboles sanos, zonas frías = árboles en riesgo.'
+      heatmap: 'Mapa de calor por salud. Zonas cálidas = árboles sanos, zonas frías = árboles en riesgo.',
+      iztacala: 'Modelo 3D del campus FES Iztacala con edificios reales (OSM) y árboles del proyecto. Click sobre un árbol para ver detalle.'
     };
     desc.textContent = texts[which] || '';
   }
@@ -1846,6 +1847,8 @@ function switchVisTab(which) {
   const trees = _lastDashboardTrees;
 
   // Cleanup de visualizaciones inactivas (libera memoria GPU/Leaflet)
+  // Nota: IztacalaMap no tiene destroy — se mantiene viva para no perder la
+  // escena ya cargada. Solo se reataja el canvas si vuelves a entrar.
   ['DashboardTree3D','DashboardMapa','DashboardMosaico','DashboardHeatmap'].forEach(mod => {
     if (window[mod] && window[mod].destroy) {
       try { window[mod].destroy(); } catch (e) {}
@@ -1863,6 +1866,8 @@ function switchVisTab(which) {
         window.DashboardMosaico.init('#dashboard-mosaico-vis', trees);
       } else if (which === 'heatmap' && window.DashboardHeatmap) {
         window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
+      } else if (which === 'iztacala' && window.IztacalaMap) {
+        window.IztacalaMap.init('#dashboard-iztacala-vis');
       }
     } catch (e) {
       console.warn('Vis init failed:', which, e);
