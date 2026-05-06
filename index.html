@@ -6,8 +6,15 @@
     <title>Proyecto Árbol UNAM 475 - FES Iztacala</title>
 
     <!-- Security Headers -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org; connect-src 'self' *.supabase.co generativelanguage.googleapis.com; font-src fonts.gstatic.com cdnjs.cloudflare.com; frame-ancestors 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org; font-src fonts.gstatic.com cdnjs.cloudflare.com; frame-ancestors 'none'">
     <meta http-equiv="X-Frame-Options" content="DENY">
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2e7d32">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0"></script>
@@ -18,6 +25,16 @@
 
     <!-- Chart.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <!-- QRCode.js (#1) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- jsPDF + autotable (#8) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- SheetJS for Excel export (#8) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -1693,7 +1710,27 @@
                 </div>
 
                 <button type="submit" class="login-btn"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</button>
+
+                <div style="text-align:center;margin-top:0.75rem;">
+                    <a href="#" onclick="event.preventDefault();showForgotPassword()" style="color:var(--primary);font-size:0.9rem;text-decoration:none;">
+                        ¿Olvidaste tu contraseña?
+                    </a>
+                </div>
             </form>
+
+            <!-- Forgot password panel -->
+            <div id="forgot-password-panel" style="display:none;margin-top:1.5rem;padding-top:1rem;border-top:1px solid #eee;">
+                <h4 style="margin-bottom:0.5rem;">Recuperar contraseña</h4>
+                <p class="text-small text-muted" style="margin-bottom:0.75rem;">Te enviaremos un enlace de recuperación a tu correo.</p>
+                <form onsubmit="event.preventDefault();sendPasswordReset()">
+                    <input type="email" id="forgot-email" placeholder="tu.email@example.com" required style="width:100%;padding:0.5rem;margin-bottom:0.5rem;">
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" style="flex:1;">Enviar enlace</button>
+                        <button type="button" class="btn btn-outline" onclick="hideForgotPassword()">Cancelar</button>
+                    </div>
+                    <div id="forgot-status" class="text-small" style="margin-top:0.5rem;"></div>
+                </form>
+            </div>
 
             <div class="login-footer">
                 <p style="color:var(--text-light);font-size:0.85rem;">Universidad Nacional Autónoma de México</p>
@@ -1881,6 +1918,8 @@
                             <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
                     <button class="admin-tab" data-tab="assignments" onclick="switchAdminTab(\'assignments\')"><i class="fas fa-link"></i> Asignaciones</button>
                             <button class="admin-tab" data-tab="dashboard" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
+                            <button class="admin-tab" data-tab="reports" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
+                            <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditor&iacute;a</button>
                         </div>
 
                         <div class="admin-content">
@@ -1915,22 +1954,24 @@
                                                 <input type="date" id="admin-user-fecha-nacimiento">
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-user-estatus">Estatus Académico</label>
+                                                <label for="admin-user-estatus">Estatus Acad&eacute;mico</label>
                                                 <select id="admin-user-estatus">
                                                     <option value="alumno">Alumno</option>
                                                     <option value="exalumno">Exalumno</option>
+                                                    <option value="egresado">Egresado</option>
+                                                    <option value="pasante">Pasante</option>
+                                                    <option value="tesista">Tesista</option>
+                                                    <option value="becario">Becario</option>
                                                     <option value="postgrado">Postgrado</option>
-                                                    <option value="doctorante">Doctorante</option>
                                                     <option value="profesor">Profesor</option>
-                                                    <option value="investigador">Investigador</option>
-                                                    <option value="administrativo">Administrativo</option>
+                                                    <option value="profesora">Profesora</option>
                                                 </select>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label for="admin-user-role">Rol</label>
-                                                <select id="admin-user-role">
+                                                <select id="admin-user-role" onchange="toggleSpecialistFields()">
                                                     <option value="user">Usuario</option>
                                                     <option value="specialist">Especialista</option>
                                                     <option value="admin">Administrador</option>
@@ -1939,13 +1980,33 @@
                                             <div class="form-group">
                                                 <label for="admin-user-campus">Campus</label>
                                                 <select id="admin-user-campus">
-                                                    <option value="FESI">FES Iztacala</option>
-                                                    <option value="FESA">FES Arag&oacute;n</option>
-                                                    <option value="FESC">FES Cuautitl&aacute;n</option>
-                                                    <option value="FESZ">FES Zaragoza</option>
-                                                    <option value="FESAC">FES Acatl&aacute;n</option>
-                                                    <option value="CU">Ciudad Universitaria</option>
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
                                                 </select>
+                                            </div>
+                                        </div>
+                                        <!-- Campos visibles s&oacute;lo cuando role=specialist -->
+                                        <div id="specialist-fields" style="display:none;border-left:3px solid var(--primary);padding-left:1rem;margin-bottom:1rem;background:#f9fdf9;padding:0.75rem;border-radius:6px;">
+                                            <h5 style="margin:0 0 0.5rem;color:var(--primary);">
+                                                <i class="fas fa-microscope"></i> Datos del Especialista
+                                            </h5>
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="admin-user-specialty">Especialidad</label>
+                                                    <input type="text" id="admin-user-specialty" placeholder="Ej: Arboricultura urbana">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="admin-user-department">Departamento / Unidad</label>
+                                                    <input type="text" id="admin-user-department" placeholder="Ej: Biolog&iacute;a, FES Iztacala">
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-contact-info">Contacto adicional</label>
+                                                <input type="text" id="admin-user-contact-info" placeholder="Tel&eacute;fono / oficina / horario">
                                             </div>
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="saveAdminUser(event)">Guardar Usuario</button>
@@ -1993,46 +2054,58 @@
                                             </div>
                                             <div class="form-group">
                                                 <label for="admin-tree-type">Tipo</label>
-                                                <input type="text" id="admin-tree-type">
+                                                <select id="admin-tree-type">
+                                                    <option value="nativo">Nativo</option>
+                                                    <option value="endemico" selected>End&eacute;mico</option>
+                                                    <option value="ornamental">Ornamental</option>
+                                                    <option value="frutal">Frutal</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-size">Tamaño</label>
+                                                <label for="admin-tree-size">Tama&ntilde;o</label>
                                                 <select id="admin-tree-size">
-                                                    <option value="small">Pequeño</option>
-                                                    <option value="medium">Mediano</option>
-                                                    <option value="large">Grande</option>
+                                                    <option value="pequeno">Peque&ntilde;o</option>
+                                                    <option value="mediano" selected>Mediano</option>
+                                                    <option value="grande">Grande</option>
+                                                    <option value="muy_grande">Muy grande</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">
                                                 <label for="admin-tree-campus">Campus</label>
-                                                <input type="text" id="admin-tree-campus">
+                                                <select id="admin-tree-campus">
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-tree-location">Ubicaci&oacute;n desc.</label>
-                                                <input type="text" id="admin-tree-location" placeholder="Ej: Junto al edificio A2">
-                                            </div>
-                                        </div>
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label for="admin-tree-lat">Latitud</label>
-                                                <input type="number" step="any" id="admin-tree-lat" placeholder="19.5322">
+                                                <label for="admin-tree-garden">Jard&iacute;n (opcional)</label>
+                                                <select id="admin-tree-garden">
+                                                    <option value="">— Sin jard&iacute;n asignado —</option>
+                                                </select>
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-tree-lng">Longitud</label>
-                                                <input type="number" step="any" id="admin-tree-lng" placeholder="-99.1847">
+                                                <label for="admin-tree-planting-date">Fecha de plantaci&oacute;n</label>
+                                                <input type="date" id="admin-tree-planting-date">
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label for="admin-tree-status">Estado</label>
                                                 <select id="admin-tree-status">
-                                                    <option value="healthy">Saludable</option>
-                                                    <option value="at-risk">En Riesgo</option>
-                                                    <option value="critical">Cr&iacute;tico</option>
+                                                    <option value="nuevo" selected>Nuevo (reci&eacute;n plantado)</option>
+                                                    <option value="activo">Activo</option>
+                                                    <option value="enfermo">Enfermo</option>
+                                                    <option value="en_tratamiento">En tratamiento</option>
+                                                    <option value="seco">Seco</option>
+                                                    <option value="retirado">Retirado</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">
@@ -2040,6 +2113,11 @@
                                                 <input type="number" id="admin-tree-health" min="0" max="100" value="80">
                                             </div>
                                         </div>
+                                        <p class="text-muted text-small" style="margin:0 0 0.5rem;">
+                                            <i class="fas fa-info-circle"></i> El alta es de inventario.
+                                            La <b>ubicaci&oacute;n exacta</b> (lat/lng) se captura cuando el usuario asignado
+                                            haga su primer seguimiento (con GPS o mapa).
+                                        </p>
                                         <h4 style="margin:1.5rem 0 0.75rem;padding-top:0.75rem;border-top:1px solid #eee;">Medidas Iniciales</h4>
                                         <div class="form-row">
                                             <div class="form-group">
@@ -2070,6 +2148,7 @@
                                             <th>Código</th>
                                             <th>Especie</th>
                                             <th>Campus</th>
+                                            <th>Estado</th>
                                             <th>Salud</th>
                                             <th>Acciones</th>
                                         </tr>
@@ -2087,28 +2166,103 @@
                                     <form id="form-admin-garden">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-garden-name">Nombre</label>
-                                                <input type="text" id="admin-garden-name" required>
+                                                <label for="admin-garden-name">Nombre <span style="color:var(--danger);">*</span></label>
+                                                <input type="text" id="admin-garden-name" required placeholder="Ej: Jard&iacute;n Central FESI">
                                             </div>
                                             <div class="form-group">
-                                                <label for="admin-garden-campus">Campus</label>
-                                                <input type="text" id="admin-garden-campus" required>
-                                            </div>
-                                        </div>
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label for="admin-garden-lat">Latitud</label>
-                                                <input type="number" id="admin-garden-lat" step="0.0001">
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="admin-garden-lng">Longitud</label>
-                                                <input type="number" id="admin-garden-lng" step="0.0001">
+                                                <label for="admin-garden-campus">Campus <span style="color:var(--danger);">*</span></label>
+                                                <select id="admin-garden-campus" required>
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label for="admin-garden-desc">Descripción</label>
-                                                <textarea id="admin-garden-desc" style="grid-column: 1 / -1;"></textarea>
+                                                <label for="admin-garden-lat">Latitud (centroide)</label>
+                                                <input type="number" id="admin-garden-lat" step="any" placeholder="19.5322">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-lng">Longitud (centroide)</label>
+                                                <input type="number" id="admin-garden-lng" step="any" placeholder="-99.1847">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-area">&Aacute;rea (m&sup2;)</label>
+                                                <input type="number" id="admin-garden-area" step="0.01" min="0" placeholder="500">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-capacity">Capacidad m&aacute;x. de &aacute;rboles</label>
+                                                <input type="number" id="admin-garden-capacity" min="0" placeholder="50">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-soil">Tipo de suelo</label>
+                                                <select id="admin-garden-soil">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="arenoso">Arenoso</option>
+                                                    <option value="arcilloso">Arcilloso</option>
+                                                    <option value="franco">Franco</option>
+                                                    <option value="mixto">Mixto</option>
+                                                    <option value="rocoso">Rocoso</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-irrigation">Riego</label>
+                                                <select id="admin-garden-irrigation">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="ninguno">Ninguno</option>
+                                                    <option value="manual">Manual</option>
+                                                    <option value="aspersion">Aspersi&oacute;n</option>
+                                                    <option value="goteo">Goteo</option>
+                                                    <option value="automatizado">Automatizado</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-exposure">Exposici&oacute;n solar</label>
+                                                <select id="admin-garden-exposure">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="sol_pleno">Sol pleno</option>
+                                                    <option value="semi_sombra">Semi-sombra</option>
+                                                    <option value="sombra">Sombra</option>
+                                                    <option value="mixto">Mixto</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-climate">Zona clim&aacute;tica</label>
+                                                <input type="text" id="admin-garden-climate" placeholder="Ej: Templado subh&uacute;medo">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-established">Fecha de establecimiento</label>
+                                                <input type="date" id="admin-garden-established">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-specialist">Especialista responsable</label>
+                                                <select id="admin-garden-specialist">
+                                                    <option value="">— Sin asignar —</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-desc">Descripci&oacute;n / ubicaci&oacute;n descriptiva</label>
+                                                <textarea id="admin-garden-desc" style="grid-column: 1 / -1;" placeholder="Ej: Zona cultural junto al circuito exterior, frente al edificio A1"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-notes">Notas</label>
+                                                <textarea id="admin-garden-notes" style="grid-column: 1 / -1;" placeholder="Notas adicionales, recomendaciones, restricciones..."></textarea>
                                             </div>
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="saveAdminGarden(event)">Guardar Jardín</button>
@@ -2194,8 +2348,30 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
+                                                <label for="notif-type">Tipo</label>
+                                                <select id="notif-type">
+                                                    <option value="info">Informaci&oacute;n</option>
+                                                    <option value="warning">Advertencia</option>
+                                                    <option value="alert">Alerta</option>
+                                                    <option value="reminder">Recordatorio</option>
+                                                    <option value="achievement">Logro</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
                                                 <label for="notif-message">Mensaje</label>
                                                 <textarea id="notif-message" required style="grid-column: 1 / -1;"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;background:#e8f5e9;padding:0.75rem;border-radius:6px;">
+                                                <input type="checkbox" id="notif-send-telegram" style="width:auto;">
+                                                <label for="notif-send-telegram" style="margin:0;cursor:pointer;">
+                                                    <i class="fab fa-telegram" style="color:#0088cc;"></i>
+                                                    Enviar tambi&eacute;n por Telegram
+                                                    <span class="text-muted text-small">(s&oacute;lo a usuarios con chat_id registrado)</span>
+                                                </label>
                                             </div>
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="sendNotification(event)">Enviar Notificación</button>
@@ -2246,14 +2422,10 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="assign-specialist">Especialista</label>
+                    <label for="assign-specialist">Especialista (opcional)</label>
                     <select id="assign-specialist">
                         <option value="">Ninguno</option>
-                        <option value="Dr. Fernando Calderón Guzmán">Dr. Fernando Calderón Guzmán - Arboricultura Urbana y Fitosanidad</option>
-                        <option value="Mtra. Patricia Rivera Torres">Mtra. Patricia Rivera Torres - Ecología Forestal y Restauración</option>
-                        <option value="Dr. Carlos Méndez Alonzo">Dr. Carlos Méndez Alonzo - Fisiología Vegetal y Estrés Hídrico</option>
-                        <option value="Ing. Ambiental Laura Sánchez Valdés">Ing. Ambiental Laura Sánchez Valdés - Control de Plagas y Enfermedades</option>
-                        <option value="Otro">Otro</option>
+                        <!-- Populated dynamically from user_profiles where role='specialist' -->
                     </select>
                 </div>
             </div>
@@ -2337,6 +2509,16 @@
 
 <!-- DASHBOARD TAB -->
                             <div id="dashboardTab" class="tab-pane">
+                                <!-- Export buttons + cron trigger -->
+                                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                                    <button class="btn btn-outline" onclick="exportDashboardToPDF()"><i class="fas fa-file-pdf"></i> Exportar PDF</button>
+                                    <button class="btn btn-outline" onclick="exportTreesToExcel()"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+                                    <button class="btn btn-outline" onclick="runNotificationCron()"><i class="fas fa-bell"></i> Ejecutar reglas de notificaci&oacute;n</button>
+                                </div>
+
+                                <!-- Weather widget -->
+                                <div id="admin-weather-widget" style="background:white;padding:1rem;border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:1rem;"></div>
+
                                 <div id="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
                                     <!-- Dynamically filled by JS -->
                                 </div>
@@ -2365,6 +2547,24 @@
                                     <h4 style="margin-bottom: 1rem;"><i class="fas fa-map-marked-alt"></i> Mapa de &Aacute;rboles - Estado de M&eacute;xico</h4>
                                     <div id="admin-map" style="height: 450px; border-radius: var(--radius); border: 1px solid var(--border-light);"></div>
                                 </div>
+                            </div>
+
+                            <!-- REPORTES CIUDADANOS TAB -->
+                            <div id="reportsTab" class="tab-pane">
+                                <h4 style="margin-bottom:1rem;"><i class="fas fa-flag"></i> Reportes Ciudadanos</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    Reportes enviados por usuarios v&iacute;a QR. Cambia su estado a medida que los atiendes.
+                                </p>
+                                <div id="citizen-reports-container">Cargando...</div>
+                            </div>
+
+                            <!-- AUDIT LOG TAB -->
+                            <div id="auditTab" class="tab-pane">
+                                <h4 style="margin-bottom:1rem;"><i class="fas fa-history"></i> Registro de Auditor&iacute;a</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    &Uacute;ltimas 100 acciones (insert/update/delete) en tablas cr&iacute;ticas.
+                                </p>
+                                <div id="audit-log-container">Cargando...</div>
                             </div>
                         </div>
                     </div>
@@ -2443,6 +2643,7 @@
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
+    <script src="js/offline-queue.js"></script>
     <script src="js/mi-arbol.js"></script>
     <script src="js/pumai.js"></script>
     <script src="js/ar-height.js"></script>
@@ -2450,6 +2651,9 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Register PWA Service Worker
+            if (typeof registerServiceWorker === 'function') registerServiceWorker();
+
             initApp();
 
             // Form submissions
