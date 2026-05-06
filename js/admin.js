@@ -48,7 +48,7 @@ async function loadAdminDashboard(forceReload) {
     const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
     const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
     const { count: assignCount } = await sb.from('tree_assignments').select('*', { count: 'exact', head: true });
-    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus');
+    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus, location_lat, location_lng, photo_url, initial_height_cm');
     const treeList = trees || [];
     const avgHealth = treeList.length > 0
       ? Math.round(treeList.reduce((sum, t) => sum + (t.health_score || 0), 0) / treeList.length) : 0;
