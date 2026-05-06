@@ -260,13 +260,16 @@ a:hover { color: var(--primary-dark); }
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   padding: 1.5rem; position: relative;
-  /* Foto de fondo (img/background.jpg) con fallback a gradiente cálido */
+  /* Capa 1 (renderiza inmediato): gradient verde-tierra → mientras carga la foto
+     Capa 2 (cuando termine de descargar): foto encima */
   background-color: #2d5016;
-  background-image: url('img/background.png');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  background-image:
+    url('img/background.png'),
+    linear-gradient(180deg, #6a8d4a 0%, #4a6e2a 35%, #5d4e37 70%, #3d2817 100%);
+  background-size: cover, cover;
+  background-position: center center, center center;
+  background-repeat: no-repeat, no-repeat;
+  background-attachment: fixed, fixed;
   overflow: hidden;
 }
 
@@ -286,10 +289,10 @@ a:hover { color: var(--primary-dark); }
 }
 
 .login-box {
-  background: rgba(255,253,247,0.62);          /* más translúcido — deja ver la foto */
-  backdrop-filter: blur(28px) saturate(160%);  /* blur compensa la transparencia para legibilidad */
-  -webkit-backdrop-filter: blur(28px) saturate(160%);
-  border: 1px solid rgba(255,255,255,0.45);
+  background: rgba(255,253,247,0.42);          /* mucho más translúcido */
+  backdrop-filter: blur(32px) saturate(170%);
+  -webkit-backdrop-filter: blur(32px) saturate(170%);
+  border: 1px solid rgba(255,255,255,0.35);
   border-radius: var(--radius-lg);
   padding: 3rem 2.5rem 2.5rem;
   width: 100%; max-width: 440px;
