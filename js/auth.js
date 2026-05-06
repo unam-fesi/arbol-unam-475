@@ -320,6 +320,8 @@ async function loadUserProfile(forceReload) {
     }
 
     if (data) {
+      // Sanea el rol: si viene null/undefined → 'user' (más seguro)
+      if (!data.role) data.role = 'user';
       currentUserProfile = data;
       setupRoleBasedNav(data.role);
       updateUserDisplay();
