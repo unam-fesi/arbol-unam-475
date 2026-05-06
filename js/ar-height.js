@@ -389,21 +389,16 @@ function _arStartAnim() {
       var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
       var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
 
-      // ---- TOP: se mueve con el giroscopio, alineado verticalmente con base ----
-      // Cuando el usuario inclina hacia arriba (curBeta < baseBeta), el TOP
-      // debe subir en pantalla (topY < baseY)
-      var topScreenX = baseScreenX;
-      var topScreenY = baseScreenY;
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaDeg = arM.baseBeta - arM.curBeta;
-        topScreenY = baseScreenY - (deltaDeg * pixPerDeg);
-      }
-      // Clamp top dentro del viewport
-      topScreenY = Math.max(20 * dpr, Math.min(topScreenY, H - 20 * dpr));
+      // ---- TOP/CIMA: SIEMPRE en el centro de la pantalla ----
+      // El usuario apunta la cámara para que la cima quede dentro del crosshair
+      // central. La línea va del BASE (donde tocó) a este centro.
+      // El número vivo se calcula del delta de gyro (abs para evitar inversión).
+      var topScreenX = W / 2;
+      var topScreenY = H / 2;
 
-      // Altura calculada en vivo
+      // Altura en vivo (siempre positiva — mide el ángulo absoluto)
       var liveH = Math.abs(_arCalcH(arM.curBeta));
-      var lineLen = Math.abs(baseScreenY - topScreenY);
+      var lineLen = Math.hypot(topScreenX - baseScreenX, topScreenY - baseScreenY);
 
       // ---- LÍNEA PUNTEADA del BASE al TOP ----
       if (lineLen > 3) {
@@ -495,9 +490,9 @@ function _arStartAnim() {
         txt = '0 cm';
       }
 
-      // Position: EN MEDIO de la línea punteada (centrado horizontal y vertical)
+      // Position: EN MEDIO de la línea diagonal (mid X and mid Y)
+      var labelX = (baseScreenX + topScreenX) / 2;
       var labelMidY = (baseScreenY + topScreenY) / 2;
-      var labelX = baseScreenX;
 
       // Solo mostrar pill si la línea tiene longitud
       if (lineLen > 30) {
@@ -571,15 +566,12 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  var pixPerDeg = H / 60;
+  // BASE en posición del tap, TOP siempre en el centro (donde el usuario
+  // apuntó la cámara para hacer el segundo tap)
   var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
   var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
-  var topX = baseScreenX;
-  var topY = baseScreenY;
-  if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    topY = baseScreenY - ((arM.baseBeta - arM.topBeta) * pixPerDeg);
-  }
-  topY = Math.max(20 * dpr, Math.min(topY, H - 20 * dpr));
+  var topX = W / 2;
+  var topY = H / 2;
 
   // Línea punteada congelada
   ctx.save();
@@ -615,7 +607,8 @@ function _arDrawFinal() {
   ctx.strokeStyle = 'rgba(0,180,230,1)';
   ctx.stroke();
 
-  // Label centrado en medio de la línea
+  // Label centrado en medio de la línea diagonal
+  var midX = (baseScreenX + topX) / 2;
   var midY = (baseScreenY + topY) / 2;
   var h = arM.height || 0;
   var txt = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
@@ -623,7 +616,7 @@ function _arDrawFinal() {
   var tw = ctx.measureText(txt).width;
   var px = 12 * dpr, py = 8 * dpr;
   var pillW = tw + px * 2, pillH = 20 * dpr + py * 2;
-  var lx = baseScreenX - pillW / 2;
+  var lx = midX - pillW / 2;
   var pillR = pillH / 2;
 
   ctx.save();
@@ -642,7 +635,7 @@ function _arDrawFinal() {
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(txt, baseScreenX, midY);
+  ctx.fillText(txt, midX, midY);
 }
 
 // ============================================================================
