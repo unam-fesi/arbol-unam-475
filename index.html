@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyecto Árbol UNAM 475 — FES Iztacala</title>
+
+    <!-- Security Headers (frame-ancestors y X-Frame-Options se setean a nivel HTTP en GH Pages) -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com dl.polyhaven.org cdn.polyhaven.com; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net dl.polyhaven.org cdn.polyhaven.com api.polyhaven.com; font-src fonts.gstatic.com cdnjs.cloudflare.com; worker-src 'self' blob:">
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2e7d32">
+    <link rel="apple-touch-icon" href="icon192v1.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon192v1.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon512v1.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0"></script>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <!-- QRCode.js (#1) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <!-- jsPDF + autotable (#8) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- SheetJS for Excel export (#8) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Three.js + OrbitControls + GLTFLoader (Bosque UNAM 3D) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700;900&display=swap" rel="stylesheet">
+
+    <!-- Forest Academy theme -->
+    <link rel="stylesheet" href="forest-theme.css">
+</head>
+<body>
+    <!-- (Video intro removido por petición del usuario) -->
+
+    <!-- ========== LOGIN SCREEN ========== -->
+    <div id="login-screen" class="login-container" style="display:none;">
+        <div class="login-box">
+            <div class="login-logo">
+                <img src="img/fesi-logo.png" alt="FESI UNAM" style="width:120px;height:auto;margin:0 auto 1rem;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));">
+                <div class="login-logo-text">Proyecto Árbol UNAM 475</div>
+                <div class="login-logo-subtitle">Plataforma de Monitoreo de Árboles - FES Iztacala</div>
+            </div>
+
+            <div id="login-error" class="error-message"></div>
+
+            <form onsubmit="handleLogin(event)">
+                <div class="login-form-group">
+                    <label for="login-email">Correo Electrónico</label>
+                    <input type="email" id="login-email" placeholder="tu.email@example.com" required>
+                </div>
+
+                <div class="login-form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="login-btn"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</button>
+
+                <div style="text-align:center;margin-top:0.75rem;">
+                    <a href="#" onclick="event.preventDefault();showForgotPassword()" style="color:var(--primary);font-size:0.9rem;text-decoration:none;">
+                        ¿Olvidaste tu contraseña?
+                    </a>
+                </div>
+            </form>
+
+            <!-- Forgot password panel -->
+            <div id="forgot-password-panel" style="display:none;margin-top:1.5rem;padding-top:1rem;border-top:1px solid #eee;">
+                <h4 style="margin-bottom:0.5rem;">Recuperar contraseña</h4>
+                <p class="text-small text-muted" style="margin-bottom:0.75rem;">Te enviaremos un enlace de recuperación a tu correo.</p>
+                <form onsubmit="event.preventDefault();sendPasswordReset()">
+                    <input type="email" id="forgot-email" placeholder="tu.email@example.com" required style="width:100%;padding:0.5rem;margin-bottom:0.5rem;">
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" style="flex:1;">Enviar enlace</button>
+                        <button type="button" class="btn btn-outline" onclick="hideForgotPassword()">Cancelar</button>
+                    </div>
+                    <div id="forgot-status" class="text-small" style="margin-top:0.5rem;"></div>
+                </form>
+            </div>
+
+            <div class="login-footer">
+                <p style="color:var(--text-light);font-size:0.85rem;">Universidad Nacional Autónoma de México</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MAIN APP ========== -->
+    <div id="main-app" style="display:none;">
+        <!-- NAVBAR -->
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="navbar-logo">
+                    <span class="navbar-logo-icon">🌳</span>
+                    <div class="navbar-brand-text">
+                        <span class="navbar-brand-main">Árbol UNAM</span>
+                        <span class="navbar-brand-sub">Monitoreo de Árboles</span>
+                    </div>
+                </div>
+
+                <div id="navbarNav" class="navbar-nav">
+                    <a href="#" class="nav-link active" data-section="section-mi-arbol" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree"></i> Mi &Aacute;rbol</a>
+                    <a href="#" class="nav-link" data-section="section-info" onclick="showSection('section-info'); return false;"><i class="fas fa-book"></i> Informaci&oacute;n</a>
+                    <a href="#" class="nav-link" data-section="section-pumai" onclick="showSection('section-pumai'); return false;"><i class="fas fa-robot"></i> PUM-AI</a>
+                    <a href="#" class="nav-link" data-section="section-specialist" onclick="showSection('section-specialist'); return false;" style="display:none;"><i class="fas fa-user-md"></i> Especialista</a>
+                    <a href="#" class="nav-link" data-section="section-admin" onclick="showSection('section-admin'); return false;" style="display:none;"><i class="fas fa-cogs"></i> Admin</a>
+                </div>
+
+                <div class="navbar-user">
+                    <div class="user-dropdown">
+                        <button class="user-menu-btn" id="userMenuBtn">
+                            <img id="userAvatarImg" src="" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:none;border:2px solid var(--primary);">
+                            <div class="user-avatar" id="userAvatar">U</div>
+                            <span id="userName">Usuario</span>
+                            <i class="fas fa-chevron-down" style="font-size:0.7rem;color:var(--text-light);"></i>
+                        </button>
+                        <div class="dropdown-menu" id="userDropdown">
+                            <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border-light);">
+                                <div style="font-weight:600;color:var(--text-dark);" id="dropdownUserName">Usuario</div>
+                                <div style="font-size:0.8rem;color:var(--text-light);" id="dropdownUserEmail">email@example.com</div>
+                                <div style="margin-top:4px;"><span class="badge badge-primary" id="dropdownUserRole" style="font-size:0.7rem;">usuario</span></div>
+                            </div>
+                            <a href="#" onclick="openProfileModal(); return false;"><i class="fas fa-user-edit" style="width:20px;"></i> Mi Perfil</a>
+                            <a href="#" onclick="showSection('section-mi-arbol'); return false;"><i class="fas fa-tree" style="width:20px;"></i> Mi Árbol</a>
+                            <a href="#" onclick="showSection('section-pumai'); return false;"><i class="fas fa-robot" style="width:20px;"></i> PUM-AI</a>
+                            <div class="dropdown-divider"></div>
+                            <button id="logoutBtn" onclick="handleLogout(); return false;" style="color:var(--danger);"><i class="fas fa-sign-out-alt" style="width:20px;"></i> Cerrar Sesión</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="container">
+                <!-- ========== MI ÁRBOL SECTION ========== -->
+                <section id="section-mi-arbol" class="page-section active">
+                    <h2 style="margin-bottom: 2rem;">Mi Árbol</h2>
+                    <div id="mi-arbol-content">
+                        <!-- Dynamically filled by JS -->
+                    </div>
+                </section>
+
+                <!-- ========== INFORMACIÓN SECTION ========== -->
+                <section id="section-info" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Informaci&oacute;n</h2>
+
+                    <!-- Árboles Endémicos de Referencia - llenado por JS -->
+                    <div id="info-endemic-trees"></div>
+
+                    <!-- Especialistas - llenado por JS -->
+                    <div id="info-specialists" style="margin-top:2rem;"></div>
+
+                    <h3 style="margin-top: 3rem; margin-bottom: 2rem;"><i class="fas fa-hand-holding-heart"></i> Consejos de Cuidado</h3>
+
+                    <div class="tips-grid">
+                        <div class="tip-card">
+                            <div class="tip-icon">💧</div>
+                            <div class="tip-content">
+                                <h4>Riego Adecuado</h4>
+                                <p>El riego es fundamental para la salud del árbol. Aprende cuándo y cuánto regar.</p>
+                                <ul>
+                                    <li>Riego diario en verano</li>
+                                    <li>3-4 veces por semana en invierno</li>
+                                    <li>Mantener suelo húmedo pero no anegado</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">✂️</div>
+                            <div class="tip-content">
+                                <h4>Poda y Mantenimiento</h4>
+                                <p>Una poda adecuada promueve el crecimiento saludable del árbol.</p>
+                                <ul>
+                                    <li>Podar en invierno o principios de primavera</li>
+                                    <li>Eliminar ramas muertas o enfermas</li>
+                                    <li>Dar forma para mejorar estructura</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🍂</div>
+                            <div class="tip-content">
+                                <h4>Control de Plagas</h4>
+                                <p>Prevención y tratamiento de plagas comunes en árboles.</p>
+                                <ul>
+                                    <li>Inspeccionar regularmente</li>
+                                    <li>Usar insecticidas naturales</li>
+                                    <li>Promover depredadores beneficiosos</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🌿</div>
+                            <div class="tip-content">
+                                <h4>Fertilización</h4>
+                                <p>Nutrientes esenciales para un crecimiento óptimo.</p>
+                                <ul>
+                                    <li>Fertilizar en primavera y verano</li>
+                                    <li>Usar abonos naturales preferentemente</li>
+                                    <li>Seguir dosis recomendadas</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">🌡️</div>
+                            <div class="tip-content">
+                                <h4>Condiciones Climáticas</h4>
+                                <p>Adaptar el cuidado según las estaciones y clima.</p>
+                                <ul>
+                                    <li>Proteger en heladas</li>
+                                    <li>Aumentar riego en sequías</li>
+                                    <li>Proporcionar sombra en calor extremo</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="tip-card">
+                            <div class="tip-icon">📊</div>
+                            <div class="tip-content">
+                                <h4>Monitoreo Continuo</h4>
+                                <p>Seguimiento regular para detectar problemas tempranamente.</p>
+                                <ul>
+                                    <li>Revisar hojas y tallos semanalmente</li>
+                                    <li>Documentar cambios con fotos</li>
+                                    <li>Reportar anomalías inmediatamente</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========== PUM-AI SECTION ========== -->
+                <section id="section-pumai" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Consultor PUM-AI</h2>
+                    <p class="text-muted" style="margin-bottom: 2rem;">Sube una foto de tu árbol y recibe análisis inteligente basado en IA.</p>
+                    <div id="pumai-content">
+                        <!-- Dynamically filled by JS -->
+                    </div>
+                </section>
+
+                <!-- ========== SPECIALIST SECTION ========== -->
+                <section id="section-specialist" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Seguimiento Especialista</h2>
+                    <div id="specialist-content">
+                        <!-- Dynamically filled by JS -->
+                    </div>
+                </section>
+
+                <!-- ========== ADMIN SECTION ========== -->
+                <section id="section-admin" class="page-section">
+                    <h2 style="margin-bottom: 2rem;">Panel de Administración</h2>
+
+                    <div class="admin-panel">
+                        <div class="admin-tabs">
+                            <button class="admin-tab active" data-tab="users" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button>
+                            <button class="admin-tab" data-tab="trees" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Árboles</button>
+                            <button class="admin-tab" data-tab="gardens" onclick="switchAdminTab('gardens')"><i class="fas fa-leaf"></i> Jardines</button>
+                            <button class="admin-tab" data-tab="groups" onclick="switchAdminTab('groups')"><i class="fas fa-layer-group"></i> Grupos</button>
+                            <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
+                    <button class="admin-tab" data-tab="assignments" onclick="switchAdminTab(\'assignments\')"><i class="fas fa-link"></i> Asignaciones</button>
+                            <button class="admin-tab" data-tab="dashboard" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
+                            <button class="admin-tab" data-tab="reports" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
+                            <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditor&iacute;a</button>
+                        </div>
+
+                        <div class="admin-content">
+                            <!-- USERS TAB -->
+                            <div id="usersTab" class="tab-pane active">
+                                <div class="admin-form">
+                                    <h4>Agregar/Editar Usuario</h4>
+                                    <form id="form-admin-user">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-user-nombre">Nombre</label>
+                                                <input type="text" id="admin-user-nombre" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-correo">Correo</label>
+                                                <input type="email" id="admin-user-correo" required>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-user-password">Contraseña</label>
+                                                <input type="password" id="admin-user-password">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-num-cuenta">Número de Cuenta</label>
+                                                <input type="text" id="admin-user-num-cuenta">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-user-fecha-nacimiento">Fecha de Nacimiento</label>
+                                                <input type="date" id="admin-user-fecha-nacimiento">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-estatus">Estatus Acad&eacute;mico</label>
+                                                <select id="admin-user-estatus">
+                                                    <option value="alumno">Alumno</option>
+                                                    <option value="exalumno">Exalumno</option>
+                                                    <option value="egresado">Egresado</option>
+                                                    <option value="pasante">Pasante</option>
+                                                    <option value="tesista">Tesista</option>
+                                                    <option value="becario">Becario</option>
+                                                    <option value="postgrado">Postgrado</option>
+                                                    <option value="profesor">Profesor</option>
+                                                    <option value="profesora">Profesora</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-user-role">Rol</label>
+                                                <select id="admin-user-role" onchange="toggleSpecialistFields()">
+                                                    <option value="user">Usuario</option>
+                                                    <option value="specialist">Especialista</option>
+                                                    <option value="admin">Administrador</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-campus">Campus</label>
+                                                <select id="admin-user-campus">
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <!-- Campos visibles s&oacute;lo cuando role=specialist -->
+                                        <div id="specialist-fields" style="display:none;border-left:3px solid var(--primary);padding-left:1rem;margin-bottom:1rem;background:#f9fdf9;padding:0.75rem;border-radius:6px;">
+                                            <h5 style="margin:0 0 0.5rem;color:var(--primary);">
+                                                <i class="fas fa-microscope"></i> Datos del Especialista
+                                            </h5>
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="admin-user-specialty">Especialidad</label>
+                                                    <input type="text" id="admin-user-specialty" placeholder="Ej: Arboricultura urbana">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="admin-user-department">Departamento / Unidad</label>
+                                                    <input type="text" id="admin-user-department" placeholder="Ej: Biolog&iacute;a, FES Iztacala">
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-user-contact-info">Contacto adicional</label>
+                                                <input type="text" id="admin-user-contact-info" placeholder="Tel&eacute;fono / oficina / horario">
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminUser(event)">Guardar Usuario</button>
+                                    </form>
+                                </div>
+
+                                <h4 style="margin-bottom: 1rem;">Usuarios Registrados</h4>
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Nombre</th>
+                                            <th>No. Cuenta</th>
+                                            <th>Rol</th>
+                                            <th>Estatus</th>
+                                            <th>Campus</th>
+                                            <th>Telegram</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-table-body">
+                                        <!-- Dynamically filled by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- TREES TAB -->
+                            <div id="treesTab" class="tab-pane">
+                                <div class="admin-form">
+                                    <h4>Agregar/Editar Árbol</h4>
+                                    <form id="form-admin-tree">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-code">Código</label>
+                                                <input type="text" id="admin-tree-code" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-species">Especie</label>
+                                                <input type="text" id="admin-tree-species" required>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-common-name">Nombre Común</label>
+                                                <input type="text" id="admin-tree-common-name">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-type">Tipo</label>
+                                                <select id="admin-tree-type">
+                                                    <option value="nativo">Nativo</option>
+                                                    <option value="endemico" selected>End&eacute;mico</option>
+                                                    <option value="ornamental">Ornamental</option>
+                                                    <option value="frutal">Frutal</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-size">Tama&ntilde;o</label>
+                                                <select id="admin-tree-size">
+                                                    <option value="pequeno">Peque&ntilde;o</option>
+                                                    <option value="mediano" selected>Mediano</option>
+                                                    <option value="grande">Grande</option>
+                                                    <option value="muy_grande">Muy grande</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-campus">Campus</label>
+                                                <select id="admin-tree-campus">
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-garden">Jard&iacute;n (opcional)</label>
+                                                <select id="admin-tree-garden">
+                                                    <option value="">— Sin jard&iacute;n asignado —</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-planting-date">Fecha de plantaci&oacute;n</label>
+                                                <input type="date" id="admin-tree-planting-date">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-status">Estado</label>
+                                                <select id="admin-tree-status">
+                                                    <option value="nuevo" selected>Nuevo (reci&eacute;n plantado)</option>
+                                                    <option value="activo">Activo</option>
+                                                    <option value="enfermo">Enfermo</option>
+                                                    <option value="en_tratamiento">En tratamiento</option>
+                                                    <option value="seco">Seco</option>
+                                                    <option value="retirado">Retirado</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-health">Salud (%)</label>
+                                                <input type="number" id="admin-tree-health" min="0" max="100" value="80">
+                                            </div>
+                                        </div>
+                                        <p class="text-muted text-small" style="margin:0 0 0.5rem;">
+                                            <i class="fas fa-info-circle"></i> El alta es de inventario.
+                                            La <b>ubicaci&oacute;n exacta</b> (lat/lng) se captura cuando el usuario asignado
+                                            haga su primer seguimiento (con GPS o mapa).
+                                        </p>
+                                        <h4 style="margin:1.5rem 0 0.75rem;padding-top:0.75rem;border-top:1px solid #eee;">Medidas Iniciales</h4>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-height">Altura (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-height" placeholder="350">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-trunk">Di&aacute;m. tronco (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-trunk" placeholder="25">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-crown">Di&aacute;m. copa (cm)</label>
+                                                <input type="number" step="0.1" id="admin-tree-crown" placeholder="400">
+                                            </div>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:1rem;">
+                                            <label for="admin-tree-notes">Notas iniciales</label>
+                                            <textarea id="admin-tree-notes" rows="2" style="width:100%;padding:0.5rem;" placeholder="Observaciones del estado inicial..."></textarea>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar &Aacute;rbol</button>
+                                    </form>
+                                </div>
+
+                                <h4 style="margin-bottom: 1rem;">Árboles Registrados</h4>
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Código</th>
+                                            <th>Especie</th>
+                                            <th>Campus</th>
+                                            <th>Estado</th>
+                                            <th>Salud</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trees-table-body">
+                                        <!-- Dynamically filled by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- GARDENS TAB -->
+                            <div id="gardensTab" class="tab-pane">
+                                <div class="admin-form">
+                                    <h4>Agregar/Editar Jardín</h4>
+                                    <form id="form-admin-garden">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-name">Nombre <span style="color:var(--danger);">*</span></label>
+                                                <input type="text" id="admin-garden-name" required placeholder="Ej: Jard&iacute;n Central FESI">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-campus">Campus <span style="color:var(--danger);">*</span></label>
+                                                <select id="admin-garden-campus" required>
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-lat">Latitud (centroide)</label>
+                                                <input type="number" id="admin-garden-lat" step="any" placeholder="19.5322">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-lng">Longitud (centroide)</label>
+                                                <input type="number" id="admin-garden-lng" step="any" placeholder="-99.1847">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-area">&Aacute;rea (m&sup2;)</label>
+                                                <input type="number" id="admin-garden-area" step="0.01" min="0" placeholder="500">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-capacity">Capacidad m&aacute;x. de &aacute;rboles</label>
+                                                <input type="number" id="admin-garden-capacity" min="0" placeholder="50">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-soil">Tipo de suelo</label>
+                                                <select id="admin-garden-soil">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="arenoso">Arenoso</option>
+                                                    <option value="arcilloso">Arcilloso</option>
+                                                    <option value="franco">Franco</option>
+                                                    <option value="mixto">Mixto</option>
+                                                    <option value="rocoso">Rocoso</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-irrigation">Riego</label>
+                                                <select id="admin-garden-irrigation">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="ninguno">Ninguno</option>
+                                                    <option value="manual">Manual</option>
+                                                    <option value="aspersion">Aspersi&oacute;n</option>
+                                                    <option value="goteo">Goteo</option>
+                                                    <option value="automatizado">Automatizado</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-exposure">Exposici&oacute;n solar</label>
+                                                <select id="admin-garden-exposure">
+                                                    <option value="">— No especificado —</option>
+                                                    <option value="sol_pleno">Sol pleno</option>
+                                                    <option value="semi_sombra">Semi-sombra</option>
+                                                    <option value="sombra">Sombra</option>
+                                                    <option value="mixto">Mixto</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-climate">Zona clim&aacute;tica</label>
+                                                <input type="text" id="admin-garden-climate" placeholder="Ej: Templado subh&uacute;medo">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-established">Fecha de establecimiento</label>
+                                                <input type="date" id="admin-garden-established">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-specialist">Especialista responsable</label>
+                                                <select id="admin-garden-specialist">
+                                                    <option value="">— Sin asignar —</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-desc">Descripci&oacute;n / ubicaci&oacute;n descriptiva</label>
+                                                <textarea id="admin-garden-desc" style="grid-column: 1 / -1;" placeholder="Ej: Zona cultural junto al circuito exterior, frente al edificio A1"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-notes">Notas</label>
+                                                <textarea id="admin-garden-notes" style="grid-column: 1 / -1;" placeholder="Notas adicionales, recomendaciones, restricciones..."></textarea>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminGarden(event)">Guardar Jardín</button>
+                                    </form>
+                                </div>
+
+                                <h4 style="margin-bottom: 1rem;">Jardines Registrados</h4>
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Nombre</th>
+                                            <th>Campus</th>
+                                            <th>Ubicación</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gardens-table-body">
+                                        <!-- Dynamically filled by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- GROUPS TAB -->
+                            <div id="groupsTab" class="tab-pane">
+                                <div class="admin-form">
+                                    <h4>Agregar/Editar Grupo</h4>
+                                    <form id="form-admin-group">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-group-name">Nombre</label>
+                                                <input type="text" id="admin-group-name" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-group-desc">Descripción</label>
+                                                <input type="text" id="admin-group-desc">
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="saveAdminGroup(event)">Guardar Grupo</button>
+                                    </form>
+                                </div>
+
+                                <h4 style="margin-bottom: 1rem;">Grupos Registrados</h4>
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Nombre</th>
+                                            <th>Descripción</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="groups-table-body">
+                                        <!-- Dynamically filled by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- NOTIFICATIONS TAB -->
+                            <div id="notificationsTab" class="tab-pane">
+                                <div class="admin-form">
+                                    <h4>Enviar Notificación</h4>
+                                    <form id="form-notification">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="notif-target-type">Tipo de Destinatario</label>
+                                                <select id="notif-target-type">
+                                                    <option value="all">Todos</option>
+                                                    <option value="user">Usuario Específico</option>
+                                                    <option value="group">Grupo</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" id="notif-user-field" style="display:none;">
+                                                <label for="notifUser">Destinatario</label>
+                                                <select id="notifUser">
+                                                    <option value="">Selecciona...</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="notif-title">Título</label>
+                                                <input type="text" id="notif-title" required>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="notif-type">Tipo</label>
+                                                <select id="notif-type">
+                                                    <option value="info">Informaci&oacute;n</option>
+                                                    <option value="warning">Advertencia</option>
+                                                    <option value="alert">Alerta</option>
+                                                    <option value="reminder">Recordatorio</option>
+                                                    <option value="achievement">Logro</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="notif-message">Mensaje</label>
+                                                <textarea id="notif-message" required style="grid-column: 1 / -1;"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;background:#e8f5e9;padding:0.75rem;border-radius:6px;">
+                                                <input type="checkbox" id="notif-send-telegram" style="width:auto;">
+                                                <label for="notif-send-telegram" style="margin:0;cursor:pointer;">
+                                                    <i class="fab fa-telegram" style="color:#0088cc;"></i>
+                                                    Enviar tambi&eacute;n por Telegram
+                                                    <span class="text-muted text-small">(s&oacute;lo a usuarios con chat_id registrado)</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary" onclick="sendNotification(event)">Enviar Notificación</button>
+                                    </form>
+                                </div>
+
+                                <h4 style="margin-bottom: 1rem;">Historial de Notificaciones</h4>
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Título</th>
+                                            <th>Destinatario</th>
+                                            <th>Fecha</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="notificationsTableBody">
+                                        <!-- Dynamically filled by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- ASSIGNMENTS TAB -->
+<div id="assignmentsTab" class="tab-pane">
+    <div class="admin-form">
+        <h4>Asignar Árbol a Usuario o Grupo</h4>
+        <form id="form-assign-tree">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assign-target-type">Asignar a</label>
+                    <select id="assign-target-type">
+                        <option value="user">Usuario</option>
+                        <option value="group">Grupo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assign-target">Destinatario</label>
+                    <select id="assign-target">
+                        <option value="">Selecciona...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assign-tree">Árbol</label>
+                    <select id="assign-tree">
+                        <option value="">Selecciona árbol...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assign-specialist">Especialista (opcional)</label>
+                    <select id="assign-specialist">
+                        <option value="">Ninguno</option>
+                        <!-- Populated dynamically from user_profiles where role='specialist' -->
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" id="specialist-custom-row" style="display:none;">
+                <div class="form-group">
+                    <label for="assign-specialist-custom">Nombre del Especialista</label>
+                    <input type="text" id="assign-specialist-custom" placeholder="Ingresa nombre personalizado">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assign-notes">Notas</label>
+                    <input type="text" id="assign-notes" placeholder="Opcional">
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="doAssignTreeFromTab()">Asignar Árbol</button>
+        </form>
+    </div>
+
+    <div class="admin-form" style="margin-top:1.5rem;">
+        <h4>Asignar Jardín a Usuario o Grupo</h4>
+        <form id="form-assign-garden">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assign-garden-target-type">Asignar a</label>
+                    <select id="assign-garden-target-type">
+                        <option value="user">Usuario</option>
+                        <option value="group">Grupo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="assign-garden-target">Destinatario</label>
+                    <select id="assign-garden-target">
+                        <option value="">Selecciona...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="assign-garden-select">Jardín</label>
+                    <select id="assign-garden-select">
+                        <option value="">Selecciona jardín...</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="doAssignGardenFromTab()">Asignar Jardín</button>
+        </form>
+    </div>
+
+    <h4 style="margin-top:2rem;margin-bottom:1rem;">Asignaciones de Árboles</h4>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Árbol</th>
+                <th>Asignado a</th>
+                <th>Tipo</th>
+                <th>Especialista</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="tree-assignments-body">
+        </tbody>
+    </table>
+
+    <h4 style="margin-top:2rem;margin-bottom:1rem;">Asignaciones de Jardines</h4>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Jardín</th>
+                <th>Asignado a</th>
+                <th>Tipo</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody id="garden-assignments-body">
+        </tbody>
+    </table>
+</div>
+
+<!-- DASHBOARD TAB -->
+                            <div id="dashboardTab" class="tab-pane">
+                                <!-- Export buttons + cron trigger -->
+                                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                                    <button class="btn btn-outline" onclick="exportDashboardToPDF()"><i class="fas fa-file-pdf"></i> Exportar PDF</button>
+                                    <button class="btn btn-outline" onclick="exportTreesToExcel()"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+                                    <button class="btn btn-outline" onclick="runNotificationCron()"><i class="fas fa-bell"></i> Ejecutar reglas de notificaci&oacute;n</button>
+                                </div>
+
+                                <!-- Weather widget -->
+                                <div id="admin-weather-widget" style="background:white;padding:1rem;border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:1rem;"></div>
+
+                                <!-- Bosque UNAM — visualizaci&oacute;n org&aacute;nica del estado de los &aacute;rboles -->
+                                <div id="dashboard-tree-vis" class="dashboard-tree-vis" style="display:none;">
+                                    <div class="dashboard-tree-header">
+                                        <h3>El Bosque UNAM 475</h3>
+                                        <p class="text-muted text-small">Cada hoja es un &aacute;rbol registrado. El color refleja su estado de salud actual. <em>Pasa el cursor sobre una hoja para ver detalles.</em></p>
+                                    </div>
+                                    <!-- Contenedor 3D del Bosque UNAM (Three.js) -->
+                                    <div id="dashboard-tree-3d" class="dashboard-tree-3d" aria-label="Visualizaci&oacute;n 3D del bosque — arrastra para rotar"></div>
+                                    <p class="text-muted text-small" style="text-align:center;margin:0.5rem 0 0;">
+                                        <i class="fas fa-mouse"></i> Arrastra para rotar &middot; Rueda para zoom &middot; Click en hoja para abrir &aacute;rbol
+                                    </p>
+                                    <!-- Slots SVG legacy (oculto, mantenido por compatibilidad si JS de fallback) -->
+                                    <svg style="display:none;" id="dashboard-leaf-slots-fallback"><g id="dashboard-leaf-slots"></g></svg>
+
+                                    <!-- Stats overlay (puede aparecer flotante o debajo) -->
+                                    <div class="dashboard-tree-legend">
+                                        <span class="legend-item"><span class="legend-dot" style="background:#4a7c2a;"></span> Saludable (80+)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#95b86c;"></span> Bueno (60-79)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#d49b3a;"></span> Atenci&oacute;n (40-59)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#b54f3a;"></span> Cr&iacute;tico (&lt;40)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#c5b5a0;opacity:0.5;"></span> Sin datos</span>
+                                    </div>
+
+                                    <!-- Tooltip (creado por JS al hover) -->
+                                    <div id="dashboard-tree-tooltip" class="dashboard-tree-tooltip" style="display:none;"></div>
+                                </div>
+
+                                <div id="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                                    <!-- Dynamically filled by JS -->
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                                    <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow);">
+                                        <h4 style="margin-bottom: 1rem;">Estado de Salud</h4>
+                                        <canvas id="chart-health" style="max-height: 300px;"></canvas>
+                                    </div>
+                                    <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow);">
+                                        <h4 style="margin-bottom: 1rem;">Status de Árboles</h4>
+                                        <canvas id="chart-status" style="max-height: 300px;"></canvas>
+                                    </div>
+                                </div>
+
+                                <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow);">
+                                    <h4 style="margin-bottom: 1rem;">Árboles por Campus</h4>
+                                    <canvas id="chart-campus" style="max-height: 300px;"></canvas>
+                                </div>
+
+                                <div id="dashboard-assignments" style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
+                                    <!-- Filled by JS: recent assignments -->
+                                </div>
+
+                                <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
+                                    <h4 style="margin-bottom: 1rem;"><i class="fas fa-map-marked-alt"></i> Mapa de &Aacute;rboles - Estado de M&eacute;xico</h4>
+                                    <div id="admin-map" style="height: 450px; border-radius: var(--radius); border: 1px solid var(--border-light);"></div>
+                                </div>
+                            </div>
+
+                            <!-- REPORTES CIUDADANOS TAB -->
+                            <div id="reportsTab" class="tab-pane">
+                                <h4 style="margin-bottom:1rem;"><i class="fas fa-flag"></i> Reportes Ciudadanos</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    Reportes enviados por usuarios v&iacute;a QR. Cambia su estado a medida que los atiendes.
+                                </p>
+                                <div id="citizen-reports-container">Cargando...</div>
+                            </div>
+
+                            <!-- AUDIT LOG TAB -->
+                            <div id="auditTab" class="tab-pane">
+                                <h4 style="margin-bottom:1rem;"><i class="fas fa-history"></i> Registro de Auditor&iacute;a</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    &Uacute;ltimas 100 acciones (insert/update/delete) en tablas cr&iacute;ticas.
+                                </p>
+                                <div id="audit-log-container">Cargando...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== PROFILE MODAL ========== -->
+    <div id="profile-modal" class="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+        <div class="modal-content" style="background:white;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:2rem;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                <h3 style="margin:0;"><i class="fas fa-user-circle"></i> Mi Perfil</h3>
+                <button onclick="closeProfileModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-light);">&times;</button>
+            </div>
+
+            <div style="text-align:center;margin-bottom:1.5rem;">
+                <div id="profile-avatar-placeholder" style="width:100px;height:100px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:600;margin:0 auto;">U</div>
+            </div>
+
+            <form id="profile-form" onsubmit="saveProfile(event)">
+                <div class="form-group">
+                    <label>Nombre completo</label>
+                    <input type="text" id="profile-fullname" placeholder="Tu nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Correo electr&oacute;nico</label>
+                    <input type="email" id="profile-email" disabled style="background:var(--bg);color:var(--text-light);">
+                </div>
+                <div class="form-group">
+                    <label>N&uacute;mero de cuenta</label>
+                    <input type="text" id="profile-account-number" placeholder="Ej: 31700000-0">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de nacimiento</label>
+                    <input type="date" id="profile-birth-date">
+                </div>
+                <div class="form-group">
+                    <label>Estatus Acad&eacute;mico</label>
+                    <select id="profile-academic-status">
+                        <option value="">Seleccionar...</option>
+                        <option value="alumno">Alumno</option>
+                        <option value="exalumno">Exalumno</option>
+                        <option value="postgrado">Postgrado</option>
+                        <option value="doctorante">Doctorante</option>
+                        <option value="profesor">Profesor</option>
+                        <option value="investigador">Investigador</option>
+                        <option value="administrativo">Administrativo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Campus</label>
+                    <select id="profile-campus">
+                        <option value="">Seleccionar...</option>
+                        <option value="FESI">FES Iztacala</option>
+                        <option value="FESA">FES Arag&oacute;n</option>
+                        <option value="FESC">FES Cuautitl&aacute;n</option>
+                        <option value="FESZ">FES Zaragoza</option>
+                        <option value="FESAC">FES Acatl&aacute;n</option>
+                        <option value="CU">Ciudad Universitaria</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:1rem;margin-top:1.5rem;">
+                    <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-save"></i> Guardar Cambios</button>
+                    <button type="button" class="btn btn-outline" onclick="closeProfileModal()" style="flex:0 0 auto;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:10000;"></div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/offline-queue.js"></script>
+    <script src="js/mi-arbol.js"></script>
+    <script src="js/pumai.js"></script>
+    <script src="js/ar-height.js"></script>
+    <script src="js/admin.js"></script>
+
+    <!-- Forest FX (animaciones ambientales del tema) -->
+    <script src="js/forest-fx.js"></script>
+
+    <!-- Bosque UNAM — árbol 3D realista del dashboard -->
+    <script src="js/dashboard-tree-3d.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Register PWA Service Worker
+            if (typeof registerServiceWorker === 'function') registerServiceWorker();
+
+            initApp();
+
+            // Form submissions
+            document.getElementById('form-admin-user')?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveAdminUser(e);
+            });
+            document.getElementById('form-admin-tree')?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveAdminTree(e);
+            });
+            document.getElementById('form-admin-garden')?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveAdminGarden(e);
+            });
+            document.getElementById('form-admin-group')?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveAdminGroup(e);
+            });
+            document.getElementById('form-notification')?.addEventListener('submit', function(e) {
+                e.preventDefault();
+                sendNotification(e);
+            });
+
+            // Admin tab clicks
+            document.querySelectorAll('.admin-tab[data-tab]').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    switchAdminTab(this.dataset.tab);
+                });
+            });
+
+            // User menu dropdown
+            document.getElementById('userMenuBtn')?.addEventListener('click', function() {
+                const dropdown = document.getElementById('userDropdown');
+                dropdown.classList.toggle('show');
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const dropdown = document.getElementById('userDropdown');
+                const userMenuBtn = document.getElementById('userMenuBtn');
+                if (dropdown && !dropdown.contains(event.target) && !userMenuBtn.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            // Notification target type change
+            document.getElementById('notif-target-type')?.addEventListener('change', function() {
+    const userField = document.getElementById('notif-user-field');
+    if (this.value === 'user' || this.value === 'group') {
+        userField.style.display = 'block';
+    } else {
+        userField.style.display = 'none';
+    }
+});
+        });
+    </script>
+</body>
+</html>
