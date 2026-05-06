@@ -254,22 +254,26 @@ function _arTapToMark(e) {
 
     arM.step = 1;
 
-    // Update UI
     document.getElementById('ar-hint').innerHTML =
       'Apunta al <b>segundo punto</b> y <b>toca la pantalla</b>';
     document.getElementById('ar-step-text').textContent = 'Paso 2 de 2';
     document.getElementById('ar-undo').style.display = 'flex';
-    var inv = document.getElementById('ar-invert');
-    if (inv) inv.style.display = 'flex';
+
+    // Ocultar HTML crosshair — el cursor ahora se dibuja en canvas alineado
+    // con el verde, para que la línea sea vertical y no diagonal.
+    var hc = document.getElementById('ar-html-crosshair');
+    if (hc) hc.style.display = 'none';
 
     _arSyncCv();
     _arStartAnim();
 
   } else if (arM.step === 1) {
     // ---- MARK PUNTO 2 ----
-    // El punto azul se queda EXACTAMENTE donde tocaste.
+    // BLOQUEO VERTICAL: el punto 2 se alinea en la misma columna X
+    // que el punto 1 — así la línea siempre es vertical (medir altura).
+    // Solo respetamos la Y del tap.
     arM.topBeta = arM.curBeta;
-    arM.topScreenX = tapX;
+    arM.topScreenX = arM.baseScreenX;
     arM.topScreenY = tapY;
     arM.step = 2;
 
@@ -420,8 +424,10 @@ function _arStartAnim() {
       var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
       var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
 
-      // ---- CURSOR (preview de punto 2): siempre en el centro ----
-      var topScreenX = W / 2;
+      // ---- CURSOR (preview punto 2): MISMA X que el verde, Y arriba ----
+      // Línea vertical desde el verde hacia arriba. El cursor se posiciona
+      // al centro VERTICAL de la pantalla pero alineado X con el verde.
+      var topScreenX = baseScreenX;  // bloqueo vertical
       var topScreenY = H / 2;
 
       // Altura en vivo (siempre positiva)
@@ -471,7 +477,17 @@ function _arStartAnim() {
       ctx.lineWidth = 2.5 * dpr;
       ctx.strokeStyle = 'rgba(255,255,255,0.95)';
       ctx.stroke();
-      // El cursor para punto 2 es el HTML crosshair (always at center).
+
+      // ---- CURSOR para punto 2 (white circle alineado con verde) ----
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 14 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 3 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fill();
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -701,9 +717,9 @@ function _arUndo() {
   // Re-habilitar tap-zone
   var tz = document.getElementById('ar-tap-zone');
   if (tz) tz.style.pointerEvents = 'auto';
-  // Ocultar botón invertir
-  var inv = document.getElementById('ar-invert');
-  if (inv) inv.style.display = 'none';
+  // Re-mostrar HTML crosshair
+  var hc = document.getElementById('ar-html-crosshair');
+  if (hc) hc.style.display = 'block';
 
   var r = document.getElementById('ar-result');
   if (r) r.remove();
