@@ -48,7 +48,7 @@ async function loadAdminDashboard(forceReload) {
     const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
     const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
     const { count: assignCount } = await sb.from('tree_assignments').select('*', { count: 'exact', head: true });
-    const { data: trees } = await sb.from('trees_catalog').select('health_score, status, campus');
+    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus');
     const treeList = trees || [];
     const avgHealth = treeList.length > 0
       ? Math.round(treeList.reduce((sum, t) => sum + (t.health_score || 0), 0) / treeList.length) : 0;
@@ -1776,6 +1776,8 @@ function renderDashboardTree(treeList) {
   // Si tenemos menos, asignación 1:1 hasta llenar.
   const scaled = total > totalSlots;
 
+  // Primera pasada: crear todos los path elements con datos pero sin la clase 'show'
+  const pathsToReveal = [];
   for (let i = 0; i < totalSlots; i++) {
     const pos = BOSQUE_LEAF_POSITIONS[i];
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1786,33 +1788,37 @@ function renderDashboardTree(treeList) {
 
     let assignedTree = null;
     if (!scaled) {
-      // 1:1 mapping
       assignedTree = trees[i] || null;
     } else {
-      // Proporcional: cada slot representa total/totalSlots árboles
       const idx = Math.floor(i * total / totalSlots);
       assignedTree = trees[idx] || null;
     }
 
-    if (assignedTree) {
+    if (assignedTree && assignedTree.id != null) {
       const score = assignedTree.health_score || 0;
       path.setAttribute('fill', bosqueColorByHealth(score));
-      path.setAttribute('data-tree-id', assignedTree.id);
+      path.setAttribute('data-tree-id', String(assignedTree.id));
       path.setAttribute('data-tree-code', assignedTree.tree_code || '');
       path.setAttribute('data-tree-name', assignedTree.common_name || assignedTree.species || 'Árbol');
-      path.setAttribute('data-health', score);
+      path.setAttribute('data-health', String(score));
       path.setAttribute('data-status', assignedTree.status || '');
       path.setAttribute('data-campus', assignedTree.campus || '');
-      // Stagger animation for "growing" effect
       path.style.transitionDelay = (i * 35) + 'ms';
-      requestAnimationFrame(() => path.classList.add('show'));
+      pathsToReveal.push(path);
     } else {
       path.setAttribute('fill', '#c5b5a0');
       path.classList.add('empty');
     }
-
     slotsGroup.appendChild(path);
   }
+
+  // Segunda pasada: pequeño delay para que el browser pinte el estado inicial
+  // (opacity:0, scale:0) antes de aplicar la clase 'show' que dispara la
+  // transición. Probado: rAF no es suficiente para SVG paths recién creados.
+  void slotsGroup.getBoundingClientRect();  // force layout
+  setTimeout(() => {
+    pathsToReveal.forEach(p => p.classList.add('show'));
+  }, 30);
 
   // Bind hover/click handlers
   bindBosqueLeafEvents();
