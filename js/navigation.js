@@ -43,7 +43,12 @@ function showSection(sectionId) {
     section.style.display = 'block';
 
     // Load data for section
-    if (sectionId === 'section-mi-arbol') loadMyTree();
+    if (sectionId === 'section-mi-arbol') {
+      // Si existe el orquestador de portafolio (jardín + árbol), úsalo;
+      // si no, fallback al loader original de árbol
+      if (typeof loadMyPortfolio === 'function') loadMyPortfolio();
+      else if (typeof loadMyTree === 'function') loadMyTree();
+    }
     else if (sectionId === 'section-info') loadInfoSection();
     else if (sectionId === 'section-pumai') initPumAI();
     else if (sectionId === 'section-admin') switchAdminTab('users');
