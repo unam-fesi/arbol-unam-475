@@ -212,7 +212,11 @@ function _arTapToMark(e) {
   var tapY = (clientY - rect.top) * dpr;
 
   if (arM.step === 0) {
-    // ---- MARK BASE ----
+    // ---- MARK PUNTO 1 ----
+    // El crosshair está en el centro de la pantalla. Capturamos baseBeta
+    // como el ángulo de cámara en este momento. Las coordenadas en pantalla
+    // del punto 1 NO son del tap — siempre nacen en el centro y luego se
+    // anclan al mundo (se desplazan con el gyro).
     if (!arM.gyroReady || arM.curBeta === null) {
       if (!arM.hasGyro) {
         _arShowManualFallback();
@@ -221,8 +225,6 @@ function _arTapToMark(e) {
     }
 
     arM.baseBeta = arM.curBeta;
-    arM.baseScreenX = tapX;
-    arM.baseScreenY = tapY;
 
     // Auto-calculate distance basado en ángulo abajo del horizonte
     var angleDeg = _b2a(arM.baseBeta);
@@ -385,21 +387,27 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- BASE: FIJO en la posición donde el usuario tocó ----
-      var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
-      var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
+      // ---- PUNTO 1 (verde): ANCLADO AL MUNDO ----
+      // Capturado al tapear cuando el crosshair estaba en el centro.
+      // Conforme el usuario tilta el celular, el punto se mueve en pantalla
+      // para representar la posición FÍSICA del mundo donde se marcó.
+      // Si tilta hacia arriba (curBeta < baseBeta), el punto baja en pantalla
+      // (porque el punto del mundo está abajo de donde la cámara apunta ahora).
+      var baseScreenX = W / 2;  // mantenemos eje vertical centrado
+      var baseScreenY = H / 2;
+      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+        var deltaBase = arM.baseBeta - arM.curBeta;
+        baseScreenY = (H / 2) + (deltaBase * pixPerDeg);
+      }
 
-      // ---- PUNTO 2: SIEMPRE en el centro de la pantalla ----
-      // El usuario apunta la cámara para que la cima/base del objeto quede
-      // dentro del crosshair central, y toca para capturar.
-      // El número se calcula del ángulo absoluto entre los dos puntos
-      // (orden de tap no importa: puede tapear cima primero o base primero).
+      // ---- CROSSHAIR (cursor para punto 2): SIEMPRE en el centro ----
+      // El usuario aima la cámara para que el crosshair quede sobre el cima.
       var topScreenX = W / 2;
       var topScreenY = H / 2;
 
-      // Altura en vivo (siempre positiva — mide el ángulo absoluto)
+      // Altura en vivo (siempre positiva)
       var liveH = Math.abs(_arCalcH(arM.curBeta));
-      var lineLen = Math.hypot(topScreenX - baseScreenX, topScreenY - baseScreenY);
+      var lineLen = Math.abs(baseScreenY - topScreenY);
 
       // ---- LÍNEA PUNTEADA del BASE al TOP ----
       if (lineLen > 3) {
@@ -430,56 +438,27 @@ function _arStartAnim() {
         ctx.restore();
       }
 
-      // ---- BASE DOT (verde, fijo en pantalla donde se tocó) ----
-      // Halo
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,0.22)';
-      ctx.fill();
-      // Punto sólido
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,1)';
-      ctx.fill();
-      // Borde blanco
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-      ctx.lineWidth = 2.5 * dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.stroke();
-      // Etiqueta "1" — primer punto
-      ctx.font = 'bold ' + (11 * dpr) + 'px -apple-system, sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText('1', baseScreenX, baseScreenY + 14 * dpr);
-
-      // ---- TOP DOT (cyan brillante, sigue al gyro) ----
-      // Halo
-      ctx.beginPath();
-      ctx.arc(topScreenX, topScreenY, 18 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,200,255,0.20)';
-      ctx.fill();
-      // Punto sólido (anillo + centro)
-      ctx.beginPath();
-      ctx.arc(topScreenX, topScreenY, 9 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(topScreenX, topScreenY, 9 * dpr, 0, Math.PI * 2);
-      ctx.lineWidth = 3 * dpr;
-      ctx.strokeStyle = 'rgba(0,180,230,1)';
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(topScreenX, topScreenY, 4 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,180,230,1)';
-      ctx.fill();
-      // Etiqueta "2" — segundo punto (donde apuntas la cámara)
-      ctx.font = 'bold ' + (11 * dpr) + 'px -apple-system, sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('2', topScreenX, topScreenY - 14 * dpr);
+      // ---- PUNTO 1 (verde, anclado al mundo, fuera del centro conforme se tilta) ----
+      if (baseScreenY > -20 * dpr && baseScreenY < H + 20 * dpr) {
+        // Halo
+        ctx.beginPath();
+        ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,0.22)';
+        ctx.fill();
+        // Punto sólido
+        ctx.beginPath();
+        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,1)';
+        ctx.fill();
+        // Borde blanco
+        ctx.beginPath();
+        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = 2.5 * dpr;
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.stroke();
+      }
+      // El cursor para el punto 2 es el crosshair blanco del HTML — no
+      // dibujamos nada extra en el centro durante el preview.
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -567,14 +546,21 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // BASE en posición del tap, TOP siempre en el centro (donde el usuario
-  // apuntó la cámara para hacer el segundo tap)
-  var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
-  var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
+  // Ambos puntos anclados al mundo — sus posiciones en pantalla dependen
+  // del gyro actual relativas a sus respectivos β capturados.
+  var pixPerDeg = H / 60;
+  var baseScreenX = W / 2;
   var topX = W / 2;
+  var baseScreenY = H / 2;
   var topY = H / 2;
+  if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+    baseScreenY = (H / 2) + (arM.baseBeta - arM.curBeta) * pixPerDeg;
+  }
+  if (arM.hasGyro && arM.topBeta !== null && arM.curBeta !== null) {
+    topY = (H / 2) + (arM.topBeta - arM.curBeta) * pixPerDeg;
+  }
 
-  // Línea punteada congelada
+  // Línea punteada congelada entre punto 1 (verde) y punto 2 (azul)
   ctx.save();
   ctx.setLineDash([5 * dpr, 5 * dpr]);
   ctx.strokeStyle = 'rgba(76,175,80,1)';
@@ -586,7 +572,11 @@ function _arDrawFinal() {
   ctx.stroke();
   ctx.restore();
 
-  // Base dot
+  // Punto 1 (verde)
+  ctx.beginPath();
+  ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(76,175,80,0.22)';
+  ctx.fill();
   ctx.beginPath();
   ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(76,175,80,1)';
@@ -597,15 +587,19 @@ function _arDrawFinal() {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
 
-  // Top dot
+  // Punto 2 (azul)
   ctx.beginPath();
-  ctx.arc(topX, topY, 9 * dpr, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
+  ctx.arc(topX, topY, 18 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,180,230,0.22)';
   ctx.fill();
   ctx.beginPath();
   ctx.arc(topX, topY, 9 * dpr, 0, Math.PI * 2);
-  ctx.lineWidth = 3 * dpr;
-  ctx.strokeStyle = 'rgba(0,180,230,1)';
+  ctx.fillStyle = 'rgba(0,180,230,1)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(topX, topY, 9 * dpr, 0, Math.PI * 2);
+  ctx.lineWidth = 2.5 * dpr;
+  ctx.strokeStyle = '#fff';
   ctx.stroke();
 
   // Label centrado en medio de la línea diagonal
