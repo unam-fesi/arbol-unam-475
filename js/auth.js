@@ -503,11 +503,13 @@ async function showPublicReportScreen(treeCode) {
   `;
   document.body.appendChild(overlay);
 
-  // Lookup tree info (anon — política RLS permite SELECT autenticado)
-  // Si la política bloquea anon, la búsqueda fallará — usamos un fallback
-  // mostrando solo el código.
+  // Guardar SIEMPRE el tree_code en el dataset (la Edge Function hará el lookup)
+  document.getElementById('public-report-form').dataset.treeCode = treeCode;
+
+  // Intentar lookup adicional para mostrar nombre del árbol al usuario.
+  // Si RLS bloquea (anon no puede leer), mostramos solo el código.
   try {
-    const { data: tree, error } = await sb.from('trees_catalog')
+    const { data: tree } = await sb.from('trees_catalog')
       .select('id, tree_code, common_name, species, campus')
       .eq('tree_code', treeCode).maybeSingle();
     const info = document.getElementById('public-report-tree-info');
@@ -518,19 +520,17 @@ async function showPublicReportScreen(treeCode) {
           <div class="text-small text-muted">Código: ${escapeHtml(tree.tree_code)} · ${escapeHtml(tree.campus || 'Campus desconocido')}</div>
         </div>
       `;
-      // Guardar tree_id en el form para el submit
       document.getElementById('public-report-form').dataset.treeId = String(tree.id);
-      document.getElementById('public-report-form').dataset.treeCode = tree.tree_code;
-    } else {
-      if (info) {
-        info.innerHTML = `<div class="text-muted text-small">Árbol con código <code>${escapeHtml(treeCode)}</code></div>`;
-      }
-      document.getElementById('public-report-form').dataset.treeCode = treeCode;
+    } else if (info) {
+      info.innerHTML = `
+        <div style="background:rgba(74,124,42,0.10);padding:0.85rem 1rem;border-radius:12px;border-left:3px solid var(--primary);">
+          <strong>Código: ${escapeHtml(treeCode)}</strong>
+        </div>
+      `;
     }
   } catch (e) {
     const info = document.getElementById('public-report-tree-info');
-    if (info) info.innerHTML = `<div class="text-muted">Código: ${escapeHtml(treeCode)}</div>`;
-    document.getElementById('public-report-form').dataset.treeCode = treeCode;
+    if (info) info.innerHTML = `<div style="background:rgba(74,124,42,0.10);padding:0.85rem 1rem;border-radius:12px;border-left:3px solid var(--primary);"><strong>Código: ${escapeHtml(treeCode)}</strong></div>`;
   }
 }
 
@@ -552,8 +552,11 @@ async function submitPublicReport(e) {
     if (status) { status.textContent = 'Por favor completa título y descripción.'; status.style.color = 'var(--danger)'; }
     return;
   }
-  if (!treeId) {
-    if (status) { status.textContent = 'No se pudo identificar el árbol.'; status.style.color = 'var(--danger)'; }
+  // No requerimos treeId — la Edge Function resuelve el tree_id desde el
+  // tree_code (que SIEMPRE viene del QR). Anon no puede leer trees_catalog
+  // por RLS, por eso treeId puede venir null en el flujo público.
+  if (!treeCode) {
+    if (status) { status.textContent = 'Código de árbol faltante.'; status.style.color = 'var(--danger)'; }
     return;
   }
 
