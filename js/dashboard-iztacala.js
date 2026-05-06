@@ -54,7 +54,8 @@ window.IztacalaMap = (function() {
   }
 
   // ============================================================================
-  // SHAPE HELPERS
+  // SHAPE HELPERS (legacy — solo usados por funciones procedurales que ya no
+  // se invocan desde init(), preservadas como referencia)
   // ============================================================================
   function makeShape(pts) {
     const shape = new THREE.Shape();
@@ -96,20 +97,9 @@ window.IztacalaMap = (function() {
         '</div>' +
       '</div>';
 
-    // ---- Cargar JSON del campus ----
-    try {
-      const res = await fetch('data/iztacala_campus.json', { cache: 'force-cache' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      mapData = await res.json();
-    } catch (e) {
-      console.error('Iztacala JSON load error:', e);
-      containerEl.innerHTML =
-        '<div style="padding:2rem;text-align:center;color:#c00;">' +
-          '<i class="fas fa-exclamation-triangle"></i> Error cargando mapa del campus.<br>' +
-          '<small style="color:#888;">Verifica que /data/iztacala_campus.json esté accesible.</small>' +
-        '</div>';
-      return;
-    }
+    // (El JSON ya no se carga aquí — usamos el modelo GLB del Blender directamente.
+    //  La proyección lat/lon → XY sigue funcionando porque las constantes están
+    //  hardcodeadas y el modelo Blender usa el mismo sistema de coordenadas.)
 
     // ---- Three.js scene ----
     scene = new THREE.Scene();
@@ -157,16 +147,13 @@ window.IztacalaMap = (function() {
     const hemi = new THREE.HemisphereLight(0xe8f0f5, 0x6fb24a, 0.4);
     scene.add(hemi);
 
-    // ---- Terreno + boundary ----
-    addTerrain(mapData.campus_boundary);
+    // ---- Cargar el modelo GLB del campus (Blender) ----
+    await loadCampusGLB();
 
-    // ---- Edificios ----
-    (mapData.buildings || []).forEach(addBuilding);
-
-    // ---- Auto-encuadrar cámara al bbox del campus ----
+    // ---- Auto-encuadrar cámara al bbox del modelo ----
     fitCameraToCampus();
 
-    // ---- Compass / norte ----
+    // ---- Compass / norte (esquina del modelo) ----
     addCompass();
 
     // ---- Controls ----
@@ -216,9 +203,128 @@ window.IztacalaMap = (function() {
   }
 
   // ============================================================================
-  // TERRENO + BOUNDARY
+  // CARGAR MODELO GLB (campus completo desde Blender)
   // ============================================================================
-  function addTerrain(boundary) {
+  // El GLB trae: 118 partes de edificios (W=walls, R=roof) con osm_id en el
+  // nombre, ~89 calles, 6 estacionamientos, 4 canchas, banqueta, pasto y
+  // calles perimetrales. Materiales y geometría exactos del Blender.
+  // ============================================================================
+  function loadCampusGLB() {
+    return new Promise((resolve) => {
+      if (typeof THREE.GLTFLoader === 'undefined') {
+        console.error('GLTFLoader not available');
+        return resolve();
+      }
+      const loader = new THREE.GLTFLoader();
+      loader.load(
+        'data/iztacala_campus.glb',
+        (gltf) => {
+          const root = gltf.scene;
+
+          // Recorrer cada mesh para activar sombras, parsear nombre y registrar
+          // como clickeable cuando aplique.
+          root.traverse((obj) => {
+            if (!obj.isMesh) return;
+
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            const name = obj.name || '';
+            const meta = parseMeshName(name);
+
+            // Pasto/banqueta: solo recibe sombra (no proyecta)
+            if (meta.kind === 'terrain') {
+              obj.castShadow = false;
+            }
+
+            // Edificios: clickeable, guarda data en userData para popup
+            if (meta.kind === 'building') {
+              obj.userData = {
+                type: 'building',
+                data: {
+                  id: meta.osm_id,
+                  name: meta.label,
+                  tags: { building: 'school' },
+                  part: meta.part, // 'W' o 'R'
+                },
+              };
+              buildingMeshes.push(obj);
+            }
+
+            // Mejorar materiales para que se vean bien con la luz
+            // (algunos GLBs vienen con MeshStandardMaterial muy oscuro;
+            //  Lambert/Phong se ve más cercano a render arquitectónico)
+            // Mantenemos el material original pero subimos el envMap si existe.
+          });
+
+          scene.add(root);
+
+          console.log(
+            `Iztacala GLB loaded: ${buildingMeshes.length} edificios clickeables`
+          );
+          resolve();
+        },
+        // onProgress
+        (xhr) => {
+          if (xhr.lengthComputable) {
+            const pct = Math.round((xhr.loaded / xhr.total) * 100);
+            const lt = document.getElementById('izta-loading');
+            if (lt) {
+              const subtitle = lt.querySelector('div div:last-child');
+              if (subtitle) subtitle.textContent = `Cargando campus 3D… ${pct}%`;
+            }
+          }
+        },
+        (err) => {
+          console.error('GLB load error:', err);
+          if (containerEl) {
+            containerEl.innerHTML =
+              '<div style="padding:2rem;text-align:center;color:#c00;">' +
+                '<i class="fas fa-exclamation-triangle"></i> Error cargando modelo del campus.<br>' +
+                '<small style="color:#888;">Verifica que /data/iztacala_campus.glb esté accesible.</small>' +
+              '</div>';
+          }
+          resolve();
+        }
+      );
+    });
+  }
+
+  // Extrae info útil del nombre del nodo:
+  //   B_<label>_<osm_id>_W   → edificio, pared
+  //   B_<label>_<osm_id>_R   → edificio, techo
+  //   Road_<osm_id>_<idx>    → vialidad
+  //   Park_<osm_id>          → estacionamiento
+  //   Cancha_<tipo>          → cancha
+  //   Banqueta | Pasto_Campus | Calles_Perimetro → terreno
+  function parseMeshName(name) {
+    if (!name) return { kind: 'unknown' };
+
+    // Edificios: B_<label_with_underscores>_<osm_id>_(W|R)
+    const buildMatch = name.match(/^B_(.+)_(\d+)_(W|R)$/);
+    if (buildMatch) {
+      return {
+        kind: 'building',
+        label: buildMatch[1].replace(/_/g, ' '),
+        osm_id: parseInt(buildMatch[2], 10),
+        part: buildMatch[3],
+      };
+    }
+
+    if (/^Road_/.test(name)) return { kind: 'road' };
+    if (/^Park_/.test(name)) return { kind: 'parking' };
+    if (/^Cancha_/.test(name)) return { kind: 'court' };
+    if (name === 'Banqueta' || name === 'Pasto_Campus' || name === 'Calles_Perimetro') {
+      return { kind: 'terrain' };
+    }
+    return { kind: 'other' };
+  }
+
+  // ============================================================================
+  // (Funciones legacy deshabilitadas — geometría procedural reemplazada por GLB)
+  // ============================================================================
+  // eslint-disable-next-line no-unused-vars
+  function _legacy_addTerrain(boundary) {
     if (!boundary || boundary.length < 3) return;
 
     // Plano grande gris exterior (banqueta/fuera del campus)
@@ -546,15 +652,28 @@ window.IztacalaMap = (function() {
   }
 
   function computeBoundaryBBox() {
-    if (!mapData?.campus_boundary?.length) return null;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    mapData.campus_boundary.forEach(p => {
-      if (p[0] < minX) minX = p[0];
-      if (p[0] > maxX) maxX = p[0];
-      if (p[1] < minY) minY = p[1];
-      if (p[1] > maxY) maxY = p[1];
+    // Calcula el bbox del modelo GLB cargado (en coords Three.js: x, z).
+    // Convierte de vuelta a coords JSON (y = -z) para mantener API consistente.
+    if (!scene) return null;
+    const box = new THREE.Box3();
+    let hasMesh = false;
+    scene.traverse((obj) => {
+      if (obj.isMesh && obj.geometry) {
+        const meshBox = new THREE.Box3().setFromObject(obj);
+        if (isFinite(meshBox.min.x)) {
+          box.union(meshBox);
+          hasMesh = true;
+        }
+      }
     });
-    return { minX, maxX, minY, maxY };
+    if (!hasMesh) return null;
+    return {
+      minX: box.min.x,
+      maxX: box.max.x,
+      // En JSON coords, y = -z (Three.js)
+      minY: -box.max.z,
+      maxY: -box.min.z,
+    };
   }
 
   // ============================================================================
