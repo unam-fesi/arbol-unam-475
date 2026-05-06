@@ -29,7 +29,9 @@ function switchAdminTab(tabName) {
     else if (tabName === 'groups') loadAdminGroups();
     else if (tabName === 'notifications') loadAdminNotifications();
     else if (tabName === 'assignments') loadAssignments();
-    else if (tabName === 'dashboard') loadAdminDashboard();
+    else if (tabName === 'dashboard') { loadAdminDashboard(); loadWeatherWidget(); }
+    else if (tabName === 'reports') loadCitizenReports();
+    else if (tabName === 'audit') loadAuditLog();
   }
   document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.classList.remove('active');
@@ -235,6 +237,12 @@ async function loadAdminUsers() {
   }
 }
 
+function toggleSpecialistFields() {
+  const role = document.getElementById('admin-user-role')?.value;
+  const block = document.getElementById('specialist-fields');
+  if (block) block.style.display = role === 'specialist' ? 'block' : 'none';
+}
+
 async function saveAdminUser(e) {
   if (e) e.preventDefault();
   const nombre = document.getElementById('admin-user-nombre')?.value.trim();
@@ -248,7 +256,12 @@ async function saveAdminUser(e) {
   if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
   if (!password || password.length < 6) { showToast('Contraseña de al menos 6 caracteres', 'error'); return; }
 
-  const campus = document.getElementById('admin-user-campus')?.value || 'FESI';
+  const campus = document.getElementById('admin-user-campus')?.value || 'Iztacala';
+
+  // Specialist-only fields
+  const specialty = document.getElementById('admin-user-specialty')?.value.trim() || null;
+  const department = document.getElementById('admin-user-department')?.value.trim() || null;
+  const contactInfo = document.getElementById('admin-user-contact-info')?.value.trim() || null;
 
   try {
     // Use Edge Function to create user (bypasses signups disabled)
@@ -268,8 +281,17 @@ async function saveAdminUser(e) {
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
 
+    // If user is a specialist, save the extra fields directly to user_profiles
+    if (role === 'specialist' && data?.userId) {
+      const { error: updErr } = await sb.from('user_profiles').update({
+        specialty, department, contact_info: contactInfo
+      }).eq('id', data.userId);
+      if (updErr) console.warn('No se guardaron campos de especialista:', updErr.message);
+    }
+
     showToast('Usuario creado exitosamente.', 'success');
     document.getElementById('form-admin-user')?.reset();
+    toggleSpecialistFields();
     loadAdminUsers();
   } catch (err) {
     console.error('Error creating user:', err);
@@ -282,16 +304,22 @@ async function editAdminUser(userId) {
     const { data: user, error } = await sb.from('user_profiles').select('*').eq('id', userId).single();
     if (error) throw error;
 
-    const statusOptions = ['alumno', 'exalumno', 'postgrado', 'doctorante', 'profesor', 'investigador', 'administrativo'];
+    const statusOptions = ['alumno','exalumno','egresado','pasante','tesista','becario','postgrado','profesor','profesora'];
     const statusSelect = statusOptions.map(s =>
       `<option value="${s}" ${user.academic_status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
     ).join('');
 
+    const campusOptions = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'];
+    const campusSelect = campusOptions.map(c =>
+      `<option value="${c}" ${user.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`
+    ).join('');
+
+    const isSpec = user.role === 'specialist';
     showModal('Editar Usuario', `
       <form id="edit-user-form">
         <div class="form-group" style="margin-bottom:1rem;"><label>Nombre</label><input type="text" id="edit-user-name" value="${escapeHtml(user.full_name || '')}" style="width:100%;padding:0.5rem;"></div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Rol</label>
-          <select id="edit-user-role" style="width:100%;padding:0.5rem;">
+          <select id="edit-user-role" style="width:100%;padding:0.5rem;" onchange="document.getElementById('edit-spec-fields').style.display = this.value === 'specialist' ? 'block':'none';">
             <option value="user" ${user.role === 'user' ? 'selected' : ''}>Usuario</option>
             <option value="specialist" ${user.role === 'specialist' ? 'selected' : ''}>Especialista</option>
             <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador</option>
@@ -301,8 +329,16 @@ async function editAdminUser(userId) {
           <select id="edit-user-status" style="width:100%;padding:0.5rem;">${statusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>No. Cuenta</label><input type="text" id="edit-user-cuenta" value="${escapeHtml(user.account_number || '')}" style="width:100%;padding:0.5rem;"></div>
-        <div class="form-group" style="margin-bottom:1rem;"><label>Campus</label><input type="text" id="edit-user-campus" value="${escapeHtml(user.campus || '')}" style="width:100%;padding:0.5rem;"></div>
-        <div class="form-group" style="margin-bottom:1rem;"><label>Telegram Chat ID</label><input type="text" id="edit-user-telegram" value="${escapeHtml(user.telegram_chat_id || '')}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group" style="margin-bottom:1rem;"><label>Campus</label>
+          <select id="edit-user-campus" style="width:100%;padding:0.5rem;">${campusSelect}</select>
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;"><label>Telegram Chat ID</label><input type="text" id="edit-user-telegram" value="${escapeHtml(user.telegram_chat_id || '')}" style="width:100%;padding:0.5rem;" placeholder="123456789"></div>
+        <div id="edit-spec-fields" style="display:${isSpec?'block':'none'};border-left:3px solid var(--primary);padding:0.75rem;margin-bottom:1rem;background:#f9fdf9;border-radius:6px;">
+          <h5 style="margin:0 0 0.5rem;color:var(--primary);"><i class="fas fa-microscope"></i> Datos del Especialista</h5>
+          <div class="form-group" style="margin-bottom:0.5rem;"><label>Especialidad</label><input type="text" id="edit-user-specialty" value="${escapeHtml(user.specialty || '')}" style="width:100%;padding:0.5rem;"></div>
+          <div class="form-group" style="margin-bottom:0.5rem;"><label>Departamento</label><input type="text" id="edit-user-department" value="${escapeHtml(user.department || '')}" style="width:100%;padding:0.5rem;"></div>
+          <div class="form-group" style="margin-bottom:0.5rem;"><label>Contacto adicional</label><input type="text" id="edit-user-contact" value="${escapeHtml(user.contact_info || '')}" style="width:100%;padding:0.5rem;"></div>
+        </div>
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem;">Guardar</button>
       </form>
     `);
@@ -313,9 +349,13 @@ async function editAdminUser(userId) {
         full_name: document.getElementById('edit-user-name').value.trim(),
         role: document.getElementById('edit-user-role').value,
         academic_status: document.getElementById('edit-user-status').value,
-        account_number: document.getElementById('edit-user-cuenta').value.trim(),
-        campus: document.getElementById('edit-user-campus').value.trim(),
-        telegram_chat_id: document.getElementById('edit-user-telegram').value.trim() || null
+        account_number: document.getElementById('edit-user-cuenta').value.trim() || null,
+        campus: document.getElementById('edit-user-campus').value,
+        telegram_chat_id: document.getElementById('edit-user-telegram').value.trim() || null,
+        specialty: document.getElementById('edit-user-specialty')?.value.trim() || null,
+        department: document.getElementById('edit-user-department')?.value.trim() || null,
+        contact_info: document.getElementById('edit-user-contact')?.value.trim() || null,
+        updated_at: new Date().toISOString()
       }).eq('id', userId);
       if (updateError) { showToast('Error: ' + updateError.message, 'error'); return; }
       showToast('Usuario actualizado', 'success');
@@ -329,6 +369,8 @@ async function editAdminUser(userId) {
 
 // ---- TREES ----
 async function loadAdminTrees() {
+  // Populate the garden dropdown for the create form
+  populateGardenDropdown('admin-tree-garden');
   try {
     const { data, error } = await sb.from('trees_catalog').select('*').order('tree_code');
     if (error) throw error;
@@ -337,14 +379,21 @@ async function loadAdminTrees() {
     tbody.innerHTML = '';
     (data || []).forEach(tree => {
       const row = document.createElement('tr');
+      const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
+      const hasLocation = tree.location_lat != null && tree.location_lng != null;
       row.innerHTML = `
         <td>${escapeHtml(tree.tree_code || '-')}</td>
         <td>${escapeHtml(tree.species || '-')}</td>
         <td>${escapeHtml(tree.campus || '-')}</td>
+        <td>
+          <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
+          ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
+        </td>
         <td>${tree.health_score || 0}%</td>
         <td>
-          <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})">Editar</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})">Eliminar</button>
+          <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
+          <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
         </td>
       `;
       tbody.appendChild(row);
@@ -354,18 +403,52 @@ async function loadAdminTrees() {
   }
 }
 
+// Valid CHECK constraint values (must match BD)
+const TREE_STATUS_VALUES = ['nuevo','activo','enfermo','en_tratamiento','seco','retirado'];
+const TREE_TYPE_VALUES = ['nativo','endemico','ornamental','frutal'];
+const TREE_SIZE_VALUES = ['pequeno','mediano','grande','muy_grande'];
+const TREE_STATUS_LABELS = {
+  nuevo: 'Nuevo', activo: 'Activo', enfermo: 'Enfermo',
+  en_tratamiento: 'En tratamiento', seco: 'Seco', retirado: 'Retirado'
+};
+const TREE_TYPE_LABELS = {
+  nativo: 'Nativo', endemico: 'Endémico', ornamental: 'Ornamental', frutal: 'Frutal'
+};
+const TREE_SIZE_LABELS = {
+  pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande', muy_grande: 'Muy grande'
+};
+
+async function populateGardenDropdown(selectId, currentValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const { data, error } = await sb.from('gardens').select('id, name, campus').order('name');
+    if (error) throw error;
+    const placeholder = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    if (placeholder) sel.appendChild(placeholder);
+    else sel.appendChild(new Option('— Sin jardín asignado —', ''));
+    (data || []).forEach(g => {
+      const opt = new Option(`${g.name} (${g.campus || '—'})`, g.id);
+      if (currentValue && currentValue === g.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    console.warn('No se pudo cargar jardines:', err.message);
+  }
+}
+
 async function saveAdminTree(e) {
   if (e) e.preventDefault();
   const tree = {
     tree_code: document.getElementById('admin-tree-code')?.value.trim(),
     species: document.getElementById('admin-tree-species')?.value.trim(),
-    common_name: document.getElementById('admin-tree-common-name')?.value.trim(),
+    common_name: document.getElementById('admin-tree-common-name')?.value.trim() || null,
     tree_type: document.getElementById('admin-tree-type')?.value,
     size: document.getElementById('admin-tree-size')?.value,
-    campus: document.getElementById('admin-tree-campus')?.value.trim(),
-    location_desc: document.getElementById('admin-tree-location')?.value.trim(),
-    location_lat: parseFloat(document.getElementById('admin-tree-lat')?.value) || null,
-    location_lng: parseFloat(document.getElementById('admin-tree-lng')?.value) || null,
+    campus: document.getElementById('admin-tree-campus')?.value || null,
+    garden_id: document.getElementById('admin-tree-garden')?.value || null,
+    planting_date: document.getElementById('admin-tree-planting-date')?.value || null,
     status: document.getElementById('admin-tree-status')?.value,
     health_score: parseInt(document.getElementById('admin-tree-health')?.value) || 80,
     initial_height_cm: parseFloat(document.getElementById('admin-tree-height')?.value) || null,
@@ -375,13 +458,17 @@ async function saveAdminTree(e) {
     created_by: currentUser?.id
   };
   if (!tree.tree_code || !tree.species) { showToast('Código y especie son requeridos', 'error'); return; }
+  if (!TREE_STATUS_VALUES.includes(tree.status)) { showToast('Estado inválido', 'error'); return; }
+  if (!TREE_TYPE_VALUES.includes(tree.tree_type)) { showToast('Tipo inválido', 'error'); return; }
+  if (!TREE_SIZE_VALUES.includes(tree.size)) { showToast('Tamaño inválido', 'error'); return; }
 
   try {
     const { error } = await sb.from('trees_catalog').insert([tree]);
     if (error) throw error;
-    showToast('Árbol agregado', 'success');
+    showToast('Árbol agregado al inventario. La ubicación exacta se capturará en el primer seguimiento del usuario asignado.', 'success');
     document.getElementById('form-admin-tree')?.reset();
     loadAdminTrees();
+    populateGardenDropdown('admin-tree-garden');
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   }
@@ -390,23 +477,42 @@ async function saveAdminTree(e) {
 async function editAdminTree(treeId) {
   const { data: tree } = await sb.from('trees_catalog').select('*').eq('id', treeId).single();
   if (!tree) return;
+
+  const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
+  const gardenOpts = '<option value="">— Sin jardín —</option>' +
+    (gardens || []).map(g =>
+      `<option value="${g.id}" ${tree.garden_id === g.id ? 'selected' : ''}>${escapeHtml(g.name)} (${escapeHtml(g.campus || '—')})</option>`
+    ).join('');
+
+  const statusOpts = TREE_STATUS_VALUES.map(s =>
+    `<option value="${s}" ${tree.status === s ? 'selected' : ''}>${TREE_STATUS_LABELS[s]}</option>`).join('');
+  const typeOpts = TREE_TYPE_VALUES.map(s =>
+    `<option value="${s}" ${tree.tree_type === s ? 'selected' : ''}>${TREE_TYPE_LABELS[s]}</option>`).join('');
+  const sizeOpts = TREE_SIZE_VALUES.map(s =>
+    `<option value="${s}" ${tree.size === s ? 'selected' : ''}>${TREE_SIZE_LABELS[s]}</option>`).join('');
+  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'].map(c =>
+    `<option value="${c}" ${tree.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
+
   showModal('Editar Árbol', `
     <form id="edit-tree-form">
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Código</label><input type="text" id="edit-tree-code" value="${escapeHtml(tree.tree_code || '')}" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Especie</label><input type="text" id="edit-tree-species" value="${escapeHtml(tree.species || '')}" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Nombre Común</label><input type="text" id="edit-tree-common" value="${escapeHtml(tree.common_name || '')}" style="width:100%;padding:0.5rem;"></div>
-      <div class="form-group" style="margin-bottom:0.75rem;"><label>Campus</label><input type="text" id="edit-tree-campus" value="${escapeHtml(tree.campus || '')}" style="width:100%;padding:0.5rem;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
-        <div class="form-group"><label>Latitud</label><input type="number" step="any" id="edit-tree-lat" value="${tree.location_lat || ''}" style="width:100%;padding:0.5rem;" placeholder="19.5322"></div>
-        <div class="form-group"><label>Longitud</label><input type="number" step="any" id="edit-tree-lng" value="${tree.location_lng || ''}" style="width:100%;padding:0.5rem;" placeholder="-99.1847"></div>
+        <div class="form-group"><label>Tipo</label><select id="edit-tree-type" style="width:100%;padding:0.5rem;">${typeOpts}</select></div>
+        <div class="form-group"><label>Tamaño</label><select id="edit-tree-size" style="width:100%;padding:0.5rem;">${sizeOpts}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="form-group"><label>Campus</label><select id="edit-tree-campus" style="width:100%;padding:0.5rem;">${campusOpts}</select></div>
+        <div class="form-group"><label>Jardín</label><select id="edit-tree-garden" style="width:100%;padding:0.5rem;">${gardenOpts}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+        <div class="form-group"><label>Latitud (capturada en seguimiento)</label><input type="number" step="any" id="edit-tree-lat" value="${tree.location_lat || ''}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group"><label>Longitud (capturada en seguimiento)</label><input type="number" step="any" id="edit-tree-lng" value="${tree.location_lng || ''}" style="width:100%;padding:0.5rem;"></div>
       </div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Salud (0-100)</label><input type="number" id="edit-tree-health" value="${tree.health_score || 0}" min="0" max="100" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Estado</label>
-        <select id="edit-tree-status" style="width:100%;padding:0.5rem;">
-          <option value="healthy" ${tree.status === 'healthy' ? 'selected' : ''}>Saludable</option>
-          <option value="at-risk" ${tree.status === 'at-risk' ? 'selected' : ''}>En Riesgo</option>
-          <option value="critical" ${tree.status === 'critical' ? 'selected' : ''}>Crítico</option>
-        </select>
+        <select id="edit-tree-status" style="width:100%;padding:0.5rem;">${statusOpts}</select>
       </div>
       <h4 style="margin:1rem 0 0.5rem;border-top:1px solid #eee;padding-top:0.75rem;">Medidas Iniciales</h4>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
@@ -422,15 +528,19 @@ async function editAdminTree(treeId) {
     const { error } = await sb.from('trees_catalog').update({
       tree_code: document.getElementById('edit-tree-code').value.trim(),
       species: document.getElementById('edit-tree-species').value.trim(),
-      common_name: document.getElementById('edit-tree-common').value.trim(),
-      campus: document.getElementById('edit-tree-campus').value.trim(),
+      common_name: document.getElementById('edit-tree-common').value.trim() || null,
+      tree_type: document.getElementById('edit-tree-type').value,
+      size: document.getElementById('edit-tree-size').value,
+      campus: document.getElementById('edit-tree-campus').value,
+      garden_id: document.getElementById('edit-tree-garden').value || null,
       location_lat: parseFloat(document.getElementById('edit-tree-lat').value) || null,
       location_lng: parseFloat(document.getElementById('edit-tree-lng').value) || null,
       health_score: parseInt(document.getElementById('edit-tree-health').value) || 0,
       status: document.getElementById('edit-tree-status').value,
       initial_height_cm: parseFloat(document.getElementById('edit-tree-height').value) || null,
       initial_trunk_diameter_cm: parseFloat(document.getElementById('edit-tree-trunk').value) || null,
-      initial_crown_diameter_cm: parseFloat(document.getElementById('edit-tree-crown').value) || null
+      initial_crown_diameter_cm: parseFloat(document.getElementById('edit-tree-crown').value) || null,
+      updated_at: new Date().toISOString()
     }).eq('id', treeId);
     if (error) { showToast('Error: ' + error.message, 'error'); return; }
     showToast('Árbol actualizado', 'success');
@@ -448,7 +558,37 @@ async function deleteAdminTree(treeId) {
 }
 
 // ---- GARDENS ----
+// Valid CHECK constraint values for gardens
+const GARDEN_SOIL_VALUES = ['arenoso','arcilloso','franco','mixto','rocoso'];
+const GARDEN_IRRIGATION_VALUES = ['ninguno','manual','aspersion','goteo','automatizado'];
+const GARDEN_EXPOSURE_VALUES = ['sol_pleno','semi_sombra','sombra','mixto'];
+
+async function populateSpecialistDropdown(selectId, currentValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  try {
+    const { data } = await sb.from('user_profiles')
+      .select('id, full_name, specialty')
+      .eq('role', 'specialist')
+      .order('full_name');
+    const placeholder = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    if (placeholder) sel.appendChild(placeholder);
+    else sel.appendChild(new Option('— Sin asignar —', ''));
+    (data || []).forEach(s => {
+      const label = `${s.full_name}${s.specialty ? ' — ' + s.specialty : ''}`;
+      const opt = new Option(label, s.id);
+      if (currentValue && currentValue === s.id) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    console.warn('No se pudieron cargar especialistas:', err.message);
+  }
+}
+
 async function loadAdminGardens() {
+  // Populate the specialist dropdown for garden create form
+  populateSpecialistDropdown('admin-garden-specialist');
   try {
     const { data, error } = await sb.from('gardens').select('*').order('name');
     if (error) throw error;
@@ -460,7 +600,7 @@ async function loadAdminGardens() {
       row.innerHTML = `
         <td>${escapeHtml(g.name)}</td>
         <td>${escapeHtml(g.campus || '-')}</td>
-        <td>${g.location_lat ? g.location_lat + ', ' + g.location_lng : '-'}</td>
+        <td>${g.location_lat != null ? g.location_lat + ', ' + g.location_lng : '<span class="text-muted">—</span>'}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="editAdminGarden('${g.id}')">Editar</button>
           <button class="btn btn-sm btn-danger" onclick="deleteAdminGarden('${g.id}')">Eliminar</button>
@@ -475,29 +615,82 @@ async function loadAdminGardens() {
 
 async function saveAdminGarden(e) {
   if (e) e.preventDefault();
+  const soil = document.getElementById('admin-garden-soil')?.value || null;
+  const irrigation = document.getElementById('admin-garden-irrigation')?.value || null;
+  const exposure = document.getElementById('admin-garden-exposure')?.value || null;
+
+  if (soil && !GARDEN_SOIL_VALUES.includes(soil)) { showToast('Tipo de suelo inválido', 'error'); return; }
+  if (irrigation && !GARDEN_IRRIGATION_VALUES.includes(irrigation)) { showToast('Riego inválido', 'error'); return; }
+  if (exposure && !GARDEN_EXPOSURE_VALUES.includes(exposure)) { showToast('Exposición inválida', 'error'); return; }
+
   const garden = {
     name: document.getElementById('admin-garden-name')?.value.trim(),
-    campus: document.getElementById('admin-garden-campus')?.value.trim(),
+    campus: document.getElementById('admin-garden-campus')?.value || null,
     location_lat: parseFloat(document.getElementById('admin-garden-lat')?.value) || null,
     location_lng: parseFloat(document.getElementById('admin-garden-lng')?.value) || null,
-    location_desc: document.getElementById('admin-garden-desc')?.value.trim()
+    location_desc: document.getElementById('admin-garden-desc')?.value.trim() || null,
+    area_m2: parseFloat(document.getElementById('admin-garden-area')?.value) || null,
+    max_capacity_trees: parseInt(document.getElementById('admin-garden-capacity')?.value) || null,
+    soil_type: soil,
+    irrigation_type: irrigation,
+    exposure: exposure,
+    climate_zone: document.getElementById('admin-garden-climate')?.value.trim() || null,
+    established_date: document.getElementById('admin-garden-established')?.value || null,
+    responsible_specialist_id: document.getElementById('admin-garden-specialist')?.value || null,
+    notes: document.getElementById('admin-garden-notes')?.value.trim() || null
   };
   if (!garden.name) { showToast('Nombre requerido', 'error'); return; }
+  if (!garden.campus) { showToast('Campus requerido', 'error'); return; }
   const { error } = await sb.from('gardens').insert([garden]);
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   showToast('Jardín creado', 'success');
   document.getElementById('form-admin-garden')?.reset();
+  populateSpecialistDropdown('admin-garden-specialist');
   loadAdminGardens();
 }
 
 async function editAdminGarden(id) {
   const { data: g } = await sb.from('gardens').select('*').eq('id', id).single();
   if (!g) return;
+  const { data: specialists } = await sb.from('user_profiles')
+    .select('id, full_name, specialty').eq('role','specialist').order('full_name');
+  const specOpts = '<option value="">— Sin asignar —</option>' +
+    (specialists || []).map(s =>
+      `<option value="${s.id}" ${g.responsible_specialist_id === s.id ? 'selected' : ''}>${escapeHtml(s.full_name)}${s.specialty ? ' — ' + escapeHtml(s.specialty) : ''}</option>`
+    ).join('');
+  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'].map(c =>
+    `<option value="${c}" ${g.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
+  const soilOpts = '<option value="">—</option>' + GARDEN_SOIL_VALUES.map(v =>
+    `<option value="${v}" ${g.soil_type === v ? 'selected' : ''}>${v}</option>`).join('');
+  const irrOpts = '<option value="">—</option>' + GARDEN_IRRIGATION_VALUES.map(v =>
+    `<option value="${v}" ${g.irrigation_type === v ? 'selected' : ''}>${v}</option>`).join('');
+  const expOpts = '<option value="">—</option>' + GARDEN_EXPOSURE_VALUES.map(v =>
+    `<option value="${v}" ${g.exposure === v ? 'selected' : ''}>${v.replace('_',' ')}</option>`).join('');
+
   showModal('Editar Jardín', `
     <form id="edit-garden-form">
-      <div class="form-group" style="margin-bottom:0.75rem;"><label>Nombre</label><input type="text" id="edit-garden-name" value="${escapeHtml(g.name)}" style="width:100%;padding:0.5rem;"></div>
-      <div class="form-group" style="margin-bottom:0.75rem;"><label>Campus</label><input type="text" id="edit-garden-campus" value="${escapeHtml(g.campus || '')}" style="width:100%;padding:0.5rem;"></div>
-      <div class="form-group" style="margin-bottom:0.75rem;"><label>Descripción</label><input type="text" id="edit-garden-desc" value="${escapeHtml(g.location_desc || '')}" style="width:100%;padding:0.5rem;"></div>
+      <div class="form-group" style="margin-bottom:0.5rem;"><label>Nombre</label><input type="text" id="edit-garden-name" value="${escapeHtml(g.name)}" style="width:100%;padding:0.5rem;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <div class="form-group"><label>Campus</label><select id="edit-garden-campus" style="width:100%;padding:0.5rem;">${campusOpts}</select></div>
+        <div class="form-group"><label>Especialista</label><select id="edit-garden-specialist" style="width:100%;padding:0.5rem;">${specOpts}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <div class="form-group"><label>Latitud</label><input type="number" step="any" id="edit-garden-lat" value="${g.location_lat || ''}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group"><label>Longitud</label><input type="number" step="any" id="edit-garden-lng" value="${g.location_lng || ''}" style="width:100%;padding:0.5rem;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <div class="form-group"><label>Área (m²)</label><input type="number" step="any" id="edit-garden-area" value="${g.area_m2 || ''}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group"><label>Cap. árboles</label><input type="number" id="edit-garden-capacity" value="${g.max_capacity_trees || ''}" style="width:100%;padding:0.5rem;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <div class="form-group"><label>Suelo</label><select id="edit-garden-soil" style="width:100%;padding:0.5rem;">${soilOpts}</select></div>
+        <div class="form-group"><label>Riego</label><select id="edit-garden-irrigation" style="width:100%;padding:0.5rem;">${irrOpts}</select></div>
+        <div class="form-group"><label>Exposición</label><select id="edit-garden-exposure" style="width:100%;padding:0.5rem;">${expOpts}</select></div>
+      </div>
+      <div class="form-group" style="margin-bottom:0.5rem;"><label>Zona climática</label><input type="text" id="edit-garden-climate" value="${escapeHtml(g.climate_zone || '')}" style="width:100%;padding:0.5rem;"></div>
+      <div class="form-group" style="margin-bottom:0.5rem;"><label>Fecha establecimiento</label><input type="date" id="edit-garden-established" value="${g.established_date || ''}" style="width:100%;padding:0.5rem;"></div>
+      <div class="form-group" style="margin-bottom:0.5rem;"><label>Descripción</label><textarea id="edit-garden-desc" style="width:100%;padding:0.5rem;">${escapeHtml(g.location_desc || '')}</textarea></div>
+      <div class="form-group" style="margin-bottom:0.5rem;"><label>Notas</label><textarea id="edit-garden-notes" style="width:100%;padding:0.5rem;">${escapeHtml(g.notes || '')}</textarea></div>
       <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Guardar</button>
     </form>
   `);
@@ -505,8 +698,20 @@ async function editAdminGarden(id) {
     e.preventDefault();
     const { error } = await sb.from('gardens').update({
       name: document.getElementById('edit-garden-name').value.trim(),
-      campus: document.getElementById('edit-garden-campus').value.trim(),
-      location_desc: document.getElementById('edit-garden-desc').value.trim()
+      campus: document.getElementById('edit-garden-campus').value,
+      location_lat: parseFloat(document.getElementById('edit-garden-lat').value) || null,
+      location_lng: parseFloat(document.getElementById('edit-garden-lng').value) || null,
+      location_desc: document.getElementById('edit-garden-desc').value.trim() || null,
+      area_m2: parseFloat(document.getElementById('edit-garden-area').value) || null,
+      max_capacity_trees: parseInt(document.getElementById('edit-garden-capacity').value) || null,
+      soil_type: document.getElementById('edit-garden-soil').value || null,
+      irrigation_type: document.getElementById('edit-garden-irrigation').value || null,
+      exposure: document.getElementById('edit-garden-exposure').value || null,
+      climate_zone: document.getElementById('edit-garden-climate').value.trim() || null,
+      established_date: document.getElementById('edit-garden-established').value || null,
+      responsible_specialist_id: document.getElementById('edit-garden-specialist').value || null,
+      notes: document.getElementById('edit-garden-notes').value.trim() || null,
+      updated_at: new Date().toISOString()
     }).eq('id', id);
     if (error) { showToast('Error: ' + error.message, 'error'); return; }
     showToast('Jardín actualizado', 'success');
@@ -670,45 +875,52 @@ async function sendNotification(e) {
   const message = document.getElementById('notif-message')?.value.trim();
   const targetType = document.getElementById('notif-target-type')?.value;
   const targetValue = document.getElementById('notifUser')?.value;
+  const sendTelegram = document.getElementById('notif-send-telegram')?.checked;
+  const notificationType = document.getElementById('notif-type')?.value || 'info';
 
   if (!title || !message) { showToast('Título y mensaje son requeridos', 'error'); return; }
 
   try {
-    // Build notification data - only include fields that are definitely valid
-    const notifData = {
-      title,
-      message,
-      sender_id: currentUser?.id || null
-    };
-
-    // Parse target - the select values are formatted as "user:uuid" or "group:uuid"
+    // Parse target into clean ids
+    let targetUserId = null, targetGroupId = null;
     if (targetType === 'user' && targetValue) {
-      const uid = targetValue.replace('user:', '').replace('group:', '');
-      notifData.target_user_id = uid;
+      targetUserId = targetValue.replace(/^(user|group):/, '');
     } else if (targetType === 'group' && targetValue) {
-      const gid = targetValue.replace('group:', '').replace('user:', '');
-      notifData.target_group_id = gid;
-    }
-    // When 'all', don't set target_user_id or target_group_id (both null)
-
-    const { error } = await sb.from('notifications').insert([notifData]);
-    if (error) {
-      console.error('Notification insert error:', error);
-      // If check constraint fails, try minimal insert
-      if (error.message && error.message.includes('check')) {
-        const minData = { title, message };
-        if (notifData.target_user_id) minData.target_user_id = notifData.target_user_id;
-        if (notifData.target_group_id) minData.target_group_id = notifData.target_group_id;
-        const { error: retryErr } = await sb.from('notifications').insert([minData]);
-        if (retryErr) throw retryErr;
-      } else {
-        throw error;
-      }
+      targetGroupId = targetValue.replace(/^(user|group):/, '');
     }
 
-    showToast('Notificación enviada', 'success');
+    // If Telegram is requested, the Edge Function handles BOTH the BD insert
+    // (per-recipient notification rows with telegram_sent flag) AND the actual
+    // Telegram delivery. Otherwise fall back to a single in-app notification row.
+    if (sendTelegram) {
+      const payload = { title, message, notificationType };
+      if (targetGroupId) payload.groupId = targetGroupId;
+      else if (targetUserId) payload.userId = targetUserId;
+      else payload.broadcast = true;
+
+      const { data, error } = await sb.functions.invoke('send-telegram-notification', { body: payload });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const sent = data?.sent || 0, failed = data?.failed || 0, total = data?.recipients_total || 0;
+      showToast(`Telegram: ${sent}/${total} entregados${failed ? ' (' + failed + ' fallidos)' : ''}`, sent > 0 ? 'success' : 'warning');
+    } else {
+      // In-app only: single notification row
+      const notifData = {
+        title, message,
+        sender_id: currentUser?.id || null,
+        notification_type: notificationType,
+        target_user_id: targetUserId,
+        target_group_id: targetGroupId,
+        sent_at: new Date().toISOString()
+      };
+      const { error } = await sb.from('notifications').insert([notifData]);
+      if (error) throw error;
+      showToast('Notificación enviada (en-app)', 'success');
+    }
+
     document.getElementById('form-notification')?.reset();
-    document.getElementById('notif-user-field').style.display = 'none';
+    const userField = document.getElementById('notif-user-field');
+    if (userField) userField.style.display = 'none';
     loadAdminNotifications();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
@@ -754,6 +966,21 @@ async function loadAssignments() {
       (gardens || []).forEach(g => {
         gardenSelect.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)} (${escapeHtml(g.campus || '-')})</option>`;
       });
+    }
+
+    // Specialist dropdown — populated dynamically from BD (no more hardcoded list)
+    const specSelect = document.getElementById('assign-specialist');
+    if (specSelect) {
+      const { data: specs } = await sb.from('user_profiles')
+        .select('id, full_name, specialty')
+        .eq('role', 'specialist')
+        .order('full_name');
+      specSelect.innerHTML = '<option value="">Ninguno</option>';
+      (specs || []).forEach(s => {
+        const label = `${s.full_name}${s.specialty ? ' — ' + s.specialty : ''}`;
+        specSelect.innerHTML += `<option value="${escapeHtml(s.id)}">${escapeHtml(label)}</option>`;
+      });
+      specSelect.innerHTML += '<option value="Otro">Otro (texto libre)</option>';
     }
 
     // Listen for type changes
@@ -1115,3 +1342,354 @@ window.removeTreeAssignment = removeTreeAssignment;
 window.removeGardenAssignment = removeGardenAssignment;
 window.loadSpecialistTrees = loadSpecialistTrees;
 window.showSpecialistTree = showSpecialistTree;
+window.toggleSpecialistFields = toggleSpecialistFields;
+window.populateGardenDropdown = populateGardenDropdown;
+window.populateSpecialistDropdown = populateSpecialistDropdown;
+
+// =============================================================
+// INNOVACIÓN #1 — QR físico por árbol
+// =============================================================
+function showTreeQR(treeId, treeCode, commonName) {
+  const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '/');
+  const targetUrl = `${baseUrl}?t=${encodeURIComponent(treeCode)}`;
+  const reportUrl = `${baseUrl}?report=${encodeURIComponent(treeCode)}`;
+
+  showModal(`QR — ${treeCode}`, `
+    <div style="text-align:center;">
+      <p class="text-muted text-small">Imprime y pega esta placa en el árbol. Cualquiera con el celular puede escanearla.</p>
+      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin:1rem 0;">
+        <div>
+          <h5>Identificación</h5>
+          <div id="qr-canvas-id" style="background:white;padding:1rem;border:1px solid #ddd;border-radius:6px;"></div>
+          <p class="text-small" style="margin-top:0.5rem;">Abre la ficha del árbol</p>
+        </div>
+        <div>
+          <h5>Reporte ciudadano</h5>
+          <div id="qr-canvas-report" style="background:white;padding:1rem;border:1px solid #ddd;border-radius:6px;"></div>
+          <p class="text-small" style="margin-top:0.5rem;">Reporta un problema</p>
+        </div>
+      </div>
+      <div style="background:#f5f5f5;padding:0.5rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">
+        <strong>${escapeHtml(commonName || treeCode)}</strong><br>
+        Código: <code>${escapeHtml(treeCode)}</code>
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1rem;">
+        <button class="btn btn-primary" onclick="printTreeQR('${escapeHtml(treeCode)}','${escapeHtml(commonName || '')}')">
+          <i class="fas fa-print"></i> Imprimir placa
+        </button>
+        <button class="btn btn-outline" onclick="downloadQR('qr-canvas-id','${escapeHtml(treeCode)}')">
+          <i class="fas fa-download"></i> Descargar PNG
+        </button>
+      </div>
+    </div>
+  `);
+
+  // Generate QRs after modal renders
+  setTimeout(() => {
+    if (typeof QRCode === 'undefined') {
+      document.getElementById('qr-canvas-id').innerHTML = '<p class="text-muted">QRCode lib no cargada</p>';
+      return;
+    }
+    new QRCode(document.getElementById('qr-canvas-id'), {
+      text: targetUrl, width: 180, height: 180,
+      colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M
+    });
+    new QRCode(document.getElementById('qr-canvas-report'), {
+      text: reportUrl, width: 180, height: 180,
+      colorDark: '#1b3a31', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M
+    });
+  }, 100);
+}
+
+function downloadQR(containerId, treeCode) {
+  const img = document.querySelector(`#${containerId} img, #${containerId} canvas`);
+  if (!img) { showToast('QR no encontrado', 'error'); return; }
+  const dataUrl = img.tagName === 'CANVAS' ? img.toDataURL('image/png') : img.src;
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = `arbol-${treeCode}-qr.png`;
+  a.click();
+}
+
+function printTreeQR(treeCode, commonName) {
+  const idImg = document.querySelector('#qr-canvas-id img, #qr-canvas-id canvas');
+  const repImg = document.querySelector('#qr-canvas-report img, #qr-canvas-report canvas');
+  if (!idImg || !repImg) { showToast('QRs aún generándose, intenta de nuevo', 'warning'); return; }
+  const idData = idImg.tagName === 'CANVAS' ? idImg.toDataURL() : idImg.src;
+  const repData = repImg.tagName === 'CANVAS' ? repImg.toDataURL() : repImg.src;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Placa ${treeCode}</title>
+    <style>
+      body{font-family:Inter,sans-serif;padding:20mm;margin:0;}
+      .placa{border:2px solid #2d6a4f;padding:14mm 10mm;text-align:center;border-radius:8mm;max-width:100mm;margin:0 auto;}
+      .placa h1{color:#2d6a4f;margin:0;font-size:14pt;}
+      .placa .code{font-family:'Courier New',monospace;font-size:18pt;background:#e8f5e9;padding:2mm 4mm;border-radius:2mm;display:inline-block;margin:3mm 0;}
+      .qrs{display:flex;gap:8mm;justify-content:center;margin-top:6mm;}
+      .qrs > div{text-align:center;}
+      .qrs img{width:30mm;height:30mm;}
+      .label{font-size:9pt;margin-top:2mm;color:#555;}
+      .footer{margin-top:6mm;font-size:8pt;color:#888;}
+    </style></head><body>
+    <div class="placa">
+      <h1>🌳 Proyecto Árbol UNAM 475</h1>
+      <div style="margin-top:4mm;font-size:11pt;">${escapeHtml(commonName || '')}</div>
+      <div class="code">${escapeHtml(treeCode)}</div>
+      <div class="qrs">
+        <div><img src="${idData}"><div class="label">Ficha</div></div>
+        <div><img src="${repData}"><div class="label">Reportar</div></div>
+      </div>
+      <div class="footer">FES Iztacala · UNAM</div>
+    </div>
+    <script>setTimeout(()=>{window.print();},500)</script>
+  </body></html>`);
+  w.document.close();
+}
+
+// =============================================================
+// INNOVACIÓN #8 — Reportes PDF / Excel
+// =============================================================
+async function exportTreesToExcel() {
+  if (typeof XLSX === 'undefined') { showToast('SheetJS no cargada', 'error'); return; }
+  showToast('Generando Excel...', 'info');
+  try {
+    const { data: trees } = await sb.from('trees_catalog').select('*').order('tree_code');
+    const { data: meas } = await sb.from('tree_measurements')
+      .select('tree_id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score')
+      .order('measurement_date', { ascending: false });
+    const { data: assigns } = await sb.from('tree_assignments').select('tree_id, user_id');
+    const { data: profiles } = await sb.from('user_profiles').select('id, full_name');
+    const profilesMap = Object.fromEntries((profiles || []).map(p => [p.id, p.full_name]));
+
+    const treeRows = (trees || []).map(t => ({
+      Código: t.tree_code,
+      Especie: t.species,
+      'Nombre común': t.common_name,
+      Tipo: t.tree_type,
+      Tamaño: t.size,
+      Campus: t.campus,
+      Estado: t.status,
+      'Salud (%)': t.health_score,
+      Latitud: t.location_lat,
+      Longitud: t.location_lng,
+      'Fecha plantación': t.planting_date,
+      'Asignado a': (assigns || []).filter(a => a.tree_id === t.id).map(a => profilesMap[a.user_id] || '?').join(', '),
+    }));
+    const measRows = (meas || []).map(m => ({
+      'Tree ID': m.tree_id,
+      Fecha: m.measurement_date,
+      'Altura (cm)': m.height_cm,
+      'Tronco (cm)': m.trunk_diameter_cm,
+      'Copa (cm)': m.crown_diameter_cm,
+      'Salud (%)': m.health_score,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(treeRows), 'Árboles');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(measRows), 'Mediciones');
+    const stamp = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `arbol-unam-${stamp}.xlsx`);
+    showToast('Excel descargado', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+async function exportDashboardToPDF() {
+  if (!window.jspdf) { showToast('jsPDF no cargada', 'error'); return; }
+  const { jsPDF } = window.jspdf;
+  showToast('Generando PDF...', 'info');
+  try {
+    const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
+    const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
+    const { data: trees } = await sb.from('trees_catalog').select('*');
+    const avgHealth = trees && trees.length ? Math.round(trees.reduce((s,t)=>s+(t.health_score||0),0) / trees.length) : 0;
+
+    const doc = new jsPDF();
+    doc.setFillColor(45, 106, 79);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18); doc.text('Proyecto Árbol UNAM 475', 14, 14);
+    doc.setFontSize(10); doc.text('Reporte Ejecutivo — ' + new Date().toLocaleDateString('es-MX'), 14, 22);
+
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(14); doc.text('Resumen', 14, 45);
+    doc.setFontSize(10);
+    doc.text(`Total de usuarios: ${userCount || 0}`, 14, 55);
+    doc.text(`Total de árboles: ${treeCount || 0}`, 14, 62);
+    doc.text(`Salud promedio: ${avgHealth}%`, 14, 69);
+
+    if (doc.autoTable && trees) {
+      const rows = trees.slice(0, 80).map(t => [
+        t.tree_code, t.common_name || t.species, t.campus || '-', t.status, t.health_score + '%',
+      ]);
+      doc.autoTable({
+        startY: 78,
+        head: [['Código','Nombre','Campus','Estado','Salud']],
+        body: rows,
+        theme: 'striped',
+        headStyles: { fillColor: [45, 106, 79] },
+        styles: { fontSize: 9 },
+      });
+    }
+    doc.save(`reporte-arbol-unam-${new Date().toISOString().slice(0,10)}.pdf`);
+    showToast('PDF descargado', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// =============================================================
+// INNOVACIÓN #18 — Vista de Audit Log (admin)
+// =============================================================
+async function loadAuditLog() {
+  const container = document.getElementById('audit-log-container');
+  if (!container) return;
+  try {
+    const { data, error } = await sb.from('audit_log')
+      .select('*').order('occurred_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="text-muted">Sin eventos registrados.</p>';
+      return;
+    }
+    let html = '<table class="admin-table"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Tabla</th><th>Row ID</th></tr></thead><tbody>';
+    data.forEach(e => {
+      const color = e.action === 'delete' ? '#f44336' : e.action === 'update' ? '#FFC107' : '#4CAF50';
+      html += `<tr>
+        <td>${formatDate(e.occurred_at)}</td>
+        <td>${escapeHtml(e.actor_email || '—')}</td>
+        <td><span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${e.action}</span></td>
+        <td>${escapeHtml(e.table_name)}</td>
+        <td>${escapeHtml(e.row_id || '')}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p class="text-danger">Error: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+// =============================================================
+// INNOVACIÓN #10 — Widget de clima en dashboard admin
+// =============================================================
+async function loadWeatherWidget() {
+  const container = document.getElementById('admin-weather-widget');
+  if (!container) return;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const { data } = await sb.from('weather_records')
+      .select('*').eq('recorded_for_date', today);
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="text-muted text-small">Sin datos meteorológicos. Despliega la Edge Function <code>weather-sync</code>.</p>';
+      return;
+    }
+    let html = '<h4 style="margin:0 0 0.5rem;"><i class="fas fa-cloud-sun"></i> Clima hoy</h4>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.5rem;">';
+    data.forEach(w => {
+      const alert = w.alert ? `<div style="background:#ffebee;color:#c62828;padding:2px 6px;border-radius:4px;font-size:0.75rem;margin-top:0.25rem;">⚠ ${w.alert}</div>` : '';
+      html += `<div style="background:#f5f5f5;padding:0.6rem;border-radius:6px;font-size:0.85rem;">
+        <strong>${escapeHtml(w.campus)}</strong>
+        <div>🌡 ${w.temp_min}°/${w.temp_max}°C · 💧${w.humidity_pct||'?'}%</div>
+        <div class="text-small text-muted">${escapeHtml(w.condition_summary || '')}</div>
+        ${alert}
+      </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p class="text-small text-muted">Sin clima (${err.message})</p>`;
+  }
+}
+
+// =============================================================
+// INNOVACIÓN #12 — Reportes ciudadanos en panel admin
+// =============================================================
+async function loadCitizenReports() {
+  const container = document.getElementById('citizen-reports-container');
+  if (!container) return;
+  try {
+    const { data, error } = await sb.from('problem_reports')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="text-muted">Sin reportes ciudadanos aún.</p>';
+      return;
+    }
+    const treeIds = [...new Set(data.map(r => r.tree_id).filter(Boolean))];
+    const userIds = [...new Set(data.map(r => r.reported_by).filter(Boolean))];
+    const [{ data: trees }, { data: users }] = await Promise.all([
+      treeIds.length ? sb.from('trees_catalog').select('id, tree_code, common_name').in('id', treeIds) : { data: [] },
+      userIds.length ? sb.from('user_profiles').select('id, full_name').in('id', userIds) : { data: [] },
+    ]);
+    const tMap = Object.fromEntries((trees || []).map(t => [t.id, t]));
+    const uMap = Object.fromEntries((users || []).map(u => [u.id, u]));
+    let html = '<table class="admin-table"><thead><tr><th>Fecha</th><th>Árbol</th><th>Reportado por</th><th>Urgencia</th><th>Estado</th><th>Descripción</th><th>Acciones</th></tr></thead><tbody>';
+    data.forEach(r => {
+      const tree = tMap[r.tree_id] || {};
+      const user = uMap[r.reported_by] || {};
+      const ucolor = r.urgency === 'critical' ? '#f44336' : r.urgency === 'high' ? '#FF9800' : r.urgency === 'normal' ? '#4CAF50' : '#9e9e9e';
+      const scolor = r.status === 'resolved' ? '#4CAF50' : r.status === 'in_progress' ? '#2196F3' : r.status === 'closed' ? '#9e9e9e' : '#FFC107';
+      html += `<tr>
+        <td>${formatDate(r.created_at)}</td>
+        <td>${escapeHtml(tree.tree_code || r.tree_id)}<br><span class="text-muted text-small">${escapeHtml(tree.common_name || '')}</span></td>
+        <td>${escapeHtml(user.full_name || '—')}</td>
+        <td><span style="background:${ucolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.urgency || '-'}</span></td>
+        <td><span style="background:${scolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.status || '-'}</span></td>
+        <td style="max-width:300px;">${escapeHtml((r.description || '').slice(0,150))}</td>
+        <td><button class="btn btn-sm btn-secondary" onclick="resolveCitizenReport(${r.id})">Cambiar estado</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p class="text-danger">Error: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+async function resolveCitizenReport(id) {
+  const newStatus = prompt('Nuevo estado: open / in_progress / resolved / closed', 'in_progress');
+  if (!newStatus) return;
+  if (!['open','in_progress','resolved','closed'].includes(newStatus)) {
+    showToast('Estado inválido', 'error'); return;
+  }
+  const update = { status: newStatus };
+  if (newStatus === 'resolved') {
+    update.resolved_at = new Date().toISOString();
+    update.resolved_by = currentUser?.id || null;
+    const notes = prompt('Notas de resolución (opcional)');
+    if (notes) update.resolution_notes = notes;
+  }
+  const { error } = await sb.from('problem_reports').update(update).eq('id', id);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Reporte actualizado', 'success');
+  loadCitizenReports();
+}
+
+// =============================================================
+// INNOVACIÓN #4 — Disparar manualmente notification-cron
+// =============================================================
+async function runNotificationCron() {
+  if (!confirm('¿Ejecutar revisión de reglas de notificación ahora?')) return;
+  try {
+    const { data, error } = await sb.functions.invoke('notification-cron');
+    if (error) throw error;
+    showToast(`Cron OK: ${JSON.stringify(data?.summary || {})}`, 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// =============================================================
+// Expose
+// =============================================================
+window.showTreeQR = showTreeQR;
+window.downloadQR = downloadQR;
+window.printTreeQR = printTreeQR;
+window.exportTreesToExcel = exportTreesToExcel;
+window.exportDashboardToPDF = exportDashboardToPDF;
+window.loadAuditLog = loadAuditLog;
+window.loadWeatherWidget = loadWeatherWidget;
+window.loadCitizenReports = loadCitizenReports;
+window.resolveCitizenReport = resolveCitizenReport;
+window.runNotificationCron = runNotificationCron;
