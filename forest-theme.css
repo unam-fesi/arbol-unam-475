@@ -866,6 +866,20 @@ a:hover { color: var(--primary-dark); }
   filter: drop-shadow(0 8px 24px rgba(45,80,22,0.12));
 }
 
+/* Container 3D (Three.js) */
+.dashboard-tree-3d {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(45,80,22,0.18), inset 0 1px 0 rgba(255,255,255,0.4);
+  background: linear-gradient(180deg, #a8d4f0 0%, #f5ede0 60%, #d4b896 100%);
+  cursor: grab;
+}
+.dashboard-tree-3d:active { cursor: grabbing; }
+.dashboard-tree-3d canvas { display: block; }
+
 /* Leaf slots — animación de "crecimiento" */
 .leaf-slot {
   cursor: pointer;
@@ -888,8 +902,9 @@ a:hover { color: var(--primary-dark); }
   cursor: default;
 }
 .leaf-slot:not(.empty):hover {
-  filter: drop-shadow(0 0 8px currentColor) brightness(1.15);
-  transform: scale(1.4);
+  filter: drop-shadow(0 0 12px currentColor) brightness(1.20);
+  /* sin scale: el path SVG salta porque transform-origin es relativo al viewBox,
+     no al bounding box del path. Glow solo, suficiente UX feedback. */
 }
 
 /* Branches & roots subtle entrance */
