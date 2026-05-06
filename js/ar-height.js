@@ -66,7 +66,7 @@ function openARHeightMeasure() {
         'background:linear-gradient(rgba(0,0,0,0.55),transparent);padding:1rem 1rem 1.8rem;pointer-events:none;">' +
         '<p id="ar-hint" style="margin:0;text-align:center;color:rgba(255,255,255,0.95);' +
           'font-size:0.95rem;text-shadow:0 1px 4px rgba(0,0,0,0.85);font-weight:500;">' +
-          'Apunta a la <b>base</b> del árbol y <b>toca la pantalla</b></p>' +
+          'Apunta al <b>primer punto</b> y <b>toca la pantalla</b></p>' +
       '</div>' +
 
       // Gyro status (shows briefly if no gyro)
@@ -238,7 +238,7 @@ function _arTapToMark(e) {
 
     // Update UI
     document.getElementById('ar-hint').innerHTML =
-      'Apunta a la <b>cima</b> y <b>toca la pantalla</b>';
+      'Apunta al <b>segundo punto</b> y <b>toca la pantalla</b>';
     document.getElementById('ar-step-text').textContent = 'Paso 2 de 2';
     document.getElementById('ar-undo').style.display = 'flex';
 
@@ -389,10 +389,11 @@ function _arStartAnim() {
       var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
       var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
 
-      // ---- TOP/CIMA: SIEMPRE en el centro de la pantalla ----
-      // El usuario apunta la cámara para que la cima quede dentro del crosshair
-      // central. La línea va del BASE (donde tocó) a este centro.
-      // El número vivo se calcula del delta de gyro (abs para evitar inversión).
+      // ---- PUNTO 2: SIEMPRE en el centro de la pantalla ----
+      // El usuario apunta la cámara para que la cima/base del objeto quede
+      // dentro del crosshair central, y toca para capturar.
+      // El número se calcula del ángulo absoluto entre los dos puntos
+      // (orden de tap no importa: puede tapear cima primero o base primero).
       var topScreenX = W / 2;
       var topScreenY = H / 2;
 
@@ -446,12 +447,12 @@ function _arStartAnim() {
       ctx.lineWidth = 2.5 * dpr;
       ctx.strokeStyle = 'rgba(255,255,255,0.95)';
       ctx.stroke();
-      // Etiqueta "BASE" debajo del punto
-      ctx.font = 'bold ' + (10 * dpr) + 'px -apple-system, sans-serif';
+      // Etiqueta "1" — primer punto
+      ctx.font = 'bold ' + (11 * dpr) + 'px -apple-system, sans-serif';
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText('BASE', baseScreenX, baseScreenY + 14 * dpr);
+      ctx.fillText('1', baseScreenX, baseScreenY + 14 * dpr);
 
       // ---- TOP DOT (cyan brillante, sigue al gyro) ----
       // Halo
@@ -473,12 +474,12 @@ function _arStartAnim() {
       ctx.arc(topScreenX, topScreenY, 4 * dpr, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0,180,230,1)';
       ctx.fill();
-      // Etiqueta "CIMA"
-      ctx.font = 'bold ' + (10 * dpr) + 'px -apple-system, sans-serif';
+      // Etiqueta "2" — segundo punto (donde apuntas la cámara)
+      ctx.font = 'bold ' + (11 * dpr) + 'px -apple-system, sans-serif';
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText('CIMA', topScreenX, topScreenY - 14 * dpr);
+      ctx.fillText('2', topScreenX, topScreenY - 14 * dpr);
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -689,7 +690,7 @@ function _arUndo() {
   if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
 
   var hint = document.getElementById('ar-hint');
-  if (hint) hint.innerHTML = 'Apunta a la <b>base</b> del árbol y <b>toca la pantalla</b>';
+  if (hint) hint.innerHTML = 'Apunta al <b>primer punto</b> y <b>toca la pantalla</b>';
   var stepText = document.getElementById('ar-step-text');
   if (stepText) stepText.textContent = 'Paso 1 de 2';
 
