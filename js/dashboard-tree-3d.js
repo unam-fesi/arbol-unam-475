@@ -243,6 +243,60 @@
     return group;
   }
 
+  // Coloca las hojas-DATA (clickeables) como esferas brillantes superpuestas
+  // en el canopy del árbol real. Usa el bounding-box del modelo cargado.
+  function addDataLeavesOverlay(realTree, treeHeight, trees) {
+    leafMeshes = [];
+    const dataLeafGeo = new THREE.SphereGeometry(0.32, 12, 10);
+    const sorted = (trees || []).slice().sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
+    const total = sorted.length;
+    const totalDataSlots = 50;
+    const scaled = total > totalDataSlots;
+
+    // Distribuir las esferas en una zona "canopy" — esfera imaginaria
+    // alrededor de la parte superior del árbol
+    const canopyCenter = new THREE.Vector3(0, treeHeight * 0.65, 0);
+    const canopyRadius = treeHeight * 0.45;
+
+    for (let i = 0; i < totalDataSlots; i++) {
+      // Posición pseudo-aleatoria pero estable por índice
+      const phi = Math.acos(1 - 2 * (i + 0.5) / totalDataSlots);  // distribución esférica
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i;             // golden angle
+      const r = canopyRadius * (0.6 + Math.random() * 0.5);
+      const offset = new THREE.Vector3(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.cos(phi) * 0.7 + (Math.random() - 0.5) * 0.5,  // bias upward
+        r * Math.sin(phi) * Math.sin(theta)
+      );
+      const pos = canopyCenter.clone().add(offset);
+
+      let assignedTree = null;
+      if (!scaled) assignedTree = sorted[i] || null;
+      else assignedTree = sorted[Math.floor(i * total / totalDataSlots)] || null;
+      const isEmpty = !(assignedTree && assignedTree.id != null);
+      const score = assignedTree ? (assignedTree.health_score || 0) : null;
+      const color = isEmpty ? 0xc5b5a0 : colorByHealth(score);
+
+      const mat = new THREE.MeshStandardMaterial({
+        color, roughness: 0.3, metalness: 0.05, flatShading: false,
+        emissive: isEmpty ? 0x000000 : color,
+        emissiveIntensity: isEmpty ? 0 : 0.35,
+        transparent: isEmpty, opacity: isEmpty ? 0.30 : 1.0
+      });
+      const leaf = new THREE.Mesh(dataLeafGeo, mat);
+      leaf.position.copy(pos);
+      const baseScale = isEmpty ? 0.55 : (1.0 + Math.random() * 0.4);
+      leaf.scale.setScalar(baseScale);
+      leaf.castShadow = false;
+      leaf.userData = {
+        isLeaf: true, tree: assignedTree, isEmpty, baseScale,
+        wobblePhase: Math.random() * Math.PI * 2, baseY: leaf.position.y
+      };
+      realTree.parent.add(leaf);
+      leafMeshes.push(leaf);
+    }
+  }
+
   function setupScene(container, trees) {
     const w = container.clientWidth;
     const h = Math.min(560, Math.max(380, Math.round(w * 0.65)));
@@ -303,9 +357,72 @@
     grass.receiveShadow = true;
     scene.add(grass);
 
-    // Tree
-    const tree = buildTree(trees);
-    scene.add(tree);
+    // Tree: intentar cargar modelo Jacaranda fotorrealista de Poly Haven (CC0).
+    // Si falla, usar procedural como fallback.
+    const treeGroup = new THREE.Group();
+    scene.add(treeGroup);
+
+    const JACARANDA_URL = 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/jacaranda_tree/jacaranda_tree_1k.gltf';
+    let modelLoaded = false;
+
+    if (THREE.GLTFLoader) {
+      const loader = new THREE.GLTFLoader();
+      // Show a tiny loading indicator
+      const loadingEl = document.createElement('div');
+      loadingEl.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(28,41,18,0.85);color:#fff;padding:0.5rem 1rem;border-radius:8px;font-size:0.8rem;z-index:10;pointer-events:none;';
+      loadingEl.textContent = 'Cargando árbol jacaranda…';
+      container.style.position = 'relative';
+      container.appendChild(loadingEl);
+
+      loader.load(JACARANDA_URL,
+        (gltf) => {
+          modelLoaded = true;
+          const realTree = gltf.scene;
+          // Centrar y escalar el modelo
+          const box = new THREE.Box3().setFromObject(realTree);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          // Polyhaven trees están en mm — necesitamos escalar a metros
+          const scale = 8 / Math.max(size.y, 1);  // que mida ~8 unidades de alto
+          realTree.scale.setScalar(scale);
+          // Reposicionar para que la base toque el suelo (y=0)
+          realTree.position.x = -center.x * scale;
+          realTree.position.z = -center.z * scale;
+          realTree.position.y = -box.min.y * scale;
+          // Habilitar sombras
+          realTree.traverse(obj => {
+            if (obj.isMesh) {
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+          });
+          treeGroup.add(realTree);
+          // Actualizar target de la cámara al centro del árbol real
+          if (controls) controls.target.set(0, size.y * scale * 0.55, 0);
+          // Agregar las hojas-data superpuestas (esferas brillantes en el canopy)
+          addDataLeavesOverlay(realTree, size.y * scale, trees);
+          loadingEl.remove();
+        },
+        (progress) => {
+          if (progress.lengthComputable) {
+            const pct = Math.round((progress.loaded / progress.total) * 100);
+            loadingEl.textContent = `Cargando jacaranda… ${pct}%`;
+          }
+        },
+        (error) => {
+          console.warn('Modelo real falló, usando procedural:', error);
+          loadingEl.remove();
+          if (!modelLoaded) {
+            const fallback = buildTree(trees);
+            treeGroup.add(fallback);
+          }
+        }
+      );
+    } else {
+      // GLTFLoader no disponible, usar procedural directo
+      const fallback = buildTree(trees);
+      treeGroup.add(fallback);
+    }
 
     // Controls
     if (THREE.OrbitControls) {
