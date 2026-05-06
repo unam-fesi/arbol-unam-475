@@ -15,9 +15,12 @@ var arM = {
   baseBeta: null,
   topBeta: null,
 
-  // Sign multiplier para corregir dispositivos con gyro invertido.
-  // Toggleable con botón en pantalla.
-  gyroSign: 1,
+  // Posiciones EXACTAS en pantalla donde el usuario tocó.
+  // NUNCA se modifican por gyro — son SCREEN-ANCHORED puras.
+  baseScreenX: null,
+  baseScreenY: null,
+  topScreenX: null,
+  topScreenY: null,
 
   phoneH: 1.5,
   dist: null,
@@ -32,7 +35,8 @@ function openARHeightMeasure() {
     step: 0, stream: null, animId: null, gyroH: null,
     hasGyro: false, gyroReady: false,
     curBeta: null, baseBeta: null, topBeta: null,
-    gyroSign: 1,
+    baseScreenX: null, baseScreenY: null,
+    topScreenX: null, topScreenY: null,
     phoneH: 1.5, dist: null, height: null,
   };
 
@@ -218,10 +222,9 @@ function _arTapToMark(e) {
 
   if (arM.step === 0) {
     // ---- MARK PUNTO 1 ----
-    // El crosshair está en el centro de la pantalla. Capturamos baseBeta
-    // como el ángulo de cámara en este momento. Las coordenadas en pantalla
-    // del punto 1 NO son del tap — siempre nacen en el centro y luego se
-    // anclan al mundo (se desplazan con el gyro).
+    // El punto se queda EXACTAMENTE donde tocaste. NUNCA se mueve.
+    // El gyro se usa solo para guardar el ángulo de cámara para calcular
+    // la altura, no para mover el punto en pantalla.
     if (!arM.gyroReady || arM.curBeta === null) {
       if (!arM.hasGyro) {
         _arShowManualFallback();
@@ -230,6 +233,8 @@ function _arTapToMark(e) {
     }
 
     arM.baseBeta = arM.curBeta;
+    arM.baseScreenX = tapX;
+    arM.baseScreenY = tapY;
 
     // Auto-calculate distance basado en ángulo abajo del horizonte
     var angleDeg = _b2a(arM.baseBeta);
@@ -255,8 +260,11 @@ function _arTapToMark(e) {
     _arStartAnim();
 
   } else if (arM.step === 1) {
-    // ---- MARK TOP ----
+    // ---- MARK PUNTO 2 ----
+    // El punto azul se queda EXACTAMENTE donde tocaste.
     arM.topBeta = arM.curBeta;
+    arM.topScreenX = tapX;
+    arM.topScreenY = tapY;
     arM.step = 2;
 
     _arStopAnim();
@@ -267,7 +275,6 @@ function _arTapToMark(e) {
     _arDrawFinal();
     _arShowResult(arM.height);
 
-    // Disable tap zone hasta que el usuario haga undo o close
     var tz = document.getElementById('ar-tap-zone');
     if (tz) tz.style.pointerEvents = 'none';
   }
@@ -403,20 +410,16 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- PUNTO 1 (verde): ANCLADO AL MUNDO ----
-      // Capturado al tap 1 cuando el crosshair estaba al centro. Conforme
-      // la cámara se mueve, el verde se mueve en pantalla para mantenerse
-      // sobre el mismo punto físico del mundo.
-      // gyroSign permite invertir si el dispositivo reporta beta al revés.
-      var baseScreenX = W / 2;
-      var baseScreenY = H / 2;
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaBase = (arM.baseBeta - arM.curBeta) * arM.gyroSign;
-        baseScreenY = (H / 2) + (deltaBase * pixPerDeg);
-      }
+      // ---- PUNTO 1 (verde): SCREEN-ANCHORED, NUNCA SE MUEVE ----
+      // Se queda EXACTAMENTE donde el usuario tocó. El gyro NO afecta su
+      // posición en pantalla. Solo se usa baseBeta (capturado al tap)
+      // para calcular la altura matemáticamente.
+      var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
+      var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
 
-      // ---- CURSOR (punto 2): SIEMPRE en el centro de la pantalla ----
-      // El usuario aima la cámara para que el centro coincida con la cima.
+      // ---- CURSOR (preview de punto 2): SIEMPRE en el centro ----
+      // El crosshair HTML está en el centro. El usuario apunta moviendo
+      // la cámara, no moviendo un puntero.
       var topScreenX = W / 2;
       var topScreenY = H / 2;
 
@@ -453,32 +456,20 @@ function _arStartAnim() {
         ctx.restore();
       }
 
-      // ---- PUNTO 1 (verde, anclado al mundo) ----
-      // Solo dibujar si está dentro del viewport
-      if (baseScreenY > -20 * dpr && baseScreenY < H + 20 * dpr) {
-        ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,0.22)';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,1)';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-        ctx.lineWidth = 2.5 * dpr;
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.stroke();
-      } else {
-        // El verde está fuera del viewport — mostrar flecha indicadora en el borde
-        var arrowY = baseScreenY < 0 ? 30 * dpr : H - 30 * dpr;
-        var arrowChar = baseScreenY < 0 ? '↑' : '↓';
-        ctx.font = 'bold ' + (24 * dpr) + 'px -apple-system, sans-serif';
-        ctx.fillStyle = 'rgba(76,175,80,1)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(arrowChar, baseScreenX, arrowY);
-      }
+      // ---- PUNTO 1 (verde, screen-anchored, NO SE MUEVE) ----
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,0.22)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,1)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
       // El cursor para punto 2 es el HTML crosshair (always at center).
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
@@ -567,20 +558,11 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Verde anclado al mundo: posición = H/2 + (baseBeta - curBeta) * sign * pixPerDeg
-  // Azul anclado al mundo: posición = H/2 + (topBeta - curBeta) * sign * pixPerDeg
-  // Conforme la cámara se mueva en step 2, ambos puntos se mueven juntos.
-  var pixPerDeg = H / 60;
-  var baseScreenX = W / 2;
-  var topX = W / 2;
-  var baseScreenY = H / 2;
-  var topY = H / 2;
-  if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-    baseScreenY = (H / 2) + ((arM.baseBeta - arM.curBeta) * arM.gyroSign * pixPerDeg);
-  }
-  if (arM.hasGyro && arM.topBeta !== null && arM.curBeta !== null) {
-    topY = (H / 2) + ((arM.topBeta - arM.curBeta) * arM.gyroSign * pixPerDeg);
-  }
+  // Ambos puntos SCREEN-ANCHORED — donde el usuario tocó. NO se mueven.
+  var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
+  var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
+  var topX = arM.topScreenX != null ? arM.topScreenX : W / 2;
+  var topY = arM.topScreenY != null ? arM.topScreenY : H / 2;
 
   // Línea punteada congelada entre punto 1 (verde) y punto 2 (azul)
   ctx.save();
@@ -698,6 +680,8 @@ function _arUndo() {
   arM.topBeta = null;
   arM.baseScreenX = null;
   arM.baseScreenY = null;
+  arM.topScreenX = null;
+  arM.topScreenY = null;
   arM.dist = null;
   arM.height = null;
   _arManualBase = null;
