@@ -9,15 +9,18 @@ var arM = {
   animId: null,
   gyroH: null,
   hasGyro: false,
-  gyroReady: false, // true once we've received at least one gyro event
+  gyroReady: false,
 
-  curBeta: null,    // current device beta (live)
-  baseBeta: null,   // beta when base was tapped
-  topBeta: null,    // beta when top was tapped
+  curBeta: null,
+  baseBeta: null,
+  topBeta: null,
 
-  phoneH: 1.5,     // phone height above ground (m)
-  dist: null,       // auto-calculated distance (m)
-  height: null,     // final height (cm)
+  baseScreenX: null,  // posición X (en pixels canvas) donde el usuario tocó
+  baseScreenY: null,  // posición Y donde tocó la BASE
+
+  phoneH: 1.5,
+  dist: null,
+  height: null,
 };
 
 // ============================================================================
@@ -28,6 +31,7 @@ function openARHeightMeasure() {
     step: 0, stream: null, animId: null, gyroH: null,
     hasGyro: false, gyroReady: false,
     curBeta: null, baseBeta: null, topBeta: null,
+    baseScreenX: null, baseScreenY: null,
     phoneH: 1.5, dist: null, height: null,
   };
 
@@ -59,10 +63,10 @@ function openARHeightMeasure() {
 
       // Top hint (gradient overlay)
       '<div style="position:absolute;top:0;left:0;width:100%;z-index:10;' +
-        'background:linear-gradient(rgba(0,0,0,0.5),transparent);padding:0.5rem 1rem 1.5rem;pointer-events:none;">' +
-        '<p id="ar-hint" style="margin:0;text-align:center;color:rgba(255,255,255,0.9);' +
-          'font-size:0.85rem;text-shadow:0 1px 4px rgba(0,0,0,0.8);">' +
-          'Apunta a la <b>base</b> del árbol y presiona <b>+</b></p>' +
+        'background:linear-gradient(rgba(0,0,0,0.55),transparent);padding:1rem 1rem 1.8rem;pointer-events:none;">' +
+        '<p id="ar-hint" style="margin:0;text-align:center;color:rgba(255,255,255,0.95);' +
+          'font-size:0.95rem;text-shadow:0 1px 4px rgba(0,0,0,0.85);font-weight:500;">' +
+          'Apunta a la <b>base</b> del árbol y <b>toca la pantalla</b></p>' +
       '</div>' +
 
       // Gyro status (shows briefly if no gyro)
@@ -84,21 +88,24 @@ function openARHeightMeasure() {
         '</div>' +
       '</div>' +
 
-      // Bottom bar (+ button, undo)
-      '<div id="ar-btm" style="position:absolute;bottom:0;left:0;width:100%;z-index:10;' +
-        'background:linear-gradient(transparent,rgba(0,0,0,0.6));padding:1.5rem 1rem 1.2rem;' +
-        'display:flex;align-items:center;justify-content:center;gap:2rem;">' +
+      // Tap-overlay invisible para capturar clicks/taps en TODA la pantalla
+      // (ahora sin botón "+", el usuario toca cualquier parte para fijar puntos)
+      '<div id="ar-tap-zone" onclick="_arTapToMark(event)" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:5;cursor:crosshair;"></div>' +
 
-        '<button id="ar-undo" onclick="_arUndo()" style="width:42px;height:42px;border-radius:50%;border:none;' +
-          'background:rgba(255,255,255,0.15);color:#fff;font-size:1.1rem;cursor:pointer;' +
+      // Bottom bar minimal: solo undo + indicador de step
+      '<div id="ar-btm" style="position:absolute;bottom:0;left:0;width:100%;z-index:11;' +
+        'background:linear-gradient(transparent,rgba(0,0,0,0.65));padding:1rem 1rem 1.2rem;' +
+        'display:flex;align-items:center;justify-content:space-between;gap:1rem;pointer-events:none;">' +
+
+        '<button id="ar-undo" onclick="_arUndo();event.stopPropagation();" style="pointer-events:auto;width:42px;height:42px;border-radius:50%;border:none;' +
+          'background:rgba(255,255,255,0.20);color:#fff;font-size:1.2rem;cursor:pointer;' +
           'display:none;align-items:center;justify-content:center;' +
-          'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">↩</button>' +
+          'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+          'box-shadow:0 2px 8px rgba(0,0,0,0.3);">↩</button>' +
 
-        '<button id="ar-add" onclick="_arAdd()" style="width:60px;height:60px;border-radius:50%;' +
-          'border:3px solid rgba(255,255,255,0.9);background:rgba(255,255,255,0.15);color:#fff;' +
-          'font-size:1.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
-          'font-weight:300;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);' +
-          'box-shadow:0 2px 12px rgba(0,0,0,0.3);">+</button>' +
+        '<div id="ar-step-indicator" style="flex:1;text-align:center;color:#fff;font-size:0.85rem;text-shadow:0 1px 4px rgba(0,0,0,0.8);">' +
+          '<span id="ar-step-text">Paso 1 de 2</span>' +
+        '</div>' +
 
         '<div style="width:42px;"></div>' +
       '</div>' +
@@ -185,45 +192,56 @@ function _arSyncCv() {
 }
 
 // ============================================================================
-// + BUTTON
+// TAP TO MARK — toca cualquier parte de la pantalla para fijar puntos
+// Flujo:
+//   Step 0: tap → marca BASE en (x,y) del tap, snapshot baseBeta
+//   Step 1: el TOP indicator sigue el giroscopio, línea punteada animada,
+//           tap → marca TOP, congela y muestra resultado
 // ============================================================================
-function _arAdd() {
+function _arTapToMark(e) {
+  // Convertir coordenadas del tap a coordenadas del canvas
+  var box = document.getElementById('ar-box');
+  if (!box) return;
+  var rect = box.getBoundingClientRect();
+  var clientX = e.clientX != null ? e.clientX : (e.changedTouches && e.changedTouches[0] && e.changedTouches[0].clientX);
+  var clientY = e.clientY != null ? e.clientY : (e.changedTouches && e.changedTouches[0] && e.changedTouches[0].clientY);
+  if (clientX == null || clientY == null) return;
+
+  var dpr = window.devicePixelRatio || 1;
+  var tapX = (clientX - rect.left) * dpr;
+  var tapY = (clientY - rect.top) * dpr;
+
   if (arM.step === 0) {
     // ---- MARK BASE ----
-
-    // Check if gyro is ready
     if (!arM.gyroReady || arM.curBeta === null) {
-      // No gyro — try to use it anyway, or warn
       if (!arM.hasGyro) {
-        // Show manual distance prompt as fallback
         _arShowManualFallback();
         return;
       }
     }
 
     arM.baseBeta = arM.curBeta;
+    arM.baseScreenX = tapX;
+    arM.baseScreenY = tapY;
 
-    // Auto-calculate distance: dist = phoneHeight / tan(angle_below_horizontal)
-    var angleDeg = _b2a(arM.baseBeta); // negative means looking down
+    // Auto-calculate distance basado en ángulo abajo del horizonte
+    var angleDeg = _b2a(arM.baseBeta);
     var angleRad = Math.abs(angleDeg) * Math.PI / 180;
-    if (angleRad > 0.05) { // at least ~3°
+    if (angleRad > 0.05) {
       arM.dist = arM.phoneH / Math.tan(angleRad);
       arM.dist = Math.max(0.5, Math.min(arM.dist, 80));
     } else {
-      arM.dist = 5; // nearly horizontal, use default
+      arM.dist = 5;
     }
 
     arM.step = 1;
 
     // Update UI
     document.getElementById('ar-hint').innerHTML =
-      'Mueve hacia la <b>cima</b> y presiona <b>+</b>';
+      'Apunta a la <b>cima</b> y <b>toca la pantalla</b>';
+    document.getElementById('ar-step-text').textContent = 'Paso 2 de 2';
     document.getElementById('ar-undo').style.display = 'flex';
-    var btn = document.getElementById('ar-add');
-    btn.style.borderColor = '#4CAF50';
-    btn.style.background = 'rgba(76,175,80,0.25)';
 
-    // Start animation
     _arSyncCv();
     _arStartAnim();
 
@@ -239,8 +257,15 @@ function _arAdd() {
 
     _arDrawFinal();
     _arShowResult(arM.height);
+
+    // Disable tap zone hasta que el usuario haga undo o close
+    var tz = document.getElementById('ar-tap-zone');
+    if (tz) tz.style.pointerEvents = 'none';
   }
 }
+
+// Compatibilidad con código legacy (manual fallback usa _arAdd?)
+function _arAdd() { _arTapToMark({ clientX: window.innerWidth/2, clientY: window.innerHeight/2 }); }
 
 // ============================================================================
 // MANUAL FALLBACK (when no gyroscope)
@@ -360,77 +385,105 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- World-anchored base point (geometría correcta) ----
-      // El dot representa el punto físico del mundo. Cuando el usuario
-      // inclina la cámara hacia arriba, ese punto en el mundo aparece más
-      // ABAJO en pantalla. Esto es lo que hace que la medición sea correcta:
-      // la cámara apunta al CROSSHAIR (centro), el dot es el punto remoto.
-      var baseScreenX = W / 2;
-      var baseScreenY = H / 2;
+      // ---- BASE: FIJO en la posición donde el usuario tocó ----
+      var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
+      var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
+
+      // ---- TOP: se mueve con el giroscopio, alineado verticalmente con base ----
+      // Cuando el usuario inclina hacia arriba (curBeta < baseBeta), el TOP
+      // debe subir en pantalla (topY < baseY)
+      var topScreenX = baseScreenX;
+      var topScreenY = baseScreenY;
       if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaDeg = arM.baseBeta - arM.curBeta;  // positivo si se inclina arriba
-        baseScreenY = H / 2 + (deltaDeg * pixPerDeg);
+        var deltaDeg = arM.baseBeta - arM.curBeta;
+        topScreenY = baseScreenY - (deltaDeg * pixPerDeg);
       }
-      // Clamp para que el dot no se salga arriba (siempre debe quedar visible)
-      var clampedBaseY = Math.min(baseScreenY, H + 30 * dpr);
+      // Clamp top dentro del viewport
+      topScreenY = Math.max(20 * dpr, Math.min(topScreenY, H - 20 * dpr));
 
-      // Crosshair (donde la cámara apunta)
-      var crossX = W / 2;
-      var crossY = H / 2;
-
-      // Altura calculada en vivo a partir del gyro
+      // Altura calculada en vivo
       var liveH = Math.abs(_arCalcH(arM.curBeta));
+      var lineLen = Math.abs(baseScreenY - topScreenY);
 
-      // ---- DRAW THE MEASUREMENT LINE: del dot al crosshair ----
-      var lineLen = Math.abs(clampedBaseY - crossY);
-
+      // ---- LÍNEA PUNTEADA del BASE al TOP ----
       if (lineLen > 3) {
         // Glow
         ctx.save();
-        ctx.setLineDash([4 * dpr, 4 * dpr]);
-        ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
-        ctx.strokeStyle = 'rgba(76,175,80,0.18)';
-        ctx.lineWidth = 10 * dpr;
+        ctx.setLineDash([5 * dpr, 5 * dpr]);
+        ctx.lineDashOffset = -(Date.now() / 60) % (10 * dpr);
+        ctx.strokeStyle = 'rgba(76,175,80,0.20)';
+        ctx.lineWidth = 11 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, clampedBaseY);
-        ctx.lineTo(crossX, crossY);
+        ctx.moveTo(baseScreenX, baseScreenY);
+        ctx.lineTo(topScreenX, topScreenY);
         ctx.stroke();
         ctx.restore();
 
-        // Main dotted line
+        // Línea punteada principal
         ctx.save();
-        ctx.setLineDash([4 * dpr, 4 * dpr]);
-        ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
-        ctx.strokeStyle = 'rgba(76,175,80,0.95)';
-        ctx.lineWidth = 2.5 * dpr;
+        ctx.setLineDash([5 * dpr, 5 * dpr]);
+        ctx.lineDashOffset = -(Date.now() / 60) % (10 * dpr);
+        ctx.strokeStyle = 'rgba(76,175,80,1)';
+        ctx.lineWidth = 3 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, clampedBaseY);
-        ctx.lineTo(crossX, crossY);
+        ctx.moveTo(baseScreenX, baseScreenY);
+        ctx.lineTo(topScreenX, topScreenY);
         ctx.stroke();
         ctx.restore();
       }
 
-      // ---- BASE DOT (verde, anclado en el mundo) ----
-      if (clampedBaseY <= H) {
-        // Halo de "ancla" para reforzar visualmente que está fijo al mundo
-        ctx.beginPath();
-        ctx.arc(baseScreenX, clampedBaseY, 14 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,0.18)';
-        ctx.fill();
+      // ---- BASE DOT (verde, fijo en pantalla donde se tocó) ----
+      // Halo
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,0.22)';
+      ctx.fill();
+      // Punto sólido
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,1)';
+      ctx.fill();
+      // Borde blanco
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
+      // Etiqueta "BASE" debajo del punto
+      ctx.font = 'bold ' + (10 * dpr) + 'px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('BASE', baseScreenX, baseScreenY + 14 * dpr);
 
-        ctx.beginPath();
-        ctx.arc(baseScreenX, clampedBaseY, 6 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,1)';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(baseScreenX, clampedBaseY, 6 * dpr, 0, Math.PI * 2);
-        ctx.lineWidth = 2 * dpr;
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.stroke();
-      }
+      // ---- TOP DOT (cyan brillante, sigue al gyro) ----
+      // Halo
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 18 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,200,255,0.20)';
+      ctx.fill();
+      // Punto sólido (anillo + centro)
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 9 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 9 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 3 * dpr;
+      ctx.strokeStyle = 'rgba(0,180,230,1)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(topScreenX, topScreenY, 4 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,180,230,1)';
+      ctx.fill();
+      // Etiqueta "CIMA"
+      ctx.font = 'bold ' + (10 * dpr) + 'px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('CIMA', topScreenX, topScreenY - 14 * dpr);
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -442,40 +495,50 @@ function _arStartAnim() {
         txt = '0 cm';
       }
 
-      // Position: near the midpoint of the line, offset right
-      var labelMidY = (Math.min(clampedBaseY, H) + crossY) / 2;
-      var labelX = crossX + 25 * dpr;
+      // Position: EN MEDIO de la línea punteada (centrado horizontal y vertical)
+      var labelMidY = (baseScreenY + topScreenY) / 2;
+      var labelX = baseScreenX;
 
-      ctx.font = (14 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
-      var tw = ctx.measureText(txt).width;
-      var px = 8 * dpr, py = 5 * dpr;
-      var pillW = tw + px * 2;
-      var pillH = 16 * dpr + py * 2;
-      var pillR = pillH / 2;
+      // Solo mostrar pill si la línea tiene longitud
+      if (lineLen > 30) {
+        ctx.font = 'bold ' + (15 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+        var tw = ctx.measureText(txt).width;
+        var px = 11 * dpr, py = 7 * dpr;
+        var pillW = tw + px * 2;
+        var pillH = 18 * dpr + py * 2;
+        var pillR = pillH / 2;
+        // Centrada horizontalmente sobre la línea
+        var pillLeft = labelX - pillW / 2;
 
-      // Pill background
-      ctx.fillStyle = 'rgba(45,45,45,0.88)';
-      ctx.beginPath();
-      ctx.moveTo(labelX + pillR, labelMidY - pillH / 2);
-      ctx.lineTo(labelX + pillW - pillR, labelMidY - pillH / 2);
-      ctx.arc(labelX + pillW - pillR, labelMidY, pillR, -Math.PI / 2, Math.PI / 2);
-      ctx.lineTo(labelX + pillR, labelMidY + pillH / 2);
-      ctx.arc(labelX + pillR, labelMidY, pillR, Math.PI / 2, -Math.PI / 2);
-      ctx.closePath();
-      ctx.fill();
+        // Pill background con sombra
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 8 * dpr;
+        ctx.shadowOffsetY = 2 * dpr;
+        ctx.fillStyle = 'rgba(76,175,80,0.95)';
+        ctx.beginPath();
+        ctx.moveTo(pillLeft + pillR, labelMidY - pillH / 2);
+        ctx.lineTo(pillLeft + pillW - pillR, labelMidY - pillH / 2);
+        ctx.arc(pillLeft + pillW - pillR, labelMidY, pillR, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(pillLeft + pillR, labelMidY + pillH / 2);
+        ctx.arc(pillLeft + pillR, labelMidY, pillR, Math.PI / 2, -Math.PI / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
 
-      // Text
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(txt, labelX + px, labelMidY);
-
-      // ---- HINT if user hasn't moved ----
-      if (liveH < 2 && lineLen < 10) {
-        ctx.font = (11 * dpr) + 'px -apple-system, sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        // Text centrado
+        ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
-        ctx.fillText('↑ Inclina hacia arriba', W / 2, crossY - 40 * dpr);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, labelX, labelMidY);
+      }
+
+      // ---- HINT si el usuario aún no inclinó ----
+      if (liveH < 2 && lineLen < 30) {
+        ctx.font = 'bold ' + (12 * dpr) + 'px -apple-system, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.textAlign = 'center';
+        ctx.fillText('↑ Inclina el celular hacia arriba', W / 2, baseScreenY - 50 * dpr);
       }
 
       // ---- Distance info (small, bottom-right) ----
@@ -508,55 +571,64 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Final draw: base anclado en el mundo, top en el centro de pantalla
-  // (donde el usuario apuntó la cámara para hacer el segundo tap)
   var pixPerDeg = H / 60;
-  var baseY = H / 2;
+  var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
+  var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
+  var topX = baseScreenX;
+  var topY = baseScreenY;
   if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    baseY = H / 2 + ((arM.baseBeta - arM.topBeta) * pixPerDeg);
+    topY = baseScreenY - ((arM.baseBeta - arM.topBeta) * pixPerDeg);
   }
-  baseY = Math.min(baseY, H - 10);
-  var topY = H / 2;
+  topY = Math.max(20 * dpr, Math.min(topY, H - 20 * dpr));
 
-  // Line
+  // Línea punteada congelada
   ctx.save();
-  ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.strokeStyle = 'rgba(76,175,80,0.95)';
-  ctx.lineWidth = 2.5 * dpr;
+  ctx.setLineDash([5 * dpr, 5 * dpr]);
+  ctx.strokeStyle = 'rgba(76,175,80,1)';
+  ctx.lineWidth = 3 * dpr;
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(W / 2, baseY);
-  ctx.lineTo(W / 2, topY);
+  ctx.moveTo(baseScreenX, baseScreenY);
+  ctx.lineTo(topX, topY);
   ctx.stroke();
   ctx.restore();
 
-  // Base dot (verde anclado)
+  // Base dot
   ctx.beginPath();
-  ctx.arc(W / 2, baseY, 6 * dpr, 0, Math.PI * 2);
+  ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(76,175,80,1)';
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(W / 2, baseY, 6 * dpr, 0, Math.PI * 2);
-  ctx.lineWidth = 2 * dpr;
+  ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+  ctx.lineWidth = 2.5 * dpr;
   ctx.strokeStyle = '#fff';
   ctx.stroke();
 
-  // Top dot (blanco, en el crosshair)
+  // Top dot
   ctx.beginPath();
-  ctx.arc(W / 2, topY, 5 * dpr, 0, Math.PI * 2);
+  ctx.arc(topX, topY, 9 * dpr, 0, Math.PI * 2);
   ctx.fillStyle = '#fff';
   ctx.fill();
+  ctx.beginPath();
+  ctx.arc(topX, topY, 9 * dpr, 0, Math.PI * 2);
+  ctx.lineWidth = 3 * dpr;
+  ctx.strokeStyle = 'rgba(0,180,230,1)';
+  ctx.stroke();
 
-  // Label
-  var midY = (baseY + topY) / 2;
+  // Label centrado en medio de la línea
+  var midY = (baseScreenY + topY) / 2;
   var h = arM.height || 0;
   var txt = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
-  ctx.font = 'bold ' + (15 * dpr) + 'px -apple-system, sans-serif';
+  ctx.font = 'bold ' + (16 * dpr) + 'px -apple-system, sans-serif';
   var tw = ctx.measureText(txt).width;
-  var px = 10 * dpr, py = 6 * dpr;
-  var pillW = tw + px * 2, pillH = 18 * dpr + py * 2;
-  var lx = W / 2 + 20 * dpr, pillR = pillH / 2;
+  var px = 12 * dpr, py = 8 * dpr;
+  var pillW = tw + px * 2, pillH = 20 * dpr + py * 2;
+  var lx = baseScreenX - pillW / 2;
+  var pillR = pillH / 2;
 
-  ctx.fillStyle = 'rgba(45,45,45,0.9)';
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 2 * dpr;
+  ctx.fillStyle = 'rgba(76,175,80,0.95)';
   ctx.beginPath();
   ctx.moveTo(lx + pillR, midY - pillH / 2);
   ctx.lineTo(lx + pillW - pillR, midY - pillH / 2);
@@ -565,11 +637,12 @@ function _arDrawFinal() {
   ctx.arc(lx + pillR, midY, pillR, Math.PI / 2, -Math.PI / 2);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
 
   ctx.fillStyle = '#fff';
-  ctx.textAlign = 'left';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(txt, lx + px, midY);
+  ctx.fillText(txt, baseScreenX, midY);
 }
 
 // ============================================================================
@@ -613,6 +686,8 @@ function _arUndo() {
   arM.step = 0;
   arM.baseBeta = null;
   arM.topBeta = null;
+  arM.baseScreenX = null;
+  arM.baseScreenY = null;
   arM.dist = null;
   arM.height = null;
   _arManualBase = null;
@@ -620,23 +695,21 @@ function _arUndo() {
   var c = document.getElementById('ar-cv');
   if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
 
-  document.getElementById('ar-hint').innerHTML =
-    'Apunta a la <b>base</b> del árbol y presiona <b>+</b>';
+  var hint = document.getElementById('ar-hint');
+  if (hint) hint.innerHTML = 'Apunta a la <b>base</b> del árbol y <b>toca la pantalla</b>';
+  var stepText = document.getElementById('ar-step-text');
+  if (stepText) stepText.textContent = 'Paso 1 de 2';
 
   var undo = document.getElementById('ar-undo');
   if (undo) undo.style.display = 'none';
 
-  var addBtn = document.getElementById('ar-add');
-  if (addBtn) {
-    addBtn.style.display = 'flex';
-    addBtn.style.borderColor = 'rgba(255,255,255,0.9)';
-    addBtn.style.background = 'rgba(255,255,255,0.15)';
-  }
+  // Re-habilitar tap-zone
+  var tz = document.getElementById('ar-tap-zone');
+  if (tz) tz.style.pointerEvents = 'auto';
 
   var r = document.getElementById('ar-result');
   if (r) r.remove();
 
-  // Re-check if we need manual fallback mode
   var box = document.getElementById('ar-box');
   if (box) {
     box.removeEventListener('touchend', _arManualTap);
