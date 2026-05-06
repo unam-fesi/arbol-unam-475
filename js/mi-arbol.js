@@ -146,6 +146,7 @@ const HEALTH_RUBRICS = [
 ];
 
 let myTreeLoaded = false;
+let _lastLoadedTreeId = null; // último tree_id renderizado en la vista
 let currentTreeData = null;
 let pendingPhotoBase64 = null;
 let pendingPhotoFile = null;
@@ -303,14 +304,25 @@ async function loadMyGardens() {
 }
 
 // ========== MAIN LOAD ==========
-async function loadMyTree(forceReload) {
+// loadMyTree(forceReload, specificTreeId)
+//   - Si specificTreeId se proporciona → carga ese árbol específico
+//   - Si no → carga el primer árbol asignado al usuario (comportamiento legacy)
+// El orquestador mi-portafolio.js llama con specificTreeId cuando el usuario
+// selecciona un árbol específico desde el selector.
+async function loadMyTree(forceReload, specificTreeId) {
   const container = document.getElementById('mi-arbol-content');
   if (!container) return;
+
+  // Cache invalidation: si pidió otro árbol, forzar reload
+  if (specificTreeId && _lastLoadedTreeId !== specificTreeId) forceReload = true;
   if (myTreeLoaded && !forceReload) return;
 
-  // Cargar banners en paralelo (no bloquea)
-  loadMyGroups();
-  loadMyGardens();
+  // Cargar banners en paralelo (no bloquea) — solo si NO está activo el orquestador
+  // (mi-portafolio.js los carga por separado para evitar duplicados)
+  if (typeof loadMyPortfolio !== 'function') {
+    loadMyGroups();
+    loadMyGardens();
+  }
 
   try {
     const { data: assignments, error: assignError } = await sb
@@ -337,7 +349,14 @@ async function loadMyTree(forceReload) {
       return;
     }
 
-    const tree = trees[0];
+    // Seleccionar el árbol a renderizar
+    let tree;
+    if (specificTreeId) {
+      tree = trees.find(t => t.id === specificTreeId) || trees[0];
+    } else {
+      tree = trees[0];
+    }
+    _lastLoadedTreeId = tree.id;
     currentTreeData = tree;
 
     const { data: measurements } = await sb
