@@ -900,6 +900,73 @@
                                 <!-- Weather widget -->
                                 <div id="admin-weather-widget" style="background:white;padding:1rem;border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:1rem;"></div>
 
+                                <!-- Bosque UNAM — visualizaci&oacute;n org&aacute;nica del estado de los &aacute;rboles -->
+                                <div id="dashboard-tree-vis" class="dashboard-tree-vis" style="display:none;">
+                                    <div class="dashboard-tree-header">
+                                        <h3>El Bosque UNAM 475</h3>
+                                        <p class="text-muted text-small">Cada hoja es un &aacute;rbol registrado. El color refleja su estado de salud actual. <em>Pasa el cursor sobre una hoja para ver detalles.</em></p>
+                                    </div>
+                                    <svg viewBox="0 0 600 500" xmlns="http://www.w3.org/2000/svg" class="dashboard-tree-svg" aria-label="Visualizaci&oacute;n org&aacute;nica del bosque">
+                                        <defs>
+                                            <linearGradient id="trunk-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%" stop-color="#3d2817"/>
+                                                <stop offset="50%" stop-color="#5d4e37"/>
+                                                <stop offset="100%" stop-color="#3d2817"/>
+                                            </linearGradient>
+                                            <radialGradient id="leaf-shine">
+                                                <stop offset="0%" stop-color="white" stop-opacity="0.4"/>
+                                                <stop offset="100%" stop-color="white" stop-opacity="0"/>
+                                            </radialGradient>
+                                        </defs>
+
+                                        <!-- Suelo -->
+                                        <ellipse cx="300" cy="465" rx="110" ry="6" fill="#5d4e37" opacity="0.18"/>
+
+                                        <!-- Ra&iacute;ces -->
+                                        <g class="dashboard-roots" stroke="#3d2817" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round">
+                                            <path d="M280 460 Q258 470 228 475 Q210 478 192 482"/>
+                                            <path d="M320 460 Q342 470 372 475 Q390 478 408 482"/>
+                                            <path d="M295 460 Q290 478 285 495"/>
+                                            <path d="M305 460 Q310 478 315 495"/>
+                                            <path d="M270 462 Q255 480 240 495"/>
+                                            <path d="M330 462 Q345 480 360 495"/>
+                                        </g>
+
+                                        <!-- Tronco -->
+                                        <path d="M285 460 Q288 380 290 280 Q294 200 297 130 Q298 80 296 40 L304 40 Q302 80 303 130 Q306 200 310 280 Q312 380 315 460 Z"
+                                              fill="url(#trunk-gradient)" stroke="#3d2817" stroke-width="0.8"/>
+
+                                        <!-- Ramas -->
+                                        <g class="dashboard-branches" stroke="#5d4e37" stroke-width="4" stroke-linecap="round" fill="none">
+                                            <path d="M295 250 Q220 235 145 240"/>
+                                            <path d="M295 195 Q210 175 125 165"/>
+                                            <path d="M298 145 Q245 125 185 105"/>
+                                            <path d="M299 95 Q278 75 245 60"/>
+                                            <path d="M305 250 Q380 235 455 240"/>
+                                            <path d="M305 195 Q390 175 475 165"/>
+                                            <path d="M302 145 Q355 125 415 105"/>
+                                            <path d="M301 95 Q322 75 355 60"/>
+                                        </g>
+
+                                        <!-- Hojas (slots — llenadas din&aacute;micamente por JS) -->
+                                        <g class="leaf-slots" id="dashboard-leaf-slots">
+                                            <!-- Populated by renderDashboardTree() -->
+                                        </g>
+                                    </svg>
+
+                                    <!-- Stats overlay (puede aparecer flotante o debajo) -->
+                                    <div class="dashboard-tree-legend">
+                                        <span class="legend-item"><span class="legend-dot" style="background:#4a7c2a;"></span> Saludable (80+)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#95b86c;"></span> Bueno (60-79)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#d49b3a;"></span> Atenci&oacute;n (40-59)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#b54f3a;"></span> Cr&iacute;tico (&lt;40)</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#c5b5a0;opacity:0.5;"></span> Sin datos</span>
+                                    </div>
+
+                                    <!-- Tooltip (creado por JS al hover) -->
+                                    <div id="dashboard-tree-tooltip" class="dashboard-tree-tooltip" style="display:none;"></div>
+                                </div>
+
                                 <div id="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
                                     <!-- Dynamically filled by JS -->
                                 </div>
@@ -1031,7 +1098,7 @@
     <script src="js/admin.js"></script>
 
     <!-- Forest FX (animaciones ambientales del tema) -->
-    <script src="forest-fx.js"></script>
+    <script src="js/forest-fx.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
