@@ -4,7 +4,7 @@
 // ============================================================================
 
 var arM = {
-  step: 0,         // 0=ready to mark base, 1=tracking (tilt up), 2=done
+  step: 0,
   stream: null,
   animId: null,
   gyroH: null,
@@ -15,8 +15,9 @@ var arM = {
   baseBeta: null,
   topBeta: null,
 
-  baseScreenX: null,  // posición X (en pixels canvas) donde el usuario tocó
-  baseScreenY: null,  // posición Y donde tocó la BASE
+  // Sign multiplier para corregir dispositivos con gyro invertido.
+  // Toggleable con botón en pantalla.
+  gyroSign: 1,
 
   phoneH: 1.5,
   dist: null,
@@ -31,7 +32,7 @@ function openARHeightMeasure() {
     step: 0, stream: null, animId: null, gyroH: null,
     hasGyro: false, gyroReady: false,
     curBeta: null, baseBeta: null, topBeta: null,
-    baseScreenX: null, baseScreenY: null,
+    gyroSign: 1,
     phoneH: 1.5, dist: null, height: null,
   };
 
@@ -107,7 +108,11 @@ function openARHeightMeasure() {
           '<span id="ar-step-text">Paso 1 de 2</span>' +
         '</div>' +
 
-        '<div style="width:42px;"></div>' +
+        '<button id="ar-invert" onclick="_arToggleInvert();event.stopPropagation();" title="Invertir si el punto verde se mueve al revés" style="pointer-events:auto;width:42px;height:42px;border-radius:50%;border:none;' +
+          'background:rgba(255,255,255,0.20);color:#fff;font-size:0.65rem;font-weight:600;cursor:pointer;' +
+          'display:none;align-items:center;justify-content:center;line-height:1;' +
+          'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+          'box-shadow:0 2px 8px rgba(0,0,0,0.3);">⇅<br>INV</button>' +
       '</div>' +
 
     '</div>';
@@ -243,10 +248,8 @@ function _arTapToMark(e) {
       'Apunta al <b>segundo punto</b> y <b>toca la pantalla</b>';
     document.getElementById('ar-step-text').textContent = 'Paso 2 de 2';
     document.getElementById('ar-undo').style.display = 'flex';
-
-    // Ocultar crosshair HTML — ahora dibujamos el cursor en canvas
-    var hc = document.getElementById('ar-html-crosshair');
-    if (hc) hc.style.display = 'none';
+    var inv = document.getElementById('ar-invert');
+    if (inv) inv.style.display = 'flex';
 
     _arSyncCv();
     _arStartAnim();
@@ -272,6 +275,15 @@ function _arTapToMark(e) {
 
 // Compatibilidad con código legacy (manual fallback usa _arAdd?)
 function _arAdd() { _arTapToMark({ clientX: window.innerWidth/2, clientY: window.innerHeight/2 }); }
+
+// Toggle inversión del gyro (en caso de que el dispositivo reporte beta al revés
+// y el punto verde se mueva en la dirección equivocada)
+function _arToggleInvert() {
+  arM.gyroSign = -arM.gyroSign;
+  if (typeof showToast === 'function') {
+    showToast('Dirección del gyro ' + (arM.gyroSign === 1 ? 'normal' : 'invertida'), 'info');
+  }
+}
 
 // ============================================================================
 // MANUAL FALLBACK (when no gyroscope)
@@ -391,23 +403,22 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- PUNTO 1 (verde): FIJO EN EL CENTRO DE LA PANTALLA ----
-      // Cuando se tapea, el crosshair (que estaba al centro) se vuelve verde
-      // y se queda ahí. NO se mueve cuando muevas la cámara.
+      // ---- PUNTO 1 (verde): ANCLADO AL MUNDO ----
+      // Capturado al tap 1 cuando el crosshair estaba al centro. Conforme
+      // la cámara se mueve, el verde se mueve en pantalla para mantenerse
+      // sobre el mismo punto físico del mundo.
+      // gyroSign permite invertir si el dispositivo reporta beta al revés.
       var baseScreenX = W / 2;
       var baseScreenY = H / 2;
+      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+        var deltaBase = (arM.baseBeta - arM.curBeta) * arM.gyroSign;
+        baseScreenY = (H / 2) + (deltaBase * pixPerDeg);
+      }
 
-      // ---- CURSOR para punto 2: arranca en el centro y se MUEVE conforme
-      // tiltas. La distancia desde el verde (centro) representa visualmente
-      // el ángulo medido. Math.abs para evitar problemas de inversión.
+      // ---- CURSOR (punto 2): SIEMPRE en el centro de la pantalla ----
+      // El usuario aima la cámara para que el centro coincida con la cima.
       var topScreenX = W / 2;
       var topScreenY = H / 2;
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaAbs = Math.abs(arM.baseBeta - arM.curBeta);
-        topScreenY = (H / 2) - (deltaAbs * pixPerDeg);
-      }
-      // Clamp para que no se salga arriba
-      topScreenY = Math.max(40 * dpr, topScreenY);
 
       // Altura en vivo (siempre positiva)
       var liveH = Math.abs(_arCalcH(arM.curBeta));
@@ -442,39 +453,33 @@ function _arStartAnim() {
         ctx.restore();
       }
 
-      // ---- PUNTO 1 (verde, FIJO en el centro de la pantalla) ----
-      // Halo
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,0.22)';
-      ctx.fill();
-      // Punto sólido
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,1)';
-      ctx.fill();
-      // Borde blanco
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-      ctx.lineWidth = 2.5 * dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.stroke();
-
-      // ---- CURSOR para punto 2 (círculo blanco con punto blanco, sigue al gyro) ----
-      // Solo se dibuja si está separado del verde (sino se overlapan)
-      if (lineLen > 5 * dpr) {
-        // Anillo blanco grande
+      // ---- PUNTO 1 (verde, anclado al mundo) ----
+      // Solo dibujar si está dentro del viewport
+      if (baseScreenY > -20 * dpr && baseScreenY < H + 20 * dpr) {
         ctx.beginPath();
-        ctx.arc(topScreenX, topScreenY, 14 * dpr, 0, Math.PI * 2);
-        ctx.lineWidth = 2 * dpr;
+        ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,0.22)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,1)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = 2.5 * dpr;
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.stroke();
-        // Punto blanco interior
-        ctx.beginPath();
-        ctx.arc(topScreenX, topScreenY, 3 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.95)';
-        ctx.fill();
+      } else {
+        // El verde está fuera del viewport — mostrar flecha indicadora en el borde
+        var arrowY = baseScreenY < 0 ? 30 * dpr : H - 30 * dpr;
+        var arrowChar = baseScreenY < 0 ? '↑' : '↓';
+        ctx.font = 'bold ' + (24 * dpr) + 'px -apple-system, sans-serif';
+        ctx.fillStyle = 'rgba(76,175,80,1)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(arrowChar, baseScreenX, arrowY);
       }
+      // El cursor para punto 2 es el HTML crosshair (always at center).
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -562,18 +567,20 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Verde fijo en el centro. Azul en la posición donde estaba el cursor
-  // al momento del segundo tap (offset desde centro proporcional a |delta|).
+  // Verde anclado al mundo: posición = H/2 + (baseBeta - curBeta) * sign * pixPerDeg
+  // Azul anclado al mundo: posición = H/2 + (topBeta - curBeta) * sign * pixPerDeg
+  // Conforme la cámara se mueva en step 2, ambos puntos se mueven juntos.
   var pixPerDeg = H / 60;
   var baseScreenX = W / 2;
   var topX = W / 2;
   var baseScreenY = H / 2;
   var topY = H / 2;
-  if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    var deltaAbs = Math.abs(arM.baseBeta - arM.topBeta);
-    topY = (H / 2) - deltaAbs * pixPerDeg;
+  if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+    baseScreenY = (H / 2) + ((arM.baseBeta - arM.curBeta) * arM.gyroSign * pixPerDeg);
   }
-  topY = Math.max(40 * dpr, topY);
+  if (arM.hasGyro && arM.topBeta !== null && arM.curBeta !== null) {
+    topY = (H / 2) + ((arM.topBeta - arM.curBeta) * arM.gyroSign * pixPerDeg);
+  }
 
   // Línea punteada congelada entre punto 1 (verde) y punto 2 (azul)
   ctx.save();
@@ -709,10 +716,9 @@ function _arUndo() {
   // Re-habilitar tap-zone
   var tz = document.getElementById('ar-tap-zone');
   if (tz) tz.style.pointerEvents = 'auto';
-
-  // Re-mostrar crosshair HTML
-  var hc = document.getElementById('ar-html-crosshair');
-  if (hc) hc.style.display = 'block';
+  // Ocultar botón invertir
+  var inv = document.getElementById('ar-invert');
+  if (inv) inv.style.display = 'none';
 
   var r = document.getElementById('ar-result');
   if (r) r.remove();
@@ -749,3 +755,8 @@ function closeARHeightMeasure() {
 }
 
 window.openARHeightMeasure = openARHeightMeasure;
+window._arTapToMark = _arTapToMark;
+window._arToggleInvert = _arToggleInvert;
+window._arUndo = _arUndo;
+window.closeARHeightMeasure = closeARHeightMeasure;
+window.arUseVal = arUseVal;
