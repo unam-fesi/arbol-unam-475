@@ -274,22 +274,54 @@ window.IztacalaMap = (function() {
               detailTasks.push({ type: 'court', mesh: obj, name });
             } else if (meta.kind === 'parking') {
               detailTasks.push({ type: 'parking', mesh: obj });
+            } else if (meta.kind === 'road') {
+              detailTasks.push({ type: 'road', mesh: obj });
+            } else if (name === 'Calles_Perimetro') {
+              detailTasks.push({ type: 'avenue', mesh: obj });
             }
           });
 
           scene.add(root);
 
+          // Forzar actualización de matrices del mundo para que computeCenterline
+          // pueda transformar vértices a world space correctamente
+          root.updateMatrixWorld(true);
+
           // ---- Aplicar overlays de detalle DESPUÉS de scene.add ----
-          // (necesitamos bbox en world space, lo cual requiere que el mesh
-          //  esté en la jerarquía)
+          // Acumulamos puntos de centerlines en arrays para crear pocos meshes
+          // en lugar de uno por camino (mucho mejor para performance).
+          const roadCenterlinePts = [];
+          const avenueDashes = [];
+
           detailTasks.forEach((t) => {
             try {
               if (t.type === 'court') addCourtMarkings(t.mesh, t.name);
               else if (t.type === 'parking') addParkingLines(t.mesh);
+              else if (t.type === 'road') {
+                const cl = computeCenterline(t.mesh, 8);
+                appendPolylineSegments(cl, roadCenterlinePts);
+              } else if (t.type === 'avenue') {
+                const cl = computeCenterline(t.mesh, 30);
+                appendDashedPolyline(cl, avenueDashes, 3.0, 2.0);
+              }
             } catch (e) {
               console.warn('Detail overlay failed:', t, e);
             }
           });
+
+          // Crear meshes consolidados de líneas de caminos y avenidas
+          if (roadCenterlinePts.length > 0) {
+            const g = new THREE.BufferGeometry().setFromPoints(roadCenterlinePts);
+            const m = new THREE.LineBasicMaterial({
+              color: 0xffffff, transparent: true, opacity: 0.6,
+            });
+            scene.add(new THREE.LineSegments(g, m));
+          }
+          if (avenueDashes.length > 0) {
+            const g = new THREE.BufferGeometry().setFromPoints(avenueDashes);
+            const m = new THREE.LineBasicMaterial({ color: 0xffd54a });
+            scene.add(new THREE.LineSegments(g, m));
+          }
 
           console.log(
             `Iztacala GLB loaded: ${buildingMeshes.length} edificios clickeables`
@@ -663,6 +695,123 @@ window.IztacalaMap = (function() {
         new THREE.Vector3(cx + Math.cos(a1) * r, y, cz + Math.sin(a1) * r),
         new THREE.Vector3(cx + Math.cos(a2) * r, y, cz + Math.sin(a2) * r)
       );
+    }
+  }
+
+  // ============================================================================
+  // CENTERLINE — algoritmo de bandas promediadas
+  // ============================================================================
+  // Para un mesh tipo "calle" (largo y delgado), divide el eje largo del bbox
+  // en N bandas. Para cada banda, promedia la coordenada perpendicular de los
+  // vértices del mesh que caen en esa banda. La conexión de esos promedios da
+  // una polilínea que aproxima el centro del camino (funciona para rectos,
+  // ligeramente curvos, y en L con cierta pérdida en las esquinas).
+  //
+  // Retorna array de THREE.Vector3 ordenados a lo largo del eje, o [] si el
+  // camino es muy cuadrado / muy chico para tener centerline.
+  // ============================================================================
+  function computeCenterline(mesh, samples) {
+    if (!mesh || !mesh.geometry) return [];
+    const posAttr = mesh.geometry.getAttribute('position');
+    if (!posAttr || posAttr.count < 3) return [];
+
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    if (!isFinite(bbox.min.x)) return [];
+
+    const sx = bbox.max.x - bbox.min.x;
+    const sz = bbox.max.z - bbox.min.z;
+    const longLen = Math.max(sx, sz);
+    const shortLen = Math.min(sx, sz);
+
+    // Filtros: muy chico o muy cuadrado (ratio < 2:1) → omitir
+    if (longLen < 6) return [];
+    if (longLen / Math.max(shortLen, 0.01) < 2.0) return [];
+
+    const longAxis = sx >= sz ? 'x' : 'z';
+    const yLine = bbox.max.y + 0.04;
+
+    // Transformar vértices a world space (una sola vez)
+    const tmp = new THREE.Vector3();
+    const worldVerts = [];
+    for (let i = 0; i < posAttr.count; i++) {
+      tmp.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+      tmp.applyMatrix4(mesh.matrixWorld);
+      worldVerts.push({ x: tmp.x, z: tmp.z });
+    }
+
+    const N = Math.max(4, Math.min(samples, Math.floor(longLen / 3)));
+    const minLong = longAxis === 'x' ? bbox.min.x : bbox.min.z;
+    const bandSize = (longAxis === 'x' ? sx : sz) / N;
+
+    const points = [];
+    for (let i = 0; i < N; i++) {
+      const bandMin = minLong + i * bandSize;
+      const bandMax = bandMin + bandSize;
+
+      let sumPerp = 0;
+      let count = 0;
+      for (let v = 0; v < worldVerts.length; v++) {
+        const w = worldVerts[v];
+        const along = longAxis === 'x' ? w.x : w.z;
+        if (along >= bandMin && along <= bandMax) {
+          sumPerp += longAxis === 'x' ? w.z : w.x;
+          count++;
+        }
+      }
+      if (count < 2) continue;
+
+      const perpAvg = sumPerp / count;
+      const alongCenter = bandMin + bandSize * 0.5;
+      const p = (longAxis === 'x')
+        ? new THREE.Vector3(alongCenter, yLine, perpAvg)
+        : new THREE.Vector3(perpAvg, yLine, alongCenter);
+      points.push(p);
+    }
+    return points;
+  }
+
+  // Convertir polilínea (puntos consecutivos) a pares para LineSegments
+  function appendPolylineSegments(polyline, out) {
+    for (let i = 0; i < polyline.length - 1; i++) {
+      out.push(polyline[i], polyline[i + 1]);
+    }
+  }
+
+  // Convertir polilínea a pares discontinuos (dashes)
+  // dashLen y gapLen en metros
+  function appendDashedPolyline(polyline, out, dashLen, gapLen) {
+    if (polyline.length < 2) return;
+    const total = dashLen + gapLen;
+
+    // Tomamos toda la polilínea como una secuencia continua y vamos
+    // recorriéndola con un cursor de distancia "t". Cada [t, t+dashLen]
+    // se convierte en un segmento; saltamos gapLen y repetimos.
+    let inDash = true;
+    let remain = dashLen;
+    for (let i = 0; i < polyline.length - 1; i++) {
+      const a = polyline[i];
+      const b = polyline[i + 1];
+      const segLen = a.distanceTo(b);
+      if (segLen < 0.01) continue;
+
+      let cursor = 0;
+      let segStart = a.clone();
+      while (cursor < segLen) {
+        const need = inDash ? remain : remain;
+        const take = Math.min(need, segLen - cursor);
+        const t1 = cursor / segLen;
+        const t2 = (cursor + take) / segLen;
+        const p1 = new THREE.Vector3().lerpVectors(a, b, t1);
+        const p2 = new THREE.Vector3().lerpVectors(a, b, t2);
+        if (inDash) out.push(p1, p2);
+
+        cursor += take;
+        remain -= take;
+        if (remain <= 0.001) {
+          inDash = !inDash;
+          remain = inDash ? dashLen : gapLen;
+        }
+      }
     }
   }
 
