@@ -170,11 +170,67 @@ async function resolvePhotoUrl(photoUrlOrPath) {
   }
 }
 
+// ========== MIS GRUPOS BANNER ==========
+async function loadMyGroups() {
+  const banner = document.getElementById('my-groups-banner');
+  if (!banner || !currentUser) return;
+  try {
+    // Membresías del usuario
+    const { data: memberships, error: memErr } = await sb
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', currentUser.id);
+    if (memErr) throw memErr;
+
+    if (!memberships || memberships.length === 0) {
+      banner.innerHTML = '';
+      return;
+    }
+
+    const groupIds = memberships.map(m => m.group_id);
+    const { data: groups, error: gErr } = await sb
+      .from('user_groups')
+      .select('id, name, description')
+      .in('id', groupIds);
+    if (gErr) throw gErr;
+
+    if (!groups || groups.length === 0) {
+      banner.innerHTML = '';
+      return;
+    }
+
+    const chips = groups.map(g => `
+      <span style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(46,125,50,0.12);color:#2E7D32;
+        padding:0.4rem 0.85rem;border-radius:20px;font-size:0.85rem;font-weight:600;
+        border:1px solid rgba(46,125,50,0.25);" title="${escapeHtml(g.description || '')}">
+        <i class="fas fa-users" style="font-size:0.75rem;"></i>${escapeHtml(g.name)}
+      </span>
+    `).join('');
+
+    banner.innerHTML = `
+      <div class="card" style="margin-bottom:1.5rem;padding:1rem 1.2rem;background:linear-gradient(135deg,rgba(232,245,233,0.7),rgba(255,253,247,0.5));border-left:4px solid #2E7D32;">
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+          <i class="fas fa-users" style="color:#2E7D32;"></i>
+          <strong style="color:#1b5e20;">Mis grupos</strong>
+          <span style="color:#666;font-size:0.8rem;">(${groups.length})</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">${chips}</div>
+      </div>
+    `;
+  } catch (err) {
+    console.error('loadMyGroups error:', err);
+    banner.innerHTML = '';
+  }
+}
+
 // ========== MAIN LOAD ==========
 async function loadMyTree(forceReload) {
   const container = document.getElementById('mi-arbol-content');
   if (!container) return;
   if (myTreeLoaded && !forceReload) return;
+
+  // Cargar banner de grupos en paralelo (no bloquea)
+  loadMyGroups();
 
   try {
     const { data: assignments, error: assignError } = await sb
