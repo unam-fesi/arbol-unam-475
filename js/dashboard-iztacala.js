@@ -221,8 +221,12 @@ window.IztacalaMap = (function() {
         (gltf) => {
           const root = gltf.scene;
 
-          // Recorrer cada mesh para activar sombras, parsear nombre y registrar
-          // como clickeable cuando aplique.
+          // Caché de materiales mejorados (compartidos entre meshes)
+          const matCache = {};
+          const detailTasks = []; // tareas de overlay diferidas
+
+          // Recorrer cada mesh para activar sombras, parsear nombre, mejorar
+          // materiales y registrar como clickeable.
           root.traverse((obj) => {
             if (!obj.isMesh) return;
 
@@ -231,13 +235,27 @@ window.IztacalaMap = (function() {
 
             const name = obj.name || '';
             const meta = parseMeshName(name);
+            const matName = obj.material?.name || '';
+
+            // ---- MEJORA DE MATERIALES con texturas procedurales ----
+            if (matName === 'Mat_Asphalt') {
+              if (!matCache.asphalt) matCache.asphalt = makeAsphaltMaterial();
+              obj.material = matCache.asphalt;
+            } else if (matName === 'Mat_Sidewalk') {
+              if (!matCache.sidewalk) matCache.sidewalk = makeSidewalkMaterial();
+              obj.material = matCache.sidewalk;
+            } else if (matName === 'Mat_Grass' || matName === 'Mat_Grass_Dark') {
+              // Pasto: leve mejora con variación de tono usando textura
+              if (!matCache.grass) matCache.grass = makeGrassMaterial();
+              obj.material = matCache.grass;
+            }
 
             // Pasto/banqueta: solo recibe sombra (no proyecta)
             if (meta.kind === 'terrain') {
               obj.castShadow = false;
             }
 
-            // Edificios: clickeable, guarda data en userData para popup
+            // Edificios: clickeable
             if (meta.kind === 'building') {
               obj.userData = {
                 type: 'building',
@@ -245,19 +263,33 @@ window.IztacalaMap = (function() {
                   id: meta.osm_id,
                   name: meta.label,
                   tags: { building: 'school' },
-                  part: meta.part, // 'W' o 'R'
+                  part: meta.part,
                 },
               };
               buildingMeshes.push(obj);
             }
 
-            // Mejorar materiales para que se vean bien con la luz
-            // (algunos GLBs vienen con MeshStandardMaterial muy oscuro;
-            //  Lambert/Phong se ve más cercano a render arquitectónico)
-            // Mantenemos el material original pero subimos el envMap si existe.
+            // Diferir detalles que requieren bbox (después del scene.add)
+            if (meta.kind === 'court') {
+              detailTasks.push({ type: 'court', mesh: obj, name });
+            } else if (meta.kind === 'parking') {
+              detailTasks.push({ type: 'parking', mesh: obj });
+            }
           });
 
           scene.add(root);
+
+          // ---- Aplicar overlays de detalle DESPUÉS de scene.add ----
+          // (necesitamos bbox en world space, lo cual requiere que el mesh
+          //  esté en la jerarquía)
+          detailTasks.forEach((t) => {
+            try {
+              if (t.type === 'court') addCourtMarkings(t.mesh, t.name);
+              else if (t.type === 'parking') addParkingLines(t.mesh);
+            } catch (e) {
+              console.warn('Detail overlay failed:', t, e);
+            }
+          });
 
           console.log(
             `Iztacala GLB loaded: ${buildingMeshes.length} edificios clickeables`
@@ -313,11 +345,325 @@ window.IztacalaMap = (function() {
 
     if (/^Road_/.test(name)) return { kind: 'road' };
     if (/^Park_/.test(name)) return { kind: 'parking' };
-    if (/^Cancha_/.test(name)) return { kind: 'court' };
+    if (/^Cancha_/.test(name)) {
+      let courtType = 'generic';
+      if (/soccer|futbol/i.test(name)) courtType = 'soccer';
+      else if (/basket/i.test(name)) courtType = 'basketball';
+      else if (/show/i.test(name)) courtType = 'showball';
+      return { kind: 'court', courtType };
+    }
     if (name === 'Banqueta' || name === 'Pasto_Campus' || name === 'Calles_Perimetro') {
       return { kind: 'terrain' };
     }
     return { kind: 'other' };
+  }
+
+  // ============================================================================
+  // TEXTURAS PROCEDURALES PARA MATERIALES DEL GLB
+  // ============================================================================
+
+  // Asfalto granulado con leve variación
+  function makeAsphaltMaterial() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+
+    g.fillStyle = '#3d3d3d';
+    g.fillRect(0, 0, 256, 256);
+
+    // Ruido de gravilla
+    for (let i = 0; i < 1500; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const v = 30 + Math.random() * 35;
+      g.fillStyle = `rgb(${v},${v},${v})`;
+      g.fillRect(x, y, 1.5, 1.5);
+    }
+    // Grietas sutiles
+    g.strokeStyle = 'rgba(20,20,20,0.6)';
+    g.lineWidth = 0.5;
+    for (let i = 0; i < 20; i++) {
+      g.beginPath();
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      g.moveTo(x, y);
+      g.lineTo(x + (Math.random() - 0.5) * 60, y + (Math.random() - 0.5) * 60);
+      g.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(8, 8);
+    if (renderer) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return new THREE.MeshLambertMaterial({ map: tex });
+  }
+
+  // Cemento/banqueta con baldosas
+  function makeSidewalkMaterial() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+
+    // Base cemento claro
+    const grad = g.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, '#bdb6a8');
+    grad.addColorStop(1, '#a8a195');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+
+    // Líneas de baldosas (juntas)
+    g.strokeStyle = 'rgba(80,75,65,0.55)';
+    g.lineWidth = 1.5;
+    for (let y = 0; y <= 256; y += 64) {
+      g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke();
+    }
+    for (let x = 0; x <= 256; x += 64) {
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke();
+    }
+
+    // Manchas / desgaste
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const r = Math.random() * 6 + 2;
+      g.fillStyle = `rgba(140,130,115,${Math.random() * 0.25})`;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(10, 10);
+    if (renderer) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return new THREE.MeshLambertMaterial({ map: tex });
+  }
+
+  // Pasto con variación de tono
+  function makeGrassMaterial() {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+
+    g.fillStyle = '#6fb24a';
+    g.fillRect(0, 0, 128, 128);
+
+    for (let i = 0; i < 1200; i++) {
+      const x = Math.random() * 128;
+      const y = Math.random() * 128;
+      const v = Math.random();
+      const r = 90 + Math.floor(v * 30);
+      const gr = 150 + Math.floor(v * 40);
+      const b = 60 + Math.floor(v * 25);
+      g.fillStyle = `rgba(${r},${gr},${b},${0.35 + Math.random() * 0.3})`;
+      g.fillRect(x, y, 1.2, 1.2);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(20, 20);
+    return new THREE.MeshLambertMaterial({ map: tex });
+  }
+
+  // ============================================================================
+  // OVERLAYS DE LÍNEAS — CANCHAS Y ESTACIONAMIENTOS
+  // ============================================================================
+
+  // Marcas reglamentarias en cancha según tipo
+  function addCourtMarkings(mesh, name) {
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    if (!isFinite(bbox.min.x)) return;
+
+    const cx = (bbox.min.x + bbox.max.x) / 2;
+    const cz = (bbox.min.z + bbox.max.z) / 2;
+    const sx = bbox.max.x - bbox.min.x;
+    const sz = bbox.max.z - bbox.min.z;
+    const yLine = bbox.max.y + 0.04;
+
+    // Lado largo determina orientación de la línea central
+    const longAxis = sx >= sz ? 'x' : 'z';
+    const longLen = Math.max(sx, sz);
+    const shortLen = Math.min(sx, sz);
+
+    const points = [];
+
+    // Borde inset
+    const inset = 0.6;
+    const xMin = bbox.min.x + inset;
+    const xMax = bbox.max.x - inset;
+    const zMin = bbox.min.z + inset;
+    const zMax = bbox.max.z - inset;
+
+    // Rectángulo perimetral (común a todas)
+    pushRect(points, xMin, xMax, zMin, zMax, yLine);
+
+    // Línea media
+    if (longAxis === 'x') {
+      // Línea perpendicular al largo, parte el rectángulo
+      points.push(
+        new THREE.Vector3(cx, yLine, zMin),
+        new THREE.Vector3(cx, yLine, zMax)
+      );
+    } else {
+      points.push(
+        new THREE.Vector3(xMin, yLine, cz),
+        new THREE.Vector3(xMax, yLine, cz)
+      );
+    }
+
+    // Círculo central
+    const r = Math.min(sx, sz) * 0.13;
+    pushCircle(points, cx, cz, yLine, r, 32);
+
+    const lname = (name || '').toLowerCase();
+    const isSoccer = /soccer|futbol/.test(lname);
+    const isBasket = /basket/.test(lname);
+
+    if (isSoccer) {
+      // Áreas de portería en los extremos cortos
+      const goalDepth = shortLen * 0.18;
+      const goalWidth = longLen * 0.12;
+      if (longAxis === 'x') {
+        // Portería en xMin y xMax
+        const zg1 = cz - goalWidth / 2;
+        const zg2 = cz + goalWidth / 2;
+        pushRect(points, xMin, xMin + goalDepth, zg1, zg2, yLine);
+        pushRect(points, xMax - goalDepth, xMax, zg1, zg2, yLine);
+      } else {
+        const xg1 = cx - goalWidth / 2;
+        const xg2 = cx + goalWidth / 2;
+        pushRect(points, xg1, xg2, zMin, zMin + goalDepth, yLine);
+        pushRect(points, xg1, xg2, zMax - goalDepth, zMax, yLine);
+      }
+    } else if (isBasket) {
+      // Áreas de tiros libres (rectángulos pequeños en los extremos cortos)
+      const keyDepth = shortLen * 0.40;
+      const keyWidth = longLen * 0.20;
+      if (longAxis === 'x') {
+        const zk1 = cz - keyWidth / 2;
+        const zk2 = cz + keyWidth / 2;
+        pushRect(points, xMin, xMin + keyDepth, zk1, zk2, yLine);
+        pushRect(points, xMax - keyDepth, xMax, zk1, zk2, yLine);
+        // Semicírculo de tiros libres
+        pushArc(points, xMin + keyDepth, cz, yLine, keyWidth / 2, 16, -Math.PI / 2, Math.PI / 2);
+        pushArc(points, xMax - keyDepth, cz, yLine, keyWidth / 2, 16, Math.PI / 2, 3 * Math.PI / 2);
+      } else {
+        const xk1 = cx - keyWidth / 2;
+        const xk2 = cx + keyWidth / 2;
+        pushRect(points, xk1, xk2, zMin, zMin + keyDepth, yLine);
+        pushRect(points, xk1, xk2, zMax - keyDepth, zMax, yLine);
+        pushArc(points, cx, zMin + keyDepth, yLine, keyWidth / 2, 16, 0, Math.PI);
+        pushArc(points, cx, zMax - keyDepth, yLine, keyWidth / 2, 16, Math.PI, 2 * Math.PI);
+      }
+    }
+    // (showball / generic: solo rectángulo + línea central + círculo)
+
+    if (points.length === 0) return;
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    const lines = new THREE.LineSegments(geom, mat);
+    scene.add(lines);
+  }
+
+  // Líneas de cajones de estacionamiento perpendiculares al lado largo
+  function addParkingLines(mesh) {
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    if (!isFinite(bbox.min.x)) return;
+
+    const sx = bbox.max.x - bbox.min.x;
+    const sz = bbox.max.z - bbox.min.z;
+    const yLine = bbox.max.y + 0.04;
+
+    if (sx < 4 || sz < 4) return; // muy chico, omitir
+
+    const longAxis = sx >= sz ? 'x' : 'z';
+    const longLen = Math.max(sx, sz);
+    const slotW = 2.7; // ancho típico de cajón
+    const numSlots = Math.max(4, Math.floor(longLen / slotW));
+
+    const points = [];
+
+    // Marco perimetral
+    const inset = 0.4;
+    const xMin = bbox.min.x + inset;
+    const xMax = bbox.max.x - inset;
+    const zMin = bbox.min.z + inset;
+    const zMax = bbox.max.z - inset;
+    pushRect(points, xMin, xMax, zMin, zMax, yLine);
+
+    // Líneas de cajones perpendiculares al lado largo
+    for (let i = 1; i < numSlots; i++) {
+      const t = i / numSlots;
+      if (longAxis === 'x') {
+        const x = bbox.min.x + t * sx;
+        points.push(
+          new THREE.Vector3(x, yLine, zMin),
+          new THREE.Vector3(x, yLine, zMax)
+        );
+      } else {
+        const z = bbox.min.z + t * sz;
+        points.push(
+          new THREE.Vector3(xMin, yLine, z),
+          new THREE.Vector3(xMax, yLine, z)
+        );
+      }
+    }
+
+    // Si el estacionamiento es muy ancho, agregar línea central
+    // (separación entre dos filas espalda con espalda)
+    const shortLen = Math.min(sx, sz);
+    if (shortLen > 8) {
+      if (longAxis === 'x') {
+        const cz = (bbox.min.z + bbox.max.z) / 2;
+        points.push(
+          new THREE.Vector3(xMin, yLine, cz),
+          new THREE.Vector3(xMax, yLine, cz)
+        );
+      } else {
+        const cx = (bbox.min.x + bbox.max.x) / 2;
+        points.push(
+          new THREE.Vector3(cx, yLine, zMin),
+          new THREE.Vector3(cx, yLine, zMax)
+        );
+      }
+    }
+
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    const lines = new THREE.LineSegments(geom, mat);
+    scene.add(lines);
+  }
+
+  // Helpers de geometría
+  function pushRect(points, xMin, xMax, zMin, zMax, y) {
+    points.push(
+      new THREE.Vector3(xMin, y, zMin), new THREE.Vector3(xMax, y, zMin),
+      new THREE.Vector3(xMax, y, zMin), new THREE.Vector3(xMax, y, zMax),
+      new THREE.Vector3(xMax, y, zMax), new THREE.Vector3(xMin, y, zMax),
+      new THREE.Vector3(xMin, y, zMax), new THREE.Vector3(xMin, y, zMin)
+    );
+  }
+  function pushCircle(points, cx, cz, y, r, segments) {
+    for (let i = 0; i < segments; i++) {
+      const a1 = (i / segments) * Math.PI * 2;
+      const a2 = ((i + 1) / segments) * Math.PI * 2;
+      points.push(
+        new THREE.Vector3(cx + Math.cos(a1) * r, y, cz + Math.sin(a1) * r),
+        new THREE.Vector3(cx + Math.cos(a2) * r, y, cz + Math.sin(a2) * r)
+      );
+    }
+  }
+  function pushArc(points, cx, cz, y, r, segments, startAngle, endAngle) {
+    const total = segments;
+    for (let i = 0; i < total; i++) {
+      const a1 = startAngle + (i / total) * (endAngle - startAngle);
+      const a2 = startAngle + ((i + 1) / total) * (endAngle - startAngle);
+      points.push(
+        new THREE.Vector3(cx + Math.cos(a1) * r, y, cz + Math.sin(a1) * r),
+        new THREE.Vector3(cx + Math.cos(a2) * r, y, cz + Math.sin(a2) * r)
+      );
+    }
   }
 
   // ============================================================================
