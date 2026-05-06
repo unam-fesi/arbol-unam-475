@@ -82,6 +82,20 @@ function skipIntro() {
 }
 
 async function initApp() {
+  // ----- Public deep link: ?report=<tree_code> NO requiere login -----
+  // Esto permite que cualquier persona escanee el QR del árbol y reporte
+  // un problema sin tener cuenta.
+  const _params = new URLSearchParams(window.location.search);
+  const _publicReport = _params.get('report');
+  if (_publicReport) {
+    // Salta el video intro y la pantalla de login
+    introFinished = true;
+    const overlay = document.getElementById('intro-video-overlay');
+    if (overlay) overlay.style.display = 'none';
+    showPublicReportScreen(_publicReport);
+    return;
+  }
+
   // Start intro video
   initIntroVideo();
 
@@ -427,6 +441,159 @@ async function handleDeepLink() {
   }
 }
 
+// ========== PUBLIC REPORT SCREEN (QR ciudadano, sin login) ==========
+async function showPublicReportScreen(treeCode) {
+  // Oculta login y main app
+  const login = document.getElementById('login-screen');
+  const main = document.getElementById('main-app');
+  if (login) login.style.display = 'none';
+  if (main) main.style.display = 'none';
+
+  // Crear overlay con form
+  const overlay = document.createElement('div');
+  overlay.id = 'public-report-overlay';
+  overlay.className = 'login-container';
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="login-box" style="max-width:480px;">
+      <div class="login-logo">
+        <div class="login-logo-text" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+          <span style="font-size:1.6rem;">🌳</span> Reporte Ciudadano
+        </div>
+        <div class="login-logo-subtitle">Proyecto Árbol UNAM 475</div>
+      </div>
+      <div id="public-report-tree-info" style="margin-bottom:1rem;text-align:center;color:var(--primary-dark);">
+        Cargando datos del árbol…
+      </div>
+      <form id="public-report-form" onsubmit="submitPublicReport(event)">
+        <div class="login-form-group">
+          <label for="pr-name">Tu nombre (opcional)</label>
+          <input type="text" id="pr-name" placeholder="Anónimo">
+        </div>
+        <div class="login-form-group">
+          <label for="pr-contact">Tu contacto (opcional)</label>
+          <input type="text" id="pr-contact" placeholder="email o teléfono">
+        </div>
+        <div class="login-form-group">
+          <label for="pr-title">Título del reporte <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="pr-title" required placeholder="Ej: Rama caída, plaga visible">
+        </div>
+        <div class="login-form-group">
+          <label for="pr-urgency">Urgencia</label>
+          <select id="pr-urgency" style="width:100%;padding:0.85rem 1rem;border:1.5px solid var(--border-light);border-radius:12px;background:rgba(255,253,247,0.7);font-size:0.95rem;">
+            <option value="low">Baja</option>
+            <option value="normal" selected>Normal</option>
+            <option value="high">Alta</option>
+            <option value="critical">Crítica</option>
+          </select>
+        </div>
+        <div class="login-form-group">
+          <label for="pr-description">Descripción del problema <span style="color:var(--danger);">*</span></label>
+          <textarea id="pr-description" required rows="4" style="width:100%;padding:0.85rem 1rem;border:1.5px solid var(--border-light);border-radius:12px;background:rgba(255,253,247,0.7);font-size:0.95rem;font-family:inherit;" placeholder="Describe lo que observaste…"></textarea>
+        </div>
+        <button type="submit" class="login-btn">
+          <i class="fas fa-paper-plane"></i> Enviar reporte
+        </button>
+        <div id="pr-status" class="text-small" style="margin-top:0.75rem;text-align:center;"></div>
+      </form>
+      <div class="login-footer">
+        <p style="font-size:0.78rem;color:var(--text-light);">Universidad Nacional Autónoma de México</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Lookup tree info (anon — política RLS permite SELECT autenticado)
+  // Si la política bloquea anon, la búsqueda fallará — usamos un fallback
+  // mostrando solo el código.
+  try {
+    const { data: tree, error } = await sb.from('trees_catalog')
+      .select('id, tree_code, common_name, species, campus')
+      .eq('tree_code', treeCode).maybeSingle();
+    const info = document.getElementById('public-report-tree-info');
+    if (tree && info) {
+      info.innerHTML = `
+        <div style="background:rgba(74,124,42,0.10);padding:0.85rem 1rem;border-radius:12px;border-left:3px solid var(--primary);">
+          <strong>${escapeHtml(tree.common_name || tree.species || 'Árbol')}</strong>
+          <div class="text-small text-muted">Código: ${escapeHtml(tree.tree_code)} · ${escapeHtml(tree.campus || 'Campus desconocido')}</div>
+        </div>
+      `;
+      // Guardar tree_id en el form para el submit
+      document.getElementById('public-report-form').dataset.treeId = String(tree.id);
+      document.getElementById('public-report-form').dataset.treeCode = tree.tree_code;
+    } else {
+      if (info) {
+        info.innerHTML = `<div class="text-muted text-small">Árbol con código <code>${escapeHtml(treeCode)}</code></div>`;
+      }
+      document.getElementById('public-report-form').dataset.treeCode = treeCode;
+    }
+  } catch (e) {
+    const info = document.getElementById('public-report-tree-info');
+    if (info) info.innerHTML = `<div class="text-muted">Código: ${escapeHtml(treeCode)}</div>`;
+    document.getElementById('public-report-form').dataset.treeCode = treeCode;
+  }
+}
+
+async function submitPublicReport(e) {
+  if (e) e.preventDefault();
+  const form = document.getElementById('public-report-form');
+  const status = document.getElementById('pr-status');
+  if (!form) return;
+
+  const treeCode = form.dataset.treeCode;
+  const treeId = form.dataset.treeId ? parseInt(form.dataset.treeId, 10) : null;
+  const title = document.getElementById('pr-title').value.trim();
+  const description = document.getElementById('pr-description').value.trim();
+  const urgency = document.getElementById('pr-urgency').value;
+  const reporterName = document.getElementById('pr-name').value.trim();
+  const reporterContact = document.getElementById('pr-contact').value.trim();
+
+  if (!title || !description) {
+    if (status) { status.textContent = 'Por favor completa título y descripción.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+  if (!treeId) {
+    if (status) { status.textContent = 'No se pudo identificar el árbol.'; status.style.color = 'var(--danger)'; }
+    return;
+  }
+
+  if (status) { status.textContent = 'Enviando…'; status.style.color = 'var(--text-light)'; }
+
+  try {
+    // Llamar Edge Function pública (sin auth)
+    const url = SUPABASE_URL + '/functions/v1/submit-public-report';
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY  // anon key como bearer
+      },
+      body: JSON.stringify({
+        tree_id: treeId, tree_code: treeCode,
+        title, description, urgency,
+        reporter_name: reporterName || null,
+        reporter_contact: reporterContact || null
+      })
+    });
+    const data = await r.json();
+    if (!r.ok || data.error) throw new Error(data.error || 'Error ' + r.status);
+    if (status) {
+      status.style.color = 'var(--success)';
+      status.innerHTML = '✓ Reporte enviado. Gracias por cuidar el bosque UNAM.';
+    }
+    form.querySelectorAll('input, select, textarea, button').forEach(el => el.disabled = true);
+    setTimeout(() => {
+      window.location.href = window.location.pathname;  // limpia URL params
+    }, 3000);
+  } catch (err) {
+    if (status) {
+      status.style.color = 'var(--danger)';
+      status.textContent = 'Error: ' + err.message;
+    }
+  }
+}
+
 // ========== SERVICE WORKER REGISTRATION (#7 PWA) ==========
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
@@ -449,3 +616,5 @@ window.hideForgotPassword = hideForgotPassword;
 window.sendPasswordReset = sendPasswordReset;
 window.handleDeepLink = handleDeepLink;
 window.registerServiceWorker = registerServiceWorker;
+window.showPublicReportScreen = showPublicReportScreen;
+window.submitPublicReport = submitPublicReport;
