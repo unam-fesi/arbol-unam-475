@@ -6,7 +6,7 @@
     <title>Proyecto Árbol UNAM 475 — FES Iztacala</title>
 
     <!-- Security Headers (frame-ancestors y X-Frame-Options se setean a nivel HTTP en GH Pages) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net; font-src fonts.gstatic.com cdnjs.cloudflare.com; worker-src 'self' blob:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com dl.polyhaven.org cdn.polyhaven.com; connect-src 'self' *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net dl.polyhaven.org cdn.polyhaven.com api.polyhaven.com; font-src fonts.gstatic.com cdnjs.cloudflare.com; worker-src 'self' blob:">
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
@@ -38,9 +38,10 @@
     <!-- SheetJS for Excel export (#8) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- Three.js + OrbitControls (Bosque UNAM 3D) -->
+    <!-- Three.js + OrbitControls + GLTFLoader (Bosque UNAM 3D) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
