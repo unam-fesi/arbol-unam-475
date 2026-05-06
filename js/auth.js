@@ -127,6 +127,16 @@ function showMainApp() {
   document.getElementById('main-app').style.display = 'block';
   showSection('section-mi-arbol');
   updateUserDisplay();
+  // Sync any offline-queued measurements
+  if (window.OfflineQueue && navigator.onLine) {
+    window.OfflineQueue.syncPending().then(r => {
+      if (r?.synced && typeof showToast === 'function') {
+        showToast(`Sincronizadas ${r.synced} mediciones offline`, 'success');
+      }
+    }).catch(() => {});
+  }
+  // Handle deep links (?t=<code> from QR)
+  setTimeout(handleDeepLink, 600);
 }
 
 function updateUserDisplay() {
@@ -354,6 +364,79 @@ async function saveProfile(e) {
   }
 }
 
+// ========== FORGOT PASSWORD (#20) ==========
+function showForgotPassword() {
+  const p = document.getElementById('forgot-password-panel');
+  if (p) p.style.display = 'block';
+}
+
+function hideForgotPassword() {
+  const p = document.getElementById('forgot-password-panel');
+  if (p) p.style.display = 'none';
+  const s = document.getElementById('forgot-status');
+  if (s) s.textContent = '';
+}
+
+async function sendPasswordReset() {
+  const email = document.getElementById('forgot-email')?.value.trim();
+  const status = document.getElementById('forgot-status');
+  if (!email) { if (status) status.textContent = 'Ingresa tu correo'; return; }
+  if (status) { status.textContent = 'Enviando...'; status.style.color = 'var(--text-light)'; }
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname + '?reset=1'
+    });
+    if (error) throw error;
+    if (status) {
+      status.textContent = '✓ Si el correo existe, recibirás un enlace en breve.';
+      status.style.color = 'var(--success, #2e7d32)';
+    }
+    setTimeout(hideForgotPassword, 4000);
+  } catch (err) {
+    if (status) {
+      status.textContent = 'Error: ' + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  }
+}
+
+// ========== DEEP LINK HANDLER (#1 — QR scan) ==========
+// When a user scans a tree QR they arrive at /?t=<tree_code>
+async function handleDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const treeCode = params.get('t');
+  const reportTree = params.get('report');
+  if (!treeCode && !reportTree) return;
+  // Wait for session
+  const { data } = await sb.auth.getSession();
+  if (!data?.session) return; // login first; will be re-checked after login
+  const code = treeCode || reportTree;
+  // Look up tree
+  const { data: tree } = await sb.from('trees_catalog')
+    .select('id, tree_code, common_name, species, campus')
+    .eq('tree_code', code).single();
+  if (!tree) {
+    if (typeof showToast === 'function') showToast('Árbol ' + code + ' no encontrado', 'warning');
+    return;
+  }
+  if (reportTree && typeof openCitizenReport === 'function') {
+    openCitizenReport(tree.id, tree.tree_code, tree.common_name);
+  } else if (typeof showSpecialistTree === 'function') {
+    showSection('section-specialist');
+    setTimeout(() => showSpecialistTree(tree.id), 500);
+  }
+}
+
+// ========== SERVICE WORKER REGISTRATION (#7 PWA) ==========
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  // Use absolute path relative to current location
+  const swUrl = (window.location.pathname.replace(/\/[^\/]*$/, '/') + 'sw.js').replace(/\/+/g, '/');
+  navigator.serviceWorker.register(swUrl).then(reg => {
+    console.log('SW registered:', reg.scope);
+  }).catch(err => console.warn('SW registration failed:', err));
+}
+
 // Make functions globally accessible
 window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
@@ -361,3 +444,8 @@ window.openProfileModal = openProfileModal;
 window.closeProfileModal = closeProfileModal;
 window.saveProfile = saveProfile;
 window.skipIntro = skipIntro;
+window.showForgotPassword = showForgotPassword;
+window.hideForgotPassword = hideForgotPassword;
+window.sendPasswordReset = sendPasswordReset;
+window.handleDeepLink = handleDeepLink;
+window.registerServiceWorker = registerServiceWorker;
