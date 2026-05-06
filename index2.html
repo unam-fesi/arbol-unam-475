@@ -38,6 +38,10 @@
     <!-- SheetJS for Excel export (#8) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+    <!-- Three.js + OrbitControls (Bosque UNAM 3D) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
@@ -906,53 +910,13 @@
                                         <h3>El Bosque UNAM 475</h3>
                                         <p class="text-muted text-small">Cada hoja es un &aacute;rbol registrado. El color refleja su estado de salud actual. <em>Pasa el cursor sobre una hoja para ver detalles.</em></p>
                                     </div>
-                                    <svg viewBox="0 0 600 500" xmlns="http://www.w3.org/2000/svg" class="dashboard-tree-svg" aria-label="Visualizaci&oacute;n org&aacute;nica del bosque">
-                                        <defs>
-                                            <linearGradient id="trunk-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                <stop offset="0%" stop-color="#3d2817"/>
-                                                <stop offset="50%" stop-color="#5d4e37"/>
-                                                <stop offset="100%" stop-color="#3d2817"/>
-                                            </linearGradient>
-                                            <radialGradient id="leaf-shine">
-                                                <stop offset="0%" stop-color="white" stop-opacity="0.4"/>
-                                                <stop offset="100%" stop-color="white" stop-opacity="0"/>
-                                            </radialGradient>
-                                        </defs>
-
-                                        <!-- Suelo -->
-                                        <ellipse cx="300" cy="465" rx="110" ry="6" fill="#5d4e37" opacity="0.18"/>
-
-                                        <!-- Ra&iacute;ces -->
-                                        <g class="dashboard-roots" stroke="#3d2817" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round">
-                                            <path d="M280 460 Q258 470 228 475 Q210 478 192 482"/>
-                                            <path d="M320 460 Q342 470 372 475 Q390 478 408 482"/>
-                                            <path d="M295 460 Q290 478 285 495"/>
-                                            <path d="M305 460 Q310 478 315 495"/>
-                                            <path d="M270 462 Q255 480 240 495"/>
-                                            <path d="M330 462 Q345 480 360 495"/>
-                                        </g>
-
-                                        <!-- Tronco -->
-                                        <path d="M285 460 Q288 380 290 280 Q294 200 297 130 Q298 80 296 40 L304 40 Q302 80 303 130 Q306 200 310 280 Q312 380 315 460 Z"
-                                              fill="url(#trunk-gradient)" stroke="#3d2817" stroke-width="0.8"/>
-
-                                        <!-- Ramas -->
-                                        <g class="dashboard-branches" stroke="#5d4e37" stroke-width="4" stroke-linecap="round" fill="none">
-                                            <path d="M295 250 Q220 235 145 240"/>
-                                            <path d="M295 195 Q210 175 125 165"/>
-                                            <path d="M298 145 Q245 125 185 105"/>
-                                            <path d="M299 95 Q278 75 245 60"/>
-                                            <path d="M305 250 Q380 235 455 240"/>
-                                            <path d="M305 195 Q390 175 475 165"/>
-                                            <path d="M302 145 Q355 125 415 105"/>
-                                            <path d="M301 95 Q322 75 355 60"/>
-                                        </g>
-
-                                        <!-- Hojas (slots — llenadas din&aacute;micamente por JS) -->
-                                        <g class="leaf-slots" id="dashboard-leaf-slots">
-                                            <!-- Populated by renderDashboardTree() -->
-                                        </g>
-                                    </svg>
+                                    <!-- Contenedor 3D del Bosque UNAM (Three.js) -->
+                                    <div id="dashboard-tree-3d" class="dashboard-tree-3d" aria-label="Visualizaci&oacute;n 3D del bosque — arrastra para rotar"></div>
+                                    <p class="text-muted text-small" style="text-align:center;margin:0.5rem 0 0;">
+                                        <i class="fas fa-mouse"></i> Arrastra para rotar &middot; Rueda para zoom &middot; Click en hoja para abrir &aacute;rbol
+                                    </p>
+                                    <!-- Slots SVG legacy (oculto, mantenido por compatibilidad si JS de fallback) -->
+                                    <svg style="display:none;" id="dashboard-leaf-slots-fallback"><g id="dashboard-leaf-slots"></g></svg>
 
                                     <!-- Stats overlay (puede aparecer flotante o debajo) -->
                                     <div class="dashboard-tree-legend">
@@ -1099,6 +1063,9 @@
 
     <!-- Forest FX (animaciones ambientales del tema) -->
     <script src="js/forest-fx.js"></script>
+
+    <!-- Bosque UNAM — árbol 3D realista del dashboard -->
+    <script src="js/dashboard-tree-3d.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
