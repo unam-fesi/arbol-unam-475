@@ -170,6 +170,27 @@ function openARHeightMeasure() {
 
   document.body.appendChild(ov);
 
+  // ---- Listeners robustos para iOS Safari ----
+  // (onclick en <div> a veces no se dispara en iOS — agregamos touchend explícito)
+  var tz = document.getElementById('ar-tap-zone');
+  if (tz) {
+    var tapHandler = function(ev) {
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      _arCapture(ev);
+    };
+    tz.addEventListener('click', tapHandler, false);
+    tz.addEventListener('touchend', tapHandler, false);
+  }
+  var capBtn = document.getElementById('ar-capture');
+  if (capBtn) {
+    var btnHandler = function(ev) {
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      _arCapture(ev);
+    };
+    capBtn.addEventListener('click', btnHandler, false);
+    capBtn.addEventListener('touchend', btnHandler, false);
+  }
+
   // ---- Cámara ----
   navigator.mediaDevices.getUserMedia({
     video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
@@ -321,11 +342,43 @@ function _arStopHudLoop() {
 }
 
 // ============================================================================
-// CAPTURE — botón circular grande
+// FLASH MESSAGE in-overlay (z-index 10001 — siempre visible sobre la cámara)
 // ============================================================================
-function _arCapture() {
+var _arFlashTimer = null;
+function _arFlash(msg, color) {
+  var ov = document.getElementById('ar-ov');
+  if (!ov) return;
+  var f = document.getElementById('ar-flash');
+  if (!f) {
+    f = document.createElement('div');
+    f.id = 'ar-flash';
+    f.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10001;' +
+      'padding:0.7rem 1.1rem;border-radius:14px;color:#fff;font-size:0.9rem;font-weight:600;' +
+      'text-align:center;max-width:78%;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
+      'box-shadow:0 6px 24px rgba(0,0,0,0.5);transition:opacity 0.2s;pointer-events:none;line-height:1.3;';
+    ov.appendChild(f);
+  }
+  f.style.background = (color || '#444') + 'e6';
+  f.textContent = msg;
+  f.style.opacity = '1';
+  if (_arFlashTimer) clearTimeout(_arFlashTimer);
+  _arFlashTimer = setTimeout(function() {
+    if (f) f.style.opacity = '0';
+  }, 1700);
+}
+
+// ============================================================================
+// CAPTURE — tap en pantalla o botón circular grande
+// ============================================================================
+function _arCapture(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.stopPropagation) e.stopPropagation();
+
+  // Feedback inmediato (visible aunque haya algún guard que salga early)
+  _arFlash('TAP detectado', '#2E7D32');
+
   if (arM.curBeta === null || !arM.gyroReady) {
-    if (typeof showToast === 'function') showToast('Esperando giroscopio…', 'warning');
+    _arFlash('Esperando giroscopio…', '#EF5350');
     return;
   }
 
@@ -338,9 +391,10 @@ function _arCapture() {
 
   if (arM.step === 0) {
     // ---- BASE ----
-    if (ang > -1.5) {
-      if (typeof showToast === 'function')
-        showToast('Inclina más hacia abajo (apunta al suelo del árbol)', 'warning');
+    // Tolerancia mínima: el ángulo debe ser al menos ligeramente abajo del
+    // horizonte (de lo contrario tan(β) es 0 y la distancia explota).
+    if (ang > -0.5) {
+      _arFlash('Inclina hacia abajo a la base del árbol', '#FFA726');
       return;
     }
     arM.baseBeta = arM.curBeta;
@@ -378,9 +432,8 @@ function _arCapture() {
 
   } else if (arM.step === 1) {
     // ---- TOP ----
-    if (ang < 1.5) {
-      if (typeof showToast === 'function')
-        showToast('Inclina más hacia arriba (apunta a la cima)', 'warning');
+    if (ang < 0.5) {
+      _arFlash('Inclina hacia arriba a la cima del árbol', '#FFA726');
       return;
     }
     arM.topBeta = arM.curBeta;
