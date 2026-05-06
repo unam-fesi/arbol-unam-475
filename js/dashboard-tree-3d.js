@@ -43,159 +43,201 @@
     return tex;
   }
 
+  // =========================================================
+  // JACARANDA (Jacaranda mimosifolia) — árbol icónico de UNAM
+  //  - Tronco grueso, gris-marrón claro, BIFURCACIÓN TEMPRANA
+  //  - Canopy AMPLIO en forma de paraguas, denso
+  //  - Hojas verdes pequeñas + flores violeta lavanda en racimos
+  // =========================================================
   function buildTree(trees) {
     const group = new THREE.Group();
 
-    // ---- Tronco: TubeGeometry con curva natural ----
-    const trunkPoints = [
-      new THREE.Vector3(0,    0,    0),
-      new THREE.Vector3(0.25, 1.5,  0.15),
-      new THREE.Vector3(-0.15, 3,   0.05),
-      new THREE.Vector3(0.15, 4.5, -0.10),
-      new THREE.Vector3(0.05, 6,    0.05),
-      new THREE.Vector3(0,    7.5,  0)
-    ];
-    const trunkCurve = new THREE.CatmullRomCurve3(trunkPoints);
-    const trunkGeo = new THREE.TubeGeometry(trunkCurve, 32, 0.55, 14, false);
-
-    // Bark material: dark brown roughness, no metalness
     const barkMat = new THREE.MeshStandardMaterial({
-      color: 0x4a3a28,
-      roughness: 0.95,
-      metalness: 0.0,
-      flatShading: false
+      color: 0x6e5a3e,    // gris-marrón claro (no oscuro)
+      roughness: 0.92,
+      metalness: 0.0
     });
 
-    // Taper manual: estrechar la parte alta del trunk (ahora con clamp seguro
-    // a [0,1] para evitar getPointAt fuera de rango y wrap defensivo)
+    // ---- Tronco corto (1.8m) que bifurca temprano ----
+    const trunkPoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.05, 0.5, 0.05),
+      new THREE.Vector3(-0.05, 1.0, -0.03),
+      new THREE.Vector3(0.05, 1.5, 0.02),
+      new THREE.Vector3(0, 1.8, 0)
+    ];
+    const trunkCurve = new THREE.CatmullRomCurve3(trunkPoints);
+    const trunkGeo = new THREE.TubeGeometry(trunkCurve, 24, 0.42, 14, false);
     try {
       const pos = trunkGeo.attributes.position;
       for (let i = 0; i < pos.count; i++) {
         const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
-        const h = Math.max(0, Math.min(1, vy / 7.5));
-        const taper = 1 - h * 0.55;
-        // Usar getPoint (parameter-space) en vez de getPointAt (arc-length)
+        const h = Math.max(0, Math.min(1, vy / 1.8));
+        const taper = 1 - h * 0.30;
         const sp = trunkCurve.getPoint(h);
         if (!sp || sp.x == null) continue;
-        const dx = vx - sp.x;
-        const dz = vz - sp.z;
+        const dx = vx - sp.x, dz = vz - sp.z;
         pos.setXYZ(i, sp.x + dx * taper, vy, sp.z + dz * taper);
       }
       pos.needsUpdate = true;
       trunkGeo.computeVertexNormals();
-    } catch (e) {
-      console.warn('Taper skipped:', e.message);
-      // Sin taper, el trunk queda uniforme — sigue luciendo bien
-    }
-
+    } catch (e) { console.warn('Trunk taper:', e.message); }
     const trunk = new THREE.Mesh(trunkGeo, barkMat);
     trunk.castShadow = true;
     trunk.receiveShadow = true;
     group.add(trunk);
 
-    // ---- Ramas: 8 ramas radiales con curvatura ----
-    const branchTips = [];
-    const numBranches = 8;
-    for (let i = 0; i < numBranches; i++) {
-      const angle = (i / numBranches) * Math.PI * 2 + Math.random() * 0.3;
-      const startY = 4.0 + Math.random() * 2.5;
-      const startR = 0.35;
-      const sx = Math.sin(angle) * startR;
-      const sz = Math.cos(angle) * startR;
-      const endR = 2.8 + Math.random() * 1.4;
-      const endY = startY + 1.0 + Math.random() * 1.4;
+    // ---- 5 ramas principales abriéndose como paraguas ----
+    const allTips = [];
+    const numMain = 5;
+    for (let i = 0; i < numMain; i++) {
+      const angle = (i / numMain) * Math.PI * 2 + Math.random() * 0.4;
+      const tilt = 0.55 + Math.random() * 0.20;
+      const length = 4.5 + Math.random() * 1.2;
+      const sx = 0, sy = 1.7, sz = 0;
+      const endR = length * Math.sin(tilt);
+      const endY = sy + length * Math.cos(tilt);
       const ex = Math.sin(angle) * endR;
       const ez = Math.cos(angle) * endR;
-
+      const m1 = new THREE.Vector3(
+        (ex - sx) * 0.35 + (Math.random() - 0.5) * 0.3,
+        sy + (endY - sy) * 0.40,
+        (ez - sz) * 0.35 + (Math.random() - 0.5) * 0.3
+      );
+      const m2 = new THREE.Vector3(
+        (ex - sx) * 0.70,
+        sy + (endY - sy) * 0.78,
+        (ez - sz) * 0.70
+      );
       const branchCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(sx, startY, sz),
-        new THREE.Vector3(
-          (sx + ex) * 0.5 + (Math.random() - 0.5) * 0.6,
-          (startY + endY) * 0.5 + 0.4,
-          (sz + ez) * 0.5 + (Math.random() - 0.5) * 0.6
-        ),
+        new THREE.Vector3(sx, sy, sz), m1, m2,
         new THREE.Vector3(ex, endY, ez)
       ]);
-      const branchGeo = new THREE.TubeGeometry(branchCurve, 14, 0.14, 8, false);
+      const branchGeo = new THREE.TubeGeometry(branchCurve, 18, 0.20, 10, false);
+      try {
+        const p = branchGeo.attributes.position;
+        for (let j = 0; j < p.count; j++) {
+          const vx = p.getX(j), vy = p.getY(j), vz = p.getZ(j);
+          const h = Math.max(0, Math.min(1, (vy - sy) / Math.max(0.001, endY - sy)));
+          const taper = 1 - h * 0.65;
+          const sp = branchCurve.getPoint(h);
+          if (!sp) continue;
+          p.setXYZ(j, sp.x + (vx - sp.x) * taper, vy, sp.z + (vz - sp.z) * taper);
+        }
+        p.needsUpdate = true;
+        branchGeo.computeVertexNormals();
+      } catch (e) {}
       const branch = new THREE.Mesh(branchGeo, barkMat);
       branch.castShadow = true;
       group.add(branch);
 
-      branchTips.push({ x: ex, y: endY, z: ez });
+      allTips.push({ x: ex, y: endY, z: ez, size: 1.0 });
 
       // Sub-ramas
-      if (Math.random() > 0.4) {
-        const subTip = {
-          x: ex + Math.cos(angle) * (0.6 + Math.random()),
-          y: endY + 0.4 + Math.random() * 0.8,
-          z: ez - Math.sin(angle) * (0.6 + Math.random())
-        };
+      const subCount = 2 + Math.floor(Math.random() * 2);
+      for (let s = 0; s < subCount; s++) {
+        const subAngle = angle + (Math.random() - 0.5) * 1.0;
+        const subLen = 1.0 + Math.random() * 1.2;
+        const sx2 = ex * 0.7, sy2 = endY * 0.85, sz2 = ez * 0.7;
+        const endR2 = subLen * Math.sin(tilt + (Math.random() - 0.5) * 0.3);
+        const ex2 = sx2 + Math.sin(subAngle) * endR2;
+        const ey2 = sy2 + subLen * Math.cos(tilt) * 0.4;
+        const ez2 = sz2 + Math.cos(subAngle) * endR2;
         const subCurve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(ex, endY, ez),
-          new THREE.Vector3(
-            (ex + subTip.x) * 0.5,
-            (endY + subTip.y) * 0.5 + 0.2,
-            (ez + subTip.z) * 0.5
-          ),
-          new THREE.Vector3(subTip.x, subTip.y, subTip.z)
+          new THREE.Vector3(sx2, sy2, sz2),
+          new THREE.Vector3((sx2 + ex2) * 0.5, (sy2 + ey2) * 0.5 + 0.2, (sz2 + ez2) * 0.5),
+          new THREE.Vector3(ex2, ey2, ez2)
         ]);
-        const subGeo = new THREE.TubeGeometry(subCurve, 8, 0.08, 6, false);
+        const subGeo = new THREE.TubeGeometry(subCurve, 10, 0.09, 7, false);
         const sub = new THREE.Mesh(subGeo, barkMat);
         sub.castShadow = true;
         group.add(sub);
-        branchTips.push(subTip);
+        allTips.push({ x: ex2, y: ey2, z: ez2, size: 0.8 });
       }
     }
 
-    // ---- Hojas: 50 instancias coloreadas por salud ----
+    // ---- HOJAS DATA (50 clickeables, coloreadas por salud) ----
     leafMeshes = [];
-    const leafGeo = new THREE.IcosahedronGeometry(0.42, 0);
-    const totalSlots = 50;
+    const leafGeo = new THREE.IcosahedronGeometry(0.40, 0);
+    const flowerGeo = new THREE.SphereGeometry(0.32, 8, 6);
+
+    // Paleta jacaranda en flor
+    const FLOWER_COLORS = [0x8e6bb5, 0xa07ec5, 0xb794d8, 0xc8aae0, 0x9678c0, 0x7c5aa6];
+    const LEAF_GREEN = [0x6b8a3e, 0x7a9c4a, 0x8aab58];
+
     const sorted = (trees || []).slice().sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
     const total = sorted.length;
-    const scaled = total > totalSlots;
+    const totalDataSlots = 50;
+    const scaled = total > totalDataSlots;
 
-    for (let i = 0; i < totalSlots; i++) {
-      const tip = branchTips[i % branchTips.length];
-      // Spread leaves around branch tip in a small cluster
+    for (let i = 0; i < totalDataSlots; i++) {
+      const tip = allTips[i % allTips.length];
+      const spread = 1.6 * tip.size;
       const offset = new THREE.Vector3(
-        (Math.random() - 0.5) * 1.6,
-        (Math.random() - 0.3) * 1.0,
-        (Math.random() - 0.5) * 1.6
+        (Math.random() - 0.5) * spread,
+        (Math.random() - 0.2) * 0.9,
+        (Math.random() - 0.5) * spread
       );
-
       let assignedTree = null;
       if (!scaled) assignedTree = sorted[i] || null;
-      else assignedTree = sorted[Math.floor(i * total / totalSlots)] || null;
-
+      else assignedTree = sorted[Math.floor(i * total / totalDataSlots)] || null;
       const isEmpty = !(assignedTree && assignedTree.id != null);
       const score = assignedTree ? (assignedTree.health_score || 0) : null;
       const color = isEmpty ? 0xc5b5a0 : colorByHealth(score);
 
       const mat = new THREE.MeshStandardMaterial({
-        color: color,
-        roughness: 0.7,
-        metalness: 0.0,
-        flatShading: true,
+        color, roughness: 0.65, flatShading: true,
         emissive: 0x000000,
-        transparent: isEmpty,
-        opacity: isEmpty ? 0.35 : 1.0
+        transparent: isEmpty, opacity: isEmpty ? 0.30 : 1.0
       });
       const leaf = new THREE.Mesh(leafGeo, mat);
       leaf.position.set(tip.x + offset.x, tip.y + offset.y, tip.z + offset.z);
-      const baseScale = isEmpty ? 0.55 : (0.75 + Math.random() * 0.45);
+      const baseScale = isEmpty ? 0.5 : (0.85 + Math.random() * 0.5);
       leaf.scale.setScalar(baseScale);
       leaf.castShadow = !isEmpty;
       leaf.userData = {
-        isLeaf: true,
-        tree: assignedTree,
-        isEmpty,
-        baseScale,
-        wobblePhase: Math.random() * Math.PI * 2,
-        baseY: leaf.position.y
+        isLeaf: true, tree: assignedTree, isEmpty, baseScale,
+        wobblePhase: Math.random() * Math.PI * 2, baseY: leaf.position.y
       };
       group.add(leaf);
       leafMeshes.push(leaf);
+    }
+
+    // ---- 250 FLORES VIOLETA jacaranda (densidad visual) ----
+    for (let i = 0; i < 250; i++) {
+      const tip = allTips[i % allTips.length];
+      const spread = 2.0 * tip.size;
+      const x = tip.x + (Math.random() - 0.5) * spread;
+      const y = tip.y + (Math.random() - 0.3) * 1.6;
+      const z = tip.z + (Math.random() - 0.5) * spread;
+      const c = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
+      const mat = new THREE.MeshStandardMaterial({
+        color: c, roughness: 0.55, flatShading: true,
+        emissive: 0x140820, emissiveIntensity: 0.25
+      });
+      const flower = new THREE.Mesh(flowerGeo, mat);
+      flower.position.set(x, y, z);
+      flower.scale.setScalar(0.55 + Math.random() * 0.55);
+      flower.userData = { isFlower: true, baseY: y, wobblePhase: Math.random() * Math.PI * 2 };
+      group.add(flower);
+    }
+
+    // ---- 70 hojas verdes intercaladas ----
+    for (let i = 0; i < 70; i++) {
+      const tip = allTips[i % allTips.length];
+      const spread = 2.2 * tip.size;
+      const x = tip.x + (Math.random() - 0.5) * spread;
+      const y = tip.y + (Math.random() - 0.4) * 1.4;
+      const z = tip.z + (Math.random() - 0.5) * spread;
+      const greenColor = LEAF_GREEN[Math.floor(Math.random() * LEAF_GREEN.length)];
+      const mat = new THREE.MeshStandardMaterial({
+        color: greenColor, roughness: 0.7, flatShading: true
+      });
+      const greenLeaf = new THREE.Mesh(leafGeo, mat);
+      greenLeaf.position.set(x, y, z);
+      greenLeaf.scale.setScalar(0.45 + Math.random() * 0.4);
+      greenLeaf.userData = { isFlower: true, baseY: y, wobblePhase: Math.random() * Math.PI * 2 };
+      group.add(greenLeaf);
     }
 
     return group;
@@ -210,7 +252,7 @@
     scene.fog = new THREE.Fog(0xeae0c8, 22, 65);
 
     camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
-    camera.position.set(0, 7, 17);
+    camera.position.set(0, 5.5, 14);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -272,11 +314,11 @@
       controls.dampingFactor = 0.08;
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.6;
-      controls.minDistance = 11;
-      controls.maxDistance = 28;
+      controls.minDistance = 8;
+      controls.maxDistance = 24;
       controls.minPolarAngle = Math.PI / 7;
       controls.maxPolarAngle = Math.PI / 2.05;
-      controls.target.set(0, 5.5, 0);
+      controls.target.set(0, 4.5, 0);
       controls.enablePan = false;
     } else {
       console.warn('OrbitControls no cargado, modo estático');
