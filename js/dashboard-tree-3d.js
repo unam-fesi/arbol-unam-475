@@ -66,25 +66,27 @@
       flatShading: false
     });
 
-    // Vary trunk thickness manually (taper)
-    const pos = trunkGeo.attributes.position;
-    const tubeLen = trunkPoints.length - 1;
-    for (let i = 0; i < pos.count; i++) {
-      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
-      // approximate height fraction
-      const h = v.y / 7.5;
-      const taper = 1 - h * 0.55; // thicker at base
-      // distance from spine in horizontal plane
-      const cx = trunkCurve.getPointAt(Math.min(1, h)).x;
-      const cz = trunkCurve.getPointAt(Math.min(1, h)).z;
-      const dx = v.x - cx;
-      const dz = v.z - cz;
-      v.x = cx + dx * taper;
-      v.z = cz + dz * taper;
-      pos.setXYZ(i, v.x, v.y, v.z);
+    // Taper manual: estrechar la parte alta del trunk (ahora con clamp seguro
+    // a [0,1] para evitar getPointAt fuera de rango y wrap defensivo)
+    try {
+      const pos = trunkGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+        const h = Math.max(0, Math.min(1, vy / 7.5));
+        const taper = 1 - h * 0.55;
+        // Usar getPoint (parameter-space) en vez de getPointAt (arc-length)
+        const sp = trunkCurve.getPoint(h);
+        if (!sp || sp.x == null) continue;
+        const dx = vx - sp.x;
+        const dz = vz - sp.z;
+        pos.setXYZ(i, sp.x + dx * taper, vy, sp.z + dz * taper);
+      }
+      pos.needsUpdate = true;
+      trunkGeo.computeVertexNormals();
+    } catch (e) {
+      console.warn('Taper skipped:', e.message);
+      // Sin taper, el trunk queda uniforme — sigue luciendo bien
     }
-    pos.needsUpdate = true;
-    trunkGeo.computeVertexNormals();
 
     const trunk = new THREE.Mesh(trunkGeo, barkMat);
     trunk.castShadow = true;
