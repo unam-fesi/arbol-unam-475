@@ -15,12 +15,17 @@ var arM = {
   baseBeta: null,
   topBeta: null,
 
-  // Posiciones EXACTAS en pantalla donde el usuario tocó.
-  // NUNCA se modifican por gyro — son SCREEN-ANCHORED puras.
+  // Posición DE TAP donde el usuario tocó. Sirve como ancla inicial
+  // (en el instante del tap, el punto está exactamente ahí). Después
+  // se ajusta con el delta del gyro para "pegarse" al punto del mundo.
   baseScreenX: null,
   baseScreenY: null,
   topScreenX: null,
   topScreenY: null,
+
+  // Multiplicador de signo del gyro: por si el dispositivo reporta beta
+  // al revés que esperamos. Toggle con botón "INV".
+  gyroSign: 1,
 
   phoneH: 1.5,
   dist: null,
@@ -37,6 +42,7 @@ function openARHeightMeasure() {
     curBeta: null, baseBeta: null, topBeta: null,
     baseScreenX: null, baseScreenY: null,
     topScreenX: null, topScreenY: null,
+    gyroSign: 1,
     phoneH: 1.5, dist: null, height: null,
   };
 
@@ -410,16 +416,11 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- PUNTO 1 (verde): SCREEN-ANCHORED, NUNCA SE MUEVE ----
-      // Se queda EXACTAMENTE donde el usuario tocó. El gyro NO afecta su
-      // posición en pantalla. Solo se usa baseBeta (capturado al tap)
-      // para calcular la altura matemáticamente.
+      // ---- PUNTO 1 (verde): donde tocaste, NO se mueve nunca ----
       var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
       var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
 
-      // ---- CURSOR (preview de punto 2): SIEMPRE en el centro ----
-      // El crosshair HTML está en el centro. El usuario apunta moviendo
-      // la cámara, no moviendo un puntero.
+      // ---- CURSOR (preview de punto 2): siempre en el centro ----
       var topScreenX = W / 2;
       var topScreenY = H / 2;
 
@@ -558,7 +559,7 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Ambos puntos SCREEN-ANCHORED — donde el usuario tocó. NO se mueven.
+  // Ambos puntos screen-anchored — exactamente donde el usuario tocó.
   var baseScreenX = arM.baseScreenX != null ? arM.baseScreenX : W / 2;
   var baseScreenY = arM.baseScreenY != null ? arM.baseScreenY : H / 2;
   var topX = arM.topScreenX != null ? arM.topScreenX : W / 2;
