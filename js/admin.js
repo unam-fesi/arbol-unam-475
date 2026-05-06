@@ -1786,19 +1786,84 @@ function bosqueGenerateLeafPath(x, y, r) {
   return `M ${tx} ${ty} c ${-r} ${-r*0.5}, ${-r*1.4} ${-r*0.4}, 0 ${-r*1.6} c ${r*1.4} ${-r*0.4 + r*1.6}, ${r} ${r*1.1}, 0 ${r*1.6} z`;
 }
 
+// Cache del último treeList para que switchVisTab tenga datos sin re-fetchear
+let _lastDashboardTrees = [];
+
 function renderDashboardTree(treeList) {
+  _lastDashboardTrees = treeList || [];
   const container = document.getElementById('dashboard-tree-vis');
   if (!container) return;
-  // Mostrar el contenedor (estaba display:none por defecto hasta que JS lo procesa)
   container.style.display = 'block';
 
-  // Si Three.js + el módulo 3D están disponibles, usar la visualización 3D realista
+  // Render la tab activa
+  const activeTab = document.querySelector('.vis-tab.active');
+  const which = activeTab ? activeTab.dataset.vis : 'bosque';
+  switchVisTab(which);
+}
+
+// Dispatcher entre las 4 visualizaciones (Bosque, Mapa, Mosaico, Heatmap)
+function switchVisTab(which) {
+  // UI: marcar tab activa
+  document.querySelectorAll('.vis-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.vis === which);
+  });
+  document.querySelectorAll('.vis-pane').forEach(p => p.classList.remove('active'));
+  const pane = document.getElementById('vis-' + which);
+  if (pane) pane.classList.add('active');
+
+  // Actualizar descripción
+  const desc = document.getElementById('vis-description');
+  if (desc) {
+    const texts = {
+      bosque: 'Cada árbol del bosque representa uno real del proyecto. Color = salud, tamaño = altura medida.',
+      mapa: 'Cada árbol plotteado en sus coordenadas reales del campus. Click → abre detalles.',
+      mosaico: 'Tres zonas según salud: verde (sano), ámbar (atención) y rojo (crítico). Cada foto es un árbol.',
+      heatmap: 'Mapa de calor por salud. Zonas cálidas = árboles sanos, zonas frías = árboles en riesgo.'
+    };
+    desc.textContent = texts[which] || '';
+  }
+
+  const trees = _lastDashboardTrees;
+
+  // Cleanup de visualizaciones inactivas (libera memoria GPU/Leaflet)
+  ['DashboardTree3D','DashboardMapa','DashboardMosaico','DashboardHeatmap'].forEach(mod => {
+    if (window[mod] && window[mod].destroy) {
+      try { window[mod].destroy(); } catch (e) {}
+    }
+  });
+
+  // Inicializar la visualización activa
+  setTimeout(() => {
+    try {
+      if (which === 'bosque' && window.DashboardTree3D) {
+        window.DashboardTree3D.init('#dashboard-tree-3d', trees);
+      } else if (which === 'mapa' && window.DashboardMapa) {
+        window.DashboardMapa.init('#dashboard-mapa-vis', trees);
+      } else if (which === 'mosaico' && window.DashboardMosaico) {
+        window.DashboardMosaico.init('#dashboard-mosaico-vis', trees);
+      } else if (which === 'heatmap' && window.DashboardHeatmap) {
+        window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
+      }
+    } catch (e) {
+      console.warn('Vis init failed:', which, e);
+    }
+  }, 50);
+}
+
+window.switchVisTab = switchVisTab;
+
+// Función legacy (compatibilidad)
+function renderDashboardTreeLegacy(treeList) {
+  const container = document.getElementById('dashboard-tree-vis');
+  if (!container) return;
+  container.style.display = 'block';
+
   if (window.DashboardTree3D && window.THREE) {
     try {
       const ok = window.DashboardTree3D.init('#dashboard-tree-3d', treeList || []);
       if (ok) return;
     } catch (e) {
-      console.warn('Bosque 3D falló, usando fallback SVG:', e);
+      console.warn('Bosque 3D falló:', e);
     }
   }
 
