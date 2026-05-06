@@ -889,18 +889,50 @@
                                 <!-- Weather widget -->
                                 <div id="admin-weather-widget" style="background:white;padding:1rem;border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:1rem;"></div>
 
-                                <!-- Bosque UNAM — visualizaci&oacute;n org&aacute;nica del estado de los &aacute;rboles -->
+                                <!-- Bosque UNAM — 4 visualizaciones con tabs -->
                                 <div id="dashboard-tree-vis" class="dashboard-tree-vis" style="display:none;">
                                     <div class="dashboard-tree-header">
                                         <h3>El Bosque UNAM 475</h3>
-                                        <p class="text-muted text-small">Cada &aacute;rbol del bosque representa uno real del proyecto. Su color refleja salud y su tama&ntilde;o, la altura medida. <em>Pasa el cursor sobre un &aacute;rbol para ver datos.</em></p>
+                                        <p class="text-muted text-small" id="vis-description">Cada &aacute;rbol del bosque representa uno real del proyecto.</p>
                                     </div>
-                                    <!-- Contenedor 3D del Bosque UNAM (Three.js) -->
-                                    <div id="dashboard-tree-3d" class="dashboard-tree-3d" aria-label="Visualizaci&oacute;n 3D del bosque — arrastra para rotar"></div>
-                                    <p class="text-muted text-small" style="text-align:center;margin:0.5rem 0 0;">
-                                        <i class="fas fa-mouse"></i> Arrastra para rotar &middot; Rueda para zoom &middot; Click en hoja para abrir &aacute;rbol
-                                    </p>
-                                    <!-- Slots SVG legacy (oculto, mantenido por compatibilidad si JS de fallback) -->
+
+                                    <!-- Pesta&ntilde;as de visualizaci&oacute;n -->
+                                    <div class="vis-tabs" role="tablist">
+                                        <button class="vis-tab active" data-vis="bosque" onclick="switchVisTab('bosque')">
+                                            <i class="fas fa-tree"></i> Bosque 3D
+                                        </button>
+                                        <button class="vis-tab" data-vis="mapa" onclick="switchVisTab('mapa')">
+                                            <i class="fas fa-map-marked-alt"></i> Mapa 3D
+                                        </button>
+                                        <button class="vis-tab" data-vis="mosaico" onclick="switchVisTab('mosaico')">
+                                            <i class="fas fa-images"></i> Mosaico de fotos
+                                        </button>
+                                        <button class="vis-tab" data-vis="heatmap" onclick="switchVisTab('heatmap')">
+                                            <i class="fas fa-fire"></i> Heatmap campus
+                                        </button>
+                                    </div>
+
+                                    <!-- Tab 1: Bosque 3D -->
+                                    <div id="vis-bosque" class="vis-pane active">
+                                        <div id="dashboard-tree-3d" class="dashboard-tree-3d" aria-label="Bosque 3D — arrastra para rotar"></div>
+                                    </div>
+
+                                    <!-- Tab 2: Mapa 3D -->
+                                    <div id="vis-mapa" class="vis-pane">
+                                        <div id="dashboard-mapa-vis" class="dashboard-mapa-vis"></div>
+                                    </div>
+
+                                    <!-- Tab 3: Mosaico de fotos 3D -->
+                                    <div id="vis-mosaico" class="vis-pane">
+                                        <div id="dashboard-mosaico-vis" class="dashboard-mosaico-vis"></div>
+                                    </div>
+
+                                    <!-- Tab 4: Heatmap -->
+                                    <div id="vis-heatmap" class="vis-pane">
+                                        <div id="dashboard-heatmap-vis" class="dashboard-heatmap-vis"></div>
+                                    </div>
+
+                                    <!-- Slots SVG legacy (fallback) -->
                                     <svg style="display:none;" id="dashboard-leaf-slots-fallback"><g id="dashboard-leaf-slots"></g></svg>
 
                                     <!-- Stats overlay (puede aparecer flotante o debajo) -->
@@ -1049,8 +1081,9 @@
     <!-- Forest FX (animaciones ambientales del tema) -->
     <script src="js/forest-fx.js"></script>
 
-    <!-- Bosque UNAM — árbol 3D realista del dashboard -->
+    <!-- Bosque UNAM — 4 visualizaciones del dashboard -->
     <script src="js/dashboard-tree-3d.js"></script>
+    <script src="js/dashboard-vis.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
