@@ -148,3 +148,58 @@ function compressImageForAI(base64DataUrl, maxWidth, maxHeight, quality) {
     img.src = base64DataUrl;
   });
 }
+
+// ============================================================================
+// Mobile responsive helper — auto-asigna data-label a celdas de tablas
+// para que el CSS responsive las muestre como tarjetas en móvil.
+// ============================================================================
+function applyMobileTableLabels(rootEl) {
+  const root = rootEl || document;
+  root.querySelectorAll('.admin-table').forEach(function(table) {
+    const headers = Array.from(table.querySelectorAll('thead th')).map(function(th) {
+      return th.textContent.trim();
+    });
+    if (headers.length === 0) return;
+    table.querySelectorAll('tbody tr').forEach(function(tr) {
+      Array.from(tr.children).forEach(function(td, i) {
+        if (headers[i] && !td.hasAttribute('data-label')) {
+          td.setAttribute('data-label', headers[i]);
+        }
+      });
+    });
+  });
+}
+
+// Observador global: cada vez que se modifica una <tbody> de admin, reaplica labels
+(function() {
+  if (typeof MutationObserver === 'undefined') return;
+  const observer = new MutationObserver(function(mutations) {
+    let needsApply = false;
+    for (const m of mutations) {
+      if (m.target && m.target.tagName === 'TBODY' && m.target.closest('.admin-table')) {
+        needsApply = true;
+        break;
+      }
+    }
+    if (needsApply) applyMobileTableLabels();
+  });
+  // Inicia el observer cuando el DOM esté listo
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  } else {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+})();
+
+// ============================================================================
+// Detección de móvil — útil para condicionales en JS
+// ============================================================================
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches
+      || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+window.applyMobileTableLabels = applyMobileTableLabels;
+window.isMobile = isMobile;
