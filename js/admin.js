@@ -135,6 +135,11 @@ async function loadAdminDashboard(forceReload) {
     // Load map with tree locations
     loadAdminMap(treeList);
 
+    // Render Bosque UNAM (Opción C — visualización árbol orgánico)
+    if (typeof renderDashboardTree === 'function') {
+      renderDashboardTree(treeList);
+    }
+
     dashboardLoaded = true;
     showToast('Dashboard cargado', 'success');
   } catch (err) {
@@ -1693,3 +1698,169 @@ window.loadWeatherWidget = loadWeatherWidget;
 window.loadCitizenReports = loadCitizenReports;
 window.resolveCitizenReport = resolveCitizenReport;
 window.runNotificationCron = runNotificationCron;
+
+// =============================================================
+// Bosque UNAM — Opción C: visualización dashboard como árbol vivo
+// =============================================================
+
+// Posiciones de hojas (50 slots distribuidos orgánicamente sobre las ramas)
+const BOSQUE_LEAF_POSITIONS = [
+  // Top canopy
+  {x:285, y:55, r:7}, {x:300, y:35, r:8}, {x:315, y:55, r:7},
+  {x:280, y:75, r:6}, {x:300, y:65, r:7}, {x:320, y:75, r:6},
+  // Left high branch
+  {x:255, y:50, r:6}, {x:240, y:65, r:7}, {x:225, y:55, r:6},
+  // Left mid-high branch
+  {x:210, y:95, r:7}, {x:190, y:108, r:6}, {x:170, y:98, r:7},
+  // Left mid branch
+  {x:160, y:135, r:7}, {x:140, y:148, r:8}, {x:120, y:158, r:7}, {x:100, y:165, r:6},
+  {x:200, y:130, r:6}, {x:225, y:138, r:6},
+  // Left low branch
+  {x:135, y:175, r:6}, {x:160, y:185, r:7}, {x:185, y:175, r:6},
+  {x:150, y:235, r:7}, {x:170, y:245, r:8}, {x:195, y:235, r:7}, {x:130, y:245, r:6},
+  // Right high branch
+  {x:345, y:50, r:6}, {x:360, y:65, r:7}, {x:375, y:55, r:6},
+  // Right mid-high branch
+  {x:390, y:95, r:7}, {x:410, y:108, r:6}, {x:430, y:98, r:7},
+  // Right mid branch
+  {x:440, y:135, r:7}, {x:460, y:148, r:8}, {x:480, y:158, r:7}, {x:500, y:165, r:6},
+  {x:400, y:130, r:6}, {x:375, y:138, r:6},
+  // Right low branch
+  {x:415, y:175, r:6}, {x:440, y:185, r:7}, {x:465, y:175, r:6},
+  {x:450, y:235, r:7}, {x:430, y:245, r:8}, {x:405, y:235, r:7}, {x:470, y:245, r:6},
+  // Center fillers
+  {x:290, y:110, r:6}, {x:310, y:115, r:6}, {x:300, y:90, r:6},
+  {x:280, y:170, r:6}, {x:320, y:170, r:6}, {x:300, y:200, r:6}
+];
+
+function bosqueColorByHealth(score) {
+  const s = score == null ? -1 : score;
+  if (s >= 80) return '#4a7c2a';   // primary-light
+  if (s >= 60) return '#95b86c';   // sage / leaf
+  if (s >= 40) return '#d49b3a';   // warning amber
+  if (s >= 0)  return '#b54f3a';   // danger
+  return '#c5b5a0';                 // sin datos
+}
+
+function bosqueGenerateLeafPath(x, y, r) {
+  // SVG path para una hoja estilizada (más orgánica que un círculo)
+  // Forma: gota apuntando hacia arriba-fuera del centro del árbol
+  const cx = 300; // center X del árbol
+  // Ángulo desde el centro
+  const angle = Math.atan2(y - 250, x - cx);
+  const tx = x + Math.cos(angle) * r * 0.3;
+  const ty = y + Math.sin(angle) * r * 0.3;
+  return `M ${tx} ${ty} c ${-r} ${-r*0.5}, ${-r*1.4} ${-r*0.4}, 0 ${-r*1.6} c ${r*1.4} ${-r*0.4 + r*1.6}, ${r} ${r*1.1}, 0 ${r*1.6} z`;
+}
+
+function renderDashboardTree(treeList) {
+  const container = document.getElementById('dashboard-tree-vis');
+  if (!container) return;
+  const slotsGroup = document.getElementById('dashboard-leaf-slots');
+  if (!slotsGroup) return;
+
+  // Mostrar el contenedor (estaba display:none por defecto hasta que JS lo procesa)
+  container.style.display = 'block';
+
+  // Limpiar slots previos
+  slotsGroup.innerHTML = '';
+
+  const trees = (treeList || []).slice();
+  const totalSlots = BOSQUE_LEAF_POSITIONS.length;
+  const total = trees.length;
+
+  // Ordenar árboles para que las hojas más sanas crezcan primero (estética)
+  trees.sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
+
+  // Si tenemos más árboles que slots, escalamos proporcionalmente.
+  // Si tenemos menos, asignación 1:1 hasta llenar.
+  const scaled = total > totalSlots;
+
+  for (let i = 0; i < totalSlots; i++) {
+    const pos = BOSQUE_LEAF_POSITIONS[i];
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'leaf-slot');
+    path.setAttribute('d', bosqueGenerateLeafPath(pos.x, pos.y, pos.r));
+    path.setAttribute('stroke', 'rgba(0,0,0,0.15)');
+    path.setAttribute('stroke-width', '0.5');
+
+    let assignedTree = null;
+    if (!scaled) {
+      // 1:1 mapping
+      assignedTree = trees[i] || null;
+    } else {
+      // Proporcional: cada slot representa total/totalSlots árboles
+      const idx = Math.floor(i * total / totalSlots);
+      assignedTree = trees[idx] || null;
+    }
+
+    if (assignedTree) {
+      const score = assignedTree.health_score || 0;
+      path.setAttribute('fill', bosqueColorByHealth(score));
+      path.setAttribute('data-tree-id', assignedTree.id);
+      path.setAttribute('data-tree-code', assignedTree.tree_code || '');
+      path.setAttribute('data-tree-name', assignedTree.common_name || assignedTree.species || 'Árbol');
+      path.setAttribute('data-health', score);
+      path.setAttribute('data-status', assignedTree.status || '');
+      path.setAttribute('data-campus', assignedTree.campus || '');
+      // Stagger animation for "growing" effect
+      path.style.transitionDelay = (i * 35) + 'ms';
+      requestAnimationFrame(() => path.classList.add('show'));
+    } else {
+      path.setAttribute('fill', '#c5b5a0');
+      path.classList.add('empty');
+    }
+
+    slotsGroup.appendChild(path);
+  }
+
+  // Bind hover/click handlers
+  bindBosqueLeafEvents();
+}
+
+function bindBosqueLeafEvents() {
+  const slotsGroup = document.getElementById('dashboard-leaf-slots');
+  const tooltip = document.getElementById('dashboard-tree-tooltip');
+  if (!slotsGroup || !tooltip) return;
+
+  slotsGroup.querySelectorAll('.leaf-slot:not(.empty)').forEach(leaf => {
+    leaf.addEventListener('mousemove', e => {
+      const code = leaf.getAttribute('data-tree-code');
+      const name = leaf.getAttribute('data-tree-name');
+      const h = leaf.getAttribute('data-health');
+      const status = leaf.getAttribute('data-status');
+      const campus = leaf.getAttribute('data-campus');
+      tooltip.innerHTML = `
+        <strong>${escapeHtml(name)} <span style="opacity:0.7;">(${escapeHtml(code)})</span></strong>
+        Salud: ${h}/100 — ${escapeHtml(status || '?')}<br>
+        Campus: ${escapeHtml(campus || '?')}
+      `;
+      tooltip.style.display = 'block';
+      tooltip.style.left = e.clientX + 'px';
+      tooltip.style.top = e.clientY + 'px';
+    });
+    leaf.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+    });
+    leaf.addEventListener('click', () => {
+      const id = leaf.getAttribute('data-tree-id');
+      if (id && typeof editAdminTree === 'function') {
+        editAdminTree(parseInt(id, 10));
+      }
+    });
+    // Touch support
+    leaf.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      const code = leaf.getAttribute('data-tree-code');
+      const name = leaf.getAttribute('data-tree-name');
+      const h = leaf.getAttribute('data-health');
+      tooltip.innerHTML = `<strong>${escapeHtml(name)} (${escapeHtml(code)})</strong>Salud: ${h}/100`;
+      tooltip.style.display = 'block';
+      tooltip.style.left = t.clientX + 'px';
+      tooltip.style.top = t.clientY + 'px';
+      setTimeout(() => { tooltip.style.display = 'none'; }, 2500);
+    }, { passive: true });
+  });
+}
+
+window.renderDashboardTree = renderDashboardTree;
