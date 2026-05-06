@@ -914,6 +914,9 @@
                                         <button class="vis-tab" data-vis="heatmap" onclick="switchVisTab('heatmap')">
                                             <i class="fas fa-fire"></i> Heatmap campus
                                         </button>
+                                        <button class="vis-tab" data-vis="iztacala" onclick="switchVisTab('iztacala')">
+                                            <i class="fas fa-university"></i> FES Iztacala 3D
+                                        </button>
                                     </div>
 
                                     <!-- Tab 1: Bosque 3D -->
@@ -934,6 +937,11 @@
                                     <!-- Tab 4: Heatmap -->
                                     <div id="vis-heatmap" class="vis-pane">
                                         <div id="dashboard-heatmap-vis" class="dashboard-heatmap-vis"></div>
+                                    </div>
+
+                                    <!-- Tab 5: Mapa 3D del campus FES Iztacala -->
+                                    <div id="vis-iztacala" class="vis-pane">
+                                        <div id="dashboard-iztacala-vis" class="dashboard-iztacala-vis" style="width:100%;height:600px;border-radius:12px;overflow:hidden;background:#c7e0f2;position:relative;"></div>
                                     </div>
 
                                     <!-- Slots SVG legacy (fallback) -->
@@ -1085,9 +1093,10 @@
     <!-- Forest FX (animaciones ambientales del tema) -->
     <script src="js/forest-fx.js"></script>
 
-    <!-- Bosque UNAM — 4 visualizaciones del dashboard -->
+    <!-- Bosque UNAM — 5 visualizaciones del dashboard -->
     <script src="js/dashboard-tree-3d.js"></script>
     <script src="js/dashboard-vis.js"></script>
+    <script src="js/dashboard-iztacala.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
