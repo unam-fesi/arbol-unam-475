@@ -787,27 +787,57 @@ async function deleteAdminGroup(id) {
 
 async function manageGroupMembers(groupId, groupName) {
   try {
-    const { data: members } = await sb.from('group_members').select('*, user_profiles(full_name)').eq('group_id', groupId);
-    const { data: allUsers } = await sb.from('user_profiles').select('id, full_name').order('full_name');
-    const memberIds = (members || []).map(m => m.user_id);
+    // Dos queries separadas (más robusto ante quirks de RLS / FK joins)
+    const { data: rawMembers, error: errM } = await sb
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId);
+    if (errM) throw errM;
 
-    let membersHtml = (members || []).map(m =>
-      `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eee;">
-        <span>${escapeHtml(m.user_profiles?.full_name || 'Usuario')}</span>
+    const { data: allUsers, error: errU } = await sb
+      .from('user_profiles')
+      .select('id, full_name, role')
+      .order('full_name');
+    if (errU) throw errU;
+
+    const userMap = new Map((allUsers || []).map(u => [u.id, u]));
+    const memberIds = (rawMembers || []).map(m => m.user_id);
+    const members = memberIds.map(id => ({
+      user_id: id,
+      profile: userMap.get(id) || null,
+    }));
+
+    let membersHtml = members.map(m => {
+      const name = m.profile ? (m.profile.full_name || 'Sin nombre') : 'Usuario eliminado';
+      const role = m.profile ? m.profile.role : '';
+      const roleBadge = role
+        ? `<span style="font-size:0.7rem;background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;margin-left:6px;">${escapeHtml(role)}</span>`
+        : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eee;">
+        <span>${escapeHtml(name)}${roleBadge}</span>
         <button onclick="removeGroupMember('${groupId}', '${m.user_id}', '${escapeHtml(groupName)}')" class="btn btn-sm btn-danger">Quitar</button>
-      </div>`
-    ).join('') || '<p class="text-muted" style="padding:8px;">Sin miembros</p>';
+      </div>`;
+    }).join('') || '<p class="text-muted" style="padding:8px;">Sin miembros</p>';
 
-    let optionsHtml = (allUsers || []).filter(u => !memberIds.includes(u.id))
-      .map(u => `<option value="${u.id}">${escapeHtml(u.full_name || 'Sin nombre')}</option>`).join('');
+    // Para "Agregar miembro": mostrar TODOS los usuarios (no filtrar los que ya
+    // están), porque un usuario puede estar en varios grupos. El INSERT con
+    // UNIQUE(group_id, user_id) bloqueará el duplicado solo si ya está en ESTE
+    // grupo, lo cual también detectamos manualmente para mejor UX.
+    let optionsHtml = (allUsers || [])
+      .map(u => {
+        const isMember = memberIds.includes(u.id);
+        const label = `${u.full_name || 'Sin nombre'}${u.role ? ' · ' + u.role : ''}${isMember ? ' (ya en este grupo)' : ''}`;
+        return `<option value="${u.id}"${isMember ? ' disabled' : ''}>${escapeHtml(label)}</option>`;
+      }).join('');
 
     showModal(`Miembros: ${groupName}`, `
       <div style="margin-bottom:1.5rem;">
-        <h4>Miembros (${(members || []).length})</h4>
+        <h4>Miembros (${members.length})</h4>
         <div style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:8px;margin-top:0.5rem;">${membersHtml}</div>
       </div>
       <div>
         <h4>Agregar miembro</h4>
+        <p style="font-size:0.78rem;color:#666;margin:0.3rem 0;">Un usuario puede estar en varios grupos.</p>
         <div style="display:flex;gap:8px;margin-top:0.5rem;">
           <select id="add-member-select" style="flex:1;padding:0.5rem;border:1px solid #ddd;border-radius:4px;">
             <option value="">Selecciona usuario...</option>${optionsHtml}
@@ -817,7 +847,7 @@ async function manageGroupMembers(groupId, groupName) {
       </div>
     `);
   } catch (err) {
-    showToast('Error: ' + err.message, 'error');
+    showToast('Error cargando miembros: ' + err.message, 'error');
   }
 }
 
@@ -825,7 +855,15 @@ async function addGroupMember(groupId, groupName) {
   const userId = document.getElementById('add-member-select')?.value;
   if (!userId) { showToast('Selecciona un usuario', 'warning'); return; }
   const { error } = await sb.from('group_members').insert([{ group_id: groupId, user_id: userId }]);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  if (error) {
+    // Mensaje más claro si es duplicado en este grupo
+    if (error.code === '23505' || /duplicate|unique/i.test(error.message)) {
+      showToast('Ese usuario ya está en este grupo', 'warning');
+    } else {
+      showToast('Error: ' + error.message, 'error');
+    }
+    return;
+  }
   showToast('Miembro agregado', 'success');
   manageGroupMembers(groupId, groupName);
 }
