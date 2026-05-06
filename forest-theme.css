@@ -869,19 +869,65 @@ a:hover { color: var(--primary-dark); }
   filter: drop-shadow(0 8px 24px rgba(45,80,22,0.12));
 }
 
+/* Tabs de visualización */
+.vis-tabs {
+  display: flex; gap: 0.4rem; flex-wrap: wrap;
+  margin: 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+}
+.vis-tab {
+  background: var(--bg-warm); color: var(--primary-dark);
+  border: 1px solid var(--border-light);
+  padding: 0.5rem 0.9rem; border-radius: 10px;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  transition: var(--transition);
+  font-family: inherit;
+}
+.vis-tab:hover { background: white; }
+.vis-tab.active {
+  background: var(--primary-dark); color: white;
+  border-color: var(--primary-dark);
+  box-shadow: 0 4px 12px rgba(45,80,22,0.25);
+}
+.vis-pane { display: none; }
+.vis-pane.active { display: block; animation: section-in 320ms ease-out; }
+
 /* Container 3D (Three.js) */
-.dashboard-tree-3d {
+.dashboard-tree-3d,
+.dashboard-mapa-vis,
+.dashboard-mosaico-vis,
+.dashboard-heatmap-vis {
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 12px 40px rgba(45,80,22,0.18), inset 0 1px 0 rgba(255,255,255,0.4);
-  background: linear-gradient(180deg, #a8d4f0 0%, #f5ede0 60%, #d4b896 100%);
+  position: relative;
   cursor: grab;
 }
+.dashboard-tree-3d {
+  background: linear-gradient(180deg, #a8d4f0 0%, #f5ede0 60%, #d4b896 100%);
+}
+.dashboard-mapa-vis,
+.dashboard-heatmap-vis {
+  height: 520px; cursor: default;
+  background: #e8e0c8;
+}
+.dashboard-mosaico-vis {
+  background: linear-gradient(180deg, #2d2418 0%, #4a3a28 100%);
+  min-height: 520px;
+}
 .dashboard-tree-3d:active { cursor: grabbing; }
-.dashboard-tree-3d canvas { display: block; }
+.dashboard-tree-3d canvas, .dashboard-mosaico-vis canvas { display: block; }
+
+/* Loading state genérico */
+.vis-loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-light); font-size: 0.9rem;
+}
 
 /* Leaf slots — animación de "crecimiento" */
 .leaf-slot {
