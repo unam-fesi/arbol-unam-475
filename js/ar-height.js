@@ -140,18 +140,23 @@ function openARHeightMeasure() {
 // ============================================================================
 function _arListenGyro() {
   if (arM.gyroH) return; // already listening
-  var smoothing = 0.15; // Low-pass filter: 0=ignore new data, 1=no smoothing. 0.15 = very smooth.
+  // Filtro pasa-bajo MUY agresivo (0.06 = muy suave) para eliminar el jitter
+  // que el usuario reportó. Una vez tapeado el base, agregamos también un
+  // "deadzone" en step 1 para evitar que el dot baile con micro-movimientos.
+  var smoothing = 0.06;
   var h = function(e) {
     if (e.beta !== null) {
       arM.hasGyro = true;
       arM.gyroReady = true;
-      // Low-pass filter to eliminate jitter and stabilize the base point
       if (arM.curBeta === null) {
-        arM.curBeta = e.beta; // first reading, take directly
+        arM.curBeta = e.beta;
       } else {
-        arM.curBeta = arM.curBeta * (1 - smoothing) + e.beta * smoothing;
+        // Aplicamos deadzone: cambios menores a 0.3° se ignoran (anti-jitter)
+        var raw = arM.curBeta * (1 - smoothing) + e.beta * smoothing;
+        if (Math.abs(raw - arM.curBeta) >= 0.05) {
+          arM.curBeta = raw;
+        }
       }
-      // Hide warning if shown
       var gs = document.getElementById('ar-gyro-status');
       if (gs) gs.style.display = 'none';
     }
@@ -355,37 +360,29 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- TAP-TO-PLACE: base point stays FIXED at screen center ----
-      // The dot does NOT follow the gyroscope. Once placed, it's locked on
-      // screen at H/2. The crosshair (also at H/2) is what the user re-aims
-      // at the tree top. The line we draw represents the tilt offset using
-      // a virtual "top indicator" anchored above the base by an amount
-      // proportional to (baseBeta - curBeta).
+      // ---- World-anchored base point (geometría correcta) ----
+      // El dot representa el punto físico del mundo. Cuando el usuario
+      // inclina la cámara hacia arriba, ese punto en el mundo aparece más
+      // ABAJO en pantalla. Esto es lo que hace que la medición sea correcta:
+      // la cámara apunta al CROSSHAIR (centro), el dot es el punto remoto.
       var baseScreenX = W / 2;
-      var baseScreenY = H / 2; // FROZEN — never moves with gyro
-      var clampedBaseY = baseScreenY;
+      var baseScreenY = H / 2;
+      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+        var deltaDeg = arM.baseBeta - arM.curBeta;  // positivo si se inclina arriba
+        baseScreenY = H / 2 + (deltaDeg * pixPerDeg);
+      }
+      // Clamp para que el dot no se salga arriba (siempre debe quedar visible)
+      var clampedBaseY = Math.min(baseScreenY, H + 30 * dpr);
 
-      // Crosshair center
+      // Crosshair (donde la cámara apunta)
       var crossX = W / 2;
       var crossY = H / 2;
 
-      // Calculate live height
+      // Altura calculada en vivo a partir del gyro
       var liveH = Math.abs(_arCalcH(arM.curBeta));
 
-      // Virtual "top indicator": where the new mark would land if user pressed
-      // + right now. Anchored above the base by gyro delta. Used purely as a
-      // visual cue so the user sees how much they've tilted.
-      var topIndicatorY = crossY;
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaDeg = arM.baseBeta - arM.curBeta; // positive when tilted up
-        topIndicatorY = baseScreenY - Math.max(0, deltaDeg * pixPerDeg);
-      }
-      // Clamp inside viewport
-      topIndicatorY = Math.max(20 * dpr, Math.min(topIndicatorY, H - 20 * dpr));
-
-      // ---- DRAW THE MEASUREMENT LINE ----
-      // Line goes from the FIXED base dot up to the virtual top indicator.
-      var lineLen = Math.abs(baseScreenY - topIndicatorY);
+      // ---- DRAW THE MEASUREMENT LINE: del dot al crosshair ----
+      var lineLen = Math.abs(clampedBaseY - crossY);
 
       if (lineLen > 3) {
         // Glow
@@ -396,12 +393,12 @@ function _arStartAnim() {
         ctx.lineWidth = 10 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, baseScreenY);
-        ctx.lineTo(baseScreenX, topIndicatorY);
+        ctx.moveTo(baseScreenX, clampedBaseY);
+        ctx.lineTo(crossX, crossY);
         ctx.stroke();
         ctx.restore();
 
-        // Main dotted line (green, Measure style)
+        // Main dotted line
         ctx.save();
         ctx.setLineDash([4 * dpr, 4 * dpr]);
         ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
@@ -409,29 +406,29 @@ function _arStartAnim() {
         ctx.lineWidth = 2.5 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, baseScreenY);
-        ctx.lineTo(baseScreenX, topIndicatorY);
+        ctx.moveTo(baseScreenX, clampedBaseY);
+        ctx.lineTo(crossX, crossY);
         ctx.stroke();
         ctx.restore();
       }
 
-      // ---- BASE DOT (green, FROZEN at H/2) ----
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 6 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(76,175,80,1)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(baseScreenX, baseScreenY, 6 * dpr, 0, Math.PI * 2);
-      ctx.lineWidth = 2 * dpr;
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.stroke();
-
-      // ---- TOP INDICATOR (small ring at top of line) ----
-      if (lineLen > 8) {
+      // ---- BASE DOT (verde, anclado en el mundo) ----
+      if (clampedBaseY <= H) {
+        // Halo de "ancla" para reforzar visualmente que está fijo al mundo
         ctx.beginPath();
-        ctx.arc(baseScreenX, topIndicatorY, 5 * dpr, 0, Math.PI * 2);
+        ctx.arc(baseScreenX, clampedBaseY, 14 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,0.18)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(baseScreenX, clampedBaseY, 6 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(76,175,80,1)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(baseScreenX, clampedBaseY, 6 * dpr, 0, Math.PI * 2);
         ctx.lineWidth = 2 * dpr;
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.stroke();
       }
 
@@ -446,8 +443,8 @@ function _arStartAnim() {
       }
 
       // Position: near the midpoint of the line, offset right
-      var labelMidY = (baseScreenY + topIndicatorY) / 2;
-      var labelX = baseScreenX + 25 * dpr;
+      var labelMidY = (Math.min(clampedBaseY, H) + crossY) / 2;
+      var labelX = crossX + 25 * dpr;
 
       ctx.font = (14 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
       var tw = ctx.measureText(txt).width;
@@ -511,15 +508,15 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Tap-to-place: base stays FIXED at H/2; top sits above by gyro delta
+  // Final draw: base anclado en el mundo, top en el centro de pantalla
+  // (donde el usuario apuntó la cámara para hacer el segundo tap)
   var pixPerDeg = H / 60;
   var baseY = H / 2;
-  var topY = H / 2;
   if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    var d = Math.max(0, arM.baseBeta - arM.topBeta);
-    topY = baseY - d * pixPerDeg;
+    baseY = H / 2 + ((arM.baseBeta - arM.topBeta) * pixPerDeg);
   }
-  topY = Math.max(20 * dpr, Math.min(topY, H - 20 * dpr));
+  baseY = Math.min(baseY, H - 10);
+  var topY = H / 2;
 
   // Line
   ctx.save();
@@ -532,7 +529,7 @@ function _arDrawFinal() {
   ctx.stroke();
   ctx.restore();
 
-  // Base dot (green, white border)
+  // Base dot (verde anclado)
   ctx.beginPath();
   ctx.arc(W / 2, baseY, 6 * dpr, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(76,175,80,1)';
@@ -543,7 +540,7 @@ function _arDrawFinal() {
   ctx.strokeStyle = '#fff';
   ctx.stroke();
 
-  // Top dot (white)
+  // Top dot (blanco, en el crosshair)
   ctx.beginPath();
   ctx.arc(W / 2, topY, 5 * dpr, 0, Math.PI * 2);
   ctx.fillStyle = '#fff';
@@ -672,4 +669,3 @@ function closeARHeightMeasure() {
 }
 
 window.openARHeightMeasure = openARHeightMeasure;
-
