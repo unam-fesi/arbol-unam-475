@@ -1586,7 +1586,16 @@ async function loadWeatherWidget() {
     const { data } = await sb.from('weather_records')
       .select('*').eq('recorded_for_date', today);
     if (!data || data.length === 0) {
-      container.innerHTML = '<p class="text-muted text-small">Sin datos meteorológicos. Despliega la Edge Function <code>weather-sync</code>.</p>';
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;">
+          <div>
+            <h4 style="margin:0 0 0.25rem;"><i class="fas fa-cloud-sun"></i> Clima</h4>
+            <p class="text-muted text-small" style="margin:0;">Sin datos meteorológicos para hoy. Ejecuta la sincronización para traer el clima de los 6 campus.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="runWeatherSync()">
+            <i class="fas fa-sync"></i> Sincronizar clima ahora
+          </button>
+        </div>`;
       return;
     }
     let html = '<h4 style="margin:0 0 0.5rem;"><i class="fas fa-cloud-sun"></i> Clima hoy</h4>';
@@ -1685,6 +1694,29 @@ async function runNotificationCron() {
   }
 }
 
+async function runWeatherSync() {
+  showToast('Sincronizando clima de 6 campus…', 'info');
+  try {
+    const { data, error } = await sb.functions.invoke('weather-sync');
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    const ok = (data?.results || []).filter(r => !r.error).length;
+    const fail = (data?.results || []).filter(r => r.error).length;
+    showToast(`Clima sincronizado: ${ok} OK, ${fail} fallos`, ok > 0 ? 'success' : 'warning');
+    // Recargar widget
+    loadWeatherWidget();
+  } catch (err) {
+    // Caso típico: función no desplegada o secret faltante
+    let msg = err.message;
+    if (msg && msg.toLowerCase().includes('not found')) {
+      msg = 'La Edge Function "weather-sync" no está desplegada. Despliégala desde Supabase Dashboard → Edge Functions.';
+    } else if (msg && msg.toLowerCase().includes('openweather')) {
+      msg = 'Falta el secret OPENWEATHER_API_KEY en la Edge Function.';
+    }
+    showToast('Error: ' + msg, 'error');
+  }
+}
+
 // =============================================================
 // Expose
 // =============================================================
@@ -1698,6 +1730,7 @@ window.loadWeatherWidget = loadWeatherWidget;
 window.loadCitizenReports = loadCitizenReports;
 window.resolveCitizenReport = resolveCitizenReport;
 window.runNotificationCron = runNotificationCron;
+window.runWeatherSync = runWeatherSync;
 
 // =============================================================
 // Bosque UNAM — Opción C: visualización dashboard como árbol vivo
@@ -1756,24 +1789,31 @@ function bosqueGenerateLeafPath(x, y, r) {
 function renderDashboardTree(treeList) {
   const container = document.getElementById('dashboard-tree-vis');
   if (!container) return;
-  const slotsGroup = document.getElementById('dashboard-leaf-slots');
-  if (!slotsGroup) return;
-
   // Mostrar el contenedor (estaba display:none por defecto hasta que JS lo procesa)
   container.style.display = 'block';
 
-  // Limpiar slots previos
+  // Si Three.js + el módulo 3D están disponibles, usar la visualización 3D realista
+  if (window.DashboardTree3D && window.THREE) {
+    try {
+      const ok = window.DashboardTree3D.init('#dashboard-tree-3d', treeList || []);
+      if (ok) return;
+    } catch (e) {
+      console.warn('Bosque 3D falló, usando fallback SVG:', e);
+    }
+  }
+
+  // -------- Fallback SVG (legacy) --------
+  const slotsGroup = document.getElementById('dashboard-leaf-slots');
+  if (!slotsGroup) return;
+
   slotsGroup.innerHTML = '';
 
   const trees = (treeList || []).slice();
   const totalSlots = BOSQUE_LEAF_POSITIONS.length;
   const total = trees.length;
 
-  // Ordenar árboles para que las hojas más sanas crezcan primero (estética)
   trees.sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
 
-  // Si tenemos más árboles que slots, escalamos proporcionalmente.
-  // Si tenemos menos, asignación 1:1 hasta llenar.
   const scaled = total > totalSlots;
 
   // Primera pasada: crear todos los path elements con datos pero sin la clase 'show'
