@@ -223,14 +223,94 @@ async function loadMyGroups() {
   }
 }
 
+// ========== MIS JARDINES BANNER ==========
+async function loadMyGardens() {
+  const banner = document.getElementById('my-gardens-banner');
+  if (!banner || !currentUser) return;
+  try {
+    // 1) Asignaciones directas al usuario
+    const { data: directAssigns } = await sb
+      .from('garden_assignments')
+      .select('garden_id')
+      .eq('user_id', currentUser.id);
+
+    // 2) Asignaciones vía grupos a los que pertenece
+    const { data: myGroups } = await sb
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', currentUser.id);
+    const groupIds = (myGroups || []).map(g => g.group_id);
+
+    let groupAssigns = [];
+    if (groupIds.length > 0) {
+      const { data } = await sb
+        .from('garden_assignments')
+        .select('garden_id, group_id')
+        .in('group_id', groupIds);
+      groupAssigns = data || [];
+    }
+
+    // Unir IDs de jardines (con tracking de "vía qué": directa o grupo)
+    const gardenSource = new Map(); // garden_id -> 'directa' | 'grupo'
+    (directAssigns || []).forEach(a => gardenSource.set(a.garden_id, 'directa'));
+    groupAssigns.forEach(a => {
+      if (!gardenSource.has(a.garden_id)) gardenSource.set(a.garden_id, 'grupo');
+    });
+
+    if (gardenSource.size === 0) {
+      banner.innerHTML = '';
+      return;
+    }
+
+    const ids = [...gardenSource.keys()];
+    const { data: gardens } = await sb
+      .from('gardens')
+      .select('id, name, campus, description')
+      .in('id', ids);
+
+    if (!gardens || gardens.length === 0) {
+      banner.innerHTML = '';
+      return;
+    }
+
+    const cards = gardens.map(g => {
+      const via = gardenSource.get(g.id);
+      const viaLabel = via === 'grupo' ? '<span style="font-size:0.65rem;background:rgba(102,153,204,0.2);color:#1a4480;padding:1px 7px;border-radius:8px;margin-left:6px;">vía grupo</span>' : '';
+      return `
+        <div style="flex:1;min-width:200px;background:rgba(255,255,255,0.6);padding:0.7rem 0.9rem;border-radius:10px;border:1px solid rgba(102,153,204,0.3);">
+          <div style="font-weight:600;color:#1a4480;font-size:0.92rem;">
+            🌿 ${escapeHtml(g.name || 'Jardín')}${viaLabel}
+          </div>
+          <div style="font-size:0.75rem;color:#555;margin-top:2px;">${escapeHtml(g.campus || '')}</div>
+          ${g.description ? `<div style="font-size:0.72rem;color:#777;margin-top:4px;line-height:1.3;">${escapeHtml(g.description.slice(0, 90))}${g.description.length > 90 ? '…' : ''}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    banner.innerHTML = `
+      <div class="card" style="margin-bottom:1.5rem;padding:1rem 1.2rem;background:linear-gradient(135deg,rgba(232,240,253,0.7),rgba(255,253,247,0.5));border-left:4px solid #1a4480;">
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;">
+          <i class="fas fa-leaf" style="color:#1a4480;"></i>
+          <strong style="color:#0d2d5c;">Mis jardines</strong>
+          <span style="color:#666;font-size:0.8rem;">(${gardens.length})</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.6rem;">${cards}</div>
+      </div>
+    `;
+  } catch (err) {
+    console.error('loadMyGardens error:', err);
+    banner.innerHTML = '';
+  }
+}
+
 // ========== MAIN LOAD ==========
 async function loadMyTree(forceReload) {
   const container = document.getElementById('mi-arbol-content');
   if (!container) return;
   if (myTreeLoaded && !forceReload) return;
 
-  // Cargar banner de grupos en paralelo (no bloquea)
+  // Cargar banners en paralelo (no bloquea)
   loadMyGroups();
+  loadMyGardens();
 
   try {
     const { data: assignments, error: assignError } = await sb
