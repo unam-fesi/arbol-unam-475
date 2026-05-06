@@ -43,39 +43,54 @@
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
   // ========================================================
-  // Backdrop con hojas cayendo (capa fija de fondo)
+  // Backdrop con hojas cayendo
+  // - Una capa fija a nivel body (para main-app, fondo general)
+  // - Otra capa absoluta DENTRO del login-screen (para verse sobre la foto)
   // ========================================================
-  function createBackdrop() {
-    if (document.querySelector('.forest-backdrop')) return;
+  function makeLeavesLayer(opts) {
     const wrap = document.createElement('div');
-    wrap.className = 'forest-backdrop';
+    wrap.className = 'forest-backdrop' + (opts.contained ? ' contained' : '');
     wrap.setAttribute('aria-hidden', 'true');
 
-    const isMobile = window.innerWidth < 768;
-    const leafCount = isMobile ? 6 : 14;
-
-    for (let i = 0; i < leafCount; i++) {
+    for (let i = 0; i < opts.count; i++) {
       const leaf = document.createElement('div');
       leaf.className = 'leaf-falling';
       leaf.innerHTML = pick(LEAF_SVGS);
-      // Posicionamiento y velocidad aleatorios para sensación natural
       leaf.style.left = rand(0, 100) + '%';
       leaf.style.animationDuration = rand(14, 26) + 's';
       leaf.style.animationDelay = rand(0, 20) + 's';
       const scale = rand(0.7, 1.4);
+      // Combinamos scale con un offset inicial para que cada hoja arranque en distinta posición
       leaf.style.transform = 'scale(' + scale + ')';
-      leaf.style.opacity = String(rand(0.4, 0.75));
+      leaf.style.opacity = String(rand(opts.minOpacity || 0.4, opts.maxOpacity || 0.75));
       wrap.appendChild(leaf);
     }
+    return wrap;
+  }
 
-    // Glow ambient zonas
-    const glowTop = document.createElement('div');
-    glowTop.style.cssText = 'position:absolute;top:-20%;left:50%;width:60%;height:60%;' +
-      'background:radial-gradient(ellipse,rgba(74,124,42,0.06),transparent 70%);' +
-      'transform:translateX(-50%);pointer-events:none;';
-    wrap.appendChild(glowTop);
+  function createBackdrop() {
+    const isMobile = window.innerWidth < 768;
+    // En móvil ponemos MENOS hojas pero seguimos teniendo (antes a veces se invisibilizaban por GPU)
+    const bodyCount = isMobile ? 8 : 14;
+    const loginCount = isMobile ? 7 : 12;
 
-    document.body.insertBefore(wrap, document.body.firstChild);
+    // Body-level (ambient, ya no se ve detrás del login porque login tapa con foto;
+    //  pero sí se ve en el resto de la app)
+    if (!document.querySelector('body > .forest-backdrop')) {
+      const bodyLayer = makeLeavesLayer({ count: bodyCount, contained: false });
+      document.body.insertBefore(bodyLayer, document.body.firstChild);
+    }
+
+    // Inside login-screen: absolute, z-index entre overlay y box → visible sobre la foto
+    const login = document.getElementById('login-screen');
+    if (login && !login.querySelector('.forest-backdrop')) {
+      const loginLayer = makeLeavesLayer({
+        count: loginCount, contained: true,
+        minOpacity: 0.55, maxOpacity: 0.95   // más visibles contra el overlay oscuro
+      });
+      // Insertar después de la primera capa (sun rays) pero antes del login-box
+      login.appendChild(loginLayer);
+    }
   }
 
   // ========================================================
