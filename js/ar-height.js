@@ -90,7 +90,7 @@ function openARHeightMeasure() {
               'Apunta a la <span style="color:#FFD54F;">BASE</span> del árbol' +
             '</p>' +
             '<p id="ar-sub" style="margin:0.2rem 0 0;color:rgba(255,255,255,0.75);font-size:0.78rem;text-shadow:0 1px 3px rgba(0,0,0,0.85);">' +
-              'Centra la retícula en el suelo donde nace el tronco' +
+              'Centra la retícula y toca la pantalla' +
             '</p>' +
           '</div>' +
           '<button onclick="closeARHeightMeasure()" style="pointer-events:auto;width:34px;height:34px;border-radius:50%;border:none;background:rgba(40,40,40,0.7);' +
@@ -118,6 +118,10 @@ function openARHeightMeasure() {
           '<div id="ar-stab-text" style="font-size:0.78rem;font-weight:600;line-height:1.4;font-family:ui-monospace,Menlo,monospace;">…</div>' +
         '</div>' +
       '</div>' +
+
+      // ---- TAP ZONE (toca cualquier parte de la pantalla para capturar) ----
+      // z-index BAJO (3) para que los HUDs y botones (z-index ≥ 9) ganen.
+      '<div id="ar-tap-zone" onclick="_arCapture()" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;cursor:pointer;-webkit-tap-highlight-color:transparent;"></div>' +
 
       // ---- RETÍCULA CENTRAL (FIJA, nunca se mueve) ----
       '<div id="ar-reticle" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;pointer-events:none;width:64px;height:64px;">' +
@@ -346,7 +350,7 @@ function _arCapture() {
     document.getElementById('ar-hint').innerHTML =
       'Apunta a la <span style="color:#81C784;">CIMA</span> del árbol';
     document.getElementById('ar-sub').textContent =
-      'Centra la retícula en la punta más alta';
+      'Centra la retícula y toca la pantalla';
     document.getElementById('ar-step-text').textContent = 'Paso 2 de 2 · Apunta arriba a la cima';
 
     // Cambia color del capture button
@@ -423,6 +427,9 @@ function _arShowResult(heightCm) {
   if (hlpBtn) hlpBtn.style.display = 'none';
   var stepText = document.getElementById('ar-step-text');
   if (stepText) stepText.style.display = 'none';
+  // Desactiva tap-zone para que los botones del result card respondan
+  var tz = document.getElementById('ar-tap-zone');
+  if (tz) tz.style.pointerEvents = 'none';
 
   // Reposiciona undo
   var undoBtn = document.getElementById('ar-undo');
@@ -488,7 +495,11 @@ function _arUndo() {
   document.getElementById('ar-hint').innerHTML =
     'Apunta a la <span style="color:#FFD54F;">BASE</span> del árbol';
   document.getElementById('ar-sub').textContent =
-    'Centra la retícula en el suelo donde nace el tronco';
+    'Centra la retícula y toca la pantalla';
+
+  // Reactivar tap-zone
+  var tzU = document.getElementById('ar-tap-zone');
+  if (tzU) tzU.style.pointerEvents = 'auto';
 
   var stepText = document.getElementById('ar-step-text');
   if (stepText) {
