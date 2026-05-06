@@ -355,19 +355,15 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- Calculate where the base APPEARS on screen ----
-      // Base was at center when tapped. As user tilts up, base moves DOWN.
+      // ---- TAP-TO-PLACE: base point stays FIXED at screen center ----
+      // The dot does NOT follow the gyroscope. Once placed, it's locked on
+      // screen at H/2. The crosshair (also at H/2) is what the user re-aims
+      // at the tree top. The line we draw represents the tilt offset using
+      // a virtual "top indicator" anchored above the base by an amount
+      // proportional to (baseBeta - curBeta).
       var baseScreenX = W / 2;
-      var baseScreenY = H / 2; // starts at center
-
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaDeg = arM.baseBeta - arM.curBeta;
-        // Positive = user tilted UP → base should move DOWN
-        baseScreenY = H / 2 + (deltaDeg * pixPerDeg);
-      }
-
-      // Clamp base so line is always visible
-      var clampedBaseY = Math.min(baseScreenY, H + 30 * dpr);
+      var baseScreenY = H / 2; // FROZEN — never moves with gyro
+      var clampedBaseY = baseScreenY;
 
       // Crosshair center
       var crossX = W / 2;
@@ -376,44 +372,67 @@ function _arStartAnim() {
       // Calculate live height
       var liveH = Math.abs(_arCalcH(arM.curBeta));
 
+      // Virtual "top indicator": where the new mark would land if user pressed
+      // + right now. Anchored above the base by gyro delta. Used purely as a
+      // visual cue so the user sees how much they've tilted.
+      var topIndicatorY = crossY;
+      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+        var deltaDeg = arM.baseBeta - arM.curBeta; // positive when tilted up
+        topIndicatorY = baseScreenY - Math.max(0, deltaDeg * pixPerDeg);
+      }
+      // Clamp inside viewport
+      topIndicatorY = Math.max(20 * dpr, Math.min(topIndicatorY, H - 20 * dpr));
+
       // ---- DRAW THE MEASUREMENT LINE ----
-      // Only draw if there's meaningful distance between points
-      var lineLen = Math.abs(clampedBaseY - crossY);
+      // Line goes from the FIXED base dot up to the virtual top indicator.
+      var lineLen = Math.abs(baseScreenY - topIndicatorY);
 
       if (lineLen > 3) {
         // Glow
         ctx.save();
         ctx.setLineDash([4 * dpr, 4 * dpr]);
         ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.strokeStyle = 'rgba(76,175,80,0.18)';
         ctx.lineWidth = 10 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, clampedBaseY);
-        ctx.lineTo(crossX, crossY);
+        ctx.moveTo(baseScreenX, baseScreenY);
+        ctx.lineTo(baseScreenX, topIndicatorY);
         ctx.stroke();
         ctx.restore();
 
-        // Main dotted line (white, Measure style)
+        // Main dotted line (green, Measure style)
         ctx.save();
         ctx.setLineDash([4 * dpr, 4 * dpr]);
         ctx.lineDashOffset = -(Date.now() / 50) % (8 * dpr);
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.strokeStyle = 'rgba(76,175,80,0.95)';
         ctx.lineWidth = 2.5 * dpr;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(baseScreenX, clampedBaseY);
-        ctx.lineTo(crossX, crossY);
+        ctx.moveTo(baseScreenX, baseScreenY);
+        ctx.lineTo(baseScreenX, topIndicatorY);
         ctx.stroke();
         ctx.restore();
       }
 
-      // ---- BASE DOT (white, on screen) ----
-      if (clampedBaseY <= H) {
+      // ---- BASE DOT (green, FROZEN at H/2) ----
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 6 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,1)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 6 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
+
+      // ---- TOP INDICATOR (small ring at top of line) ----
+      if (lineLen > 8) {
         ctx.beginPath();
-        ctx.arc(baseScreenX, clampedBaseY, 4 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.fill();
+        ctx.arc(baseScreenX, topIndicatorY, 5 * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.stroke();
       }
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
@@ -427,8 +446,8 @@ function _arStartAnim() {
       }
 
       // Position: near the midpoint of the line, offset right
-      var labelMidY = (Math.min(clampedBaseY, H) + crossY) / 2;
-      var labelX = crossX + 25 * dpr;
+      var labelMidY = (baseScreenY + topIndicatorY) / 2;
+      var labelX = baseScreenX + 25 * dpr;
 
       ctx.font = (14 * dpr) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
       var tw = ctx.measureText(txt).width;
@@ -492,34 +511,46 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
+  // Tap-to-place: base stays FIXED at H/2; top sits above by gyro delta
   var pixPerDeg = H / 60;
   var baseY = H / 2;
+  var topY = H / 2;
   if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
-    baseY = H / 2 + ((arM.baseBeta - arM.topBeta) * pixPerDeg);
+    var d = Math.max(0, arM.baseBeta - arM.topBeta);
+    topY = baseY - d * pixPerDeg;
   }
-  baseY = Math.min(baseY, H - 10);
+  topY = Math.max(20 * dpr, Math.min(topY, H - 20 * dpr));
 
   // Line
   ctx.save();
   ctx.setLineDash([4 * dpr, 4 * dpr]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.strokeStyle = 'rgba(76,175,80,0.95)';
   ctx.lineWidth = 2.5 * dpr;
   ctx.beginPath();
   ctx.moveTo(W / 2, baseY);
-  ctx.lineTo(W / 2, H / 2);
+  ctx.lineTo(W / 2, topY);
   ctx.stroke();
   ctx.restore();
 
-  // Dots
-  [baseY, H / 2].forEach(function(y) {
-    ctx.beginPath();
-    ctx.arc(W / 2, y, 5 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-  });
+  // Base dot (green, white border)
+  ctx.beginPath();
+  ctx.arc(W / 2, baseY, 6 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(76,175,80,1)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(W / 2, baseY, 6 * dpr, 0, Math.PI * 2);
+  ctx.lineWidth = 2 * dpr;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+
+  // Top dot (white)
+  ctx.beginPath();
+  ctx.arc(W / 2, topY, 5 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
 
   // Label
-  var midY = (baseY + H / 2) / 2;
+  var midY = (baseY + topY) / 2;
   var h = arM.height || 0;
   var txt = h >= 100 ? h.toFixed(0) + ' cm' : h.toFixed(1) + ' cm';
   ctx.font = 'bold ' + (15 * dpr) + 'px -apple-system, sans-serif';
