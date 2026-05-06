@@ -80,11 +80,11 @@ function openARHeightMeasure() {
         'color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;' +
         'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);">✕</button>' +
 
-      // Crosshair (center — white circle + dot, Measure style)
-      '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;">' +
-        '<div style="width:36px;height:36px;border:1.5px solid rgba(255,255,255,0.6);border-radius:50%;' +
-          'display:flex;align-items:center;justify-content:center;">' +
-          '<div style="width:5px;height:5px;background:rgba(255,255,255,0.9);border-radius:50%;"></div>' +
+      // Crosshair (center — solo visible en step 0, antes del primer tap)
+      '<div id="ar-html-crosshair" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;">' +
+        '<div style="width:36px;height:36px;border:1.5px solid rgba(255,255,255,0.7);border-radius:50%;' +
+          'display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);">' +
+          '<div style="width:5px;height:5px;background:rgba(255,255,255,1);border-radius:50%;"></div>' +
         '</div>' +
       '</div>' +
 
@@ -244,6 +244,10 @@ function _arTapToMark(e) {
     document.getElementById('ar-step-text').textContent = 'Paso 2 de 2';
     document.getElementById('ar-undo').style.display = 'flex';
 
+    // Ocultar crosshair HTML — ahora dibujamos el cursor en canvas
+    var hc = document.getElementById('ar-html-crosshair');
+    if (hc) hc.style.display = 'none';
+
     _arSyncCv();
     _arStartAnim();
 
@@ -387,23 +391,23 @@ function _arStartAnim() {
 
       var pixPerDeg = H / vfov;
 
-      // ---- PUNTO 1 (verde): ANCLADO AL MUNDO ----
-      // Capturado al tapear cuando el crosshair estaba en el centro.
-      // Conforme el usuario tilta el celular, el punto se mueve en pantalla
-      // para representar la posición FÍSICA del mundo donde se marcó.
-      // Si tilta hacia arriba (curBeta < baseBeta), el punto baja en pantalla
-      // (porque el punto del mundo está abajo de donde la cámara apunta ahora).
-      var baseScreenX = W / 2;  // mantenemos eje vertical centrado
+      // ---- PUNTO 1 (verde): FIJO EN EL CENTRO DE LA PANTALLA ----
+      // Cuando se tapea, el crosshair (que estaba al centro) se vuelve verde
+      // y se queda ahí. NO se mueve cuando muevas la cámara.
+      var baseScreenX = W / 2;
       var baseScreenY = H / 2;
-      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-        var deltaBase = arM.baseBeta - arM.curBeta;
-        baseScreenY = (H / 2) + (deltaBase * pixPerDeg);
-      }
 
-      // ---- CROSSHAIR (cursor para punto 2): SIEMPRE en el centro ----
-      // El usuario aima la cámara para que el crosshair quede sobre el cima.
+      // ---- CURSOR para punto 2: arranca en el centro y se MUEVE conforme
+      // tiltas. La distancia desde el verde (centro) representa visualmente
+      // el ángulo medido. Math.abs para evitar problemas de inversión.
       var topScreenX = W / 2;
       var topScreenY = H / 2;
+      if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
+        var deltaAbs = Math.abs(arM.baseBeta - arM.curBeta);
+        topScreenY = (H / 2) - (deltaAbs * pixPerDeg);
+      }
+      // Clamp para que no se salga arriba
+      topScreenY = Math.max(40 * dpr, topScreenY);
 
       // Altura en vivo (siempre positiva)
       var liveH = Math.abs(_arCalcH(arM.curBeta));
@@ -438,27 +442,39 @@ function _arStartAnim() {
         ctx.restore();
       }
 
-      // ---- PUNTO 1 (verde, anclado al mundo, fuera del centro conforme se tilta) ----
-      if (baseScreenY > -20 * dpr && baseScreenY < H + 20 * dpr) {
-        // Halo
+      // ---- PUNTO 1 (verde, FIJO en el centro de la pantalla) ----
+      // Halo
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,0.22)';
+      ctx.fill();
+      // Punto sólido
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(76,175,80,1)';
+      ctx.fill();
+      // Borde blanco
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.stroke();
+
+      // ---- CURSOR para punto 2 (círculo blanco con punto blanco, sigue al gyro) ----
+      // Solo se dibuja si está separado del verde (sino se overlapan)
+      if (lineLen > 5 * dpr) {
+        // Anillo blanco grande
         ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 16 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,0.22)';
-        ctx.fill();
-        // Punto sólido
-        ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(76,175,80,1)';
-        ctx.fill();
-        // Borde blanco
-        ctx.beginPath();
-        ctx.arc(baseScreenX, baseScreenY, 8 * dpr, 0, Math.PI * 2);
-        ctx.lineWidth = 2.5 * dpr;
+        ctx.arc(topScreenX, topScreenY, 14 * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = 2 * dpr;
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.stroke();
+        // Punto blanco interior
+        ctx.beginPath();
+        ctx.arc(topScreenX, topScreenY, 3 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fill();
       }
-      // El cursor para el punto 2 es el crosshair blanco del HTML — no
-      // dibujamos nada extra en el centro durante el preview.
 
       // ---- MEASUREMENT LABEL (pill, Measure style) ----
       var txt;
@@ -546,19 +562,18 @@ function _arDrawFinal() {
   var dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, W, H);
 
-  // Ambos puntos anclados al mundo — sus posiciones en pantalla dependen
-  // del gyro actual relativas a sus respectivos β capturados.
+  // Verde fijo en el centro. Azul en la posición donde estaba el cursor
+  // al momento del segundo tap (offset desde centro proporcional a |delta|).
   var pixPerDeg = H / 60;
   var baseScreenX = W / 2;
   var topX = W / 2;
   var baseScreenY = H / 2;
   var topY = H / 2;
-  if (arM.hasGyro && arM.baseBeta !== null && arM.curBeta !== null) {
-    baseScreenY = (H / 2) + (arM.baseBeta - arM.curBeta) * pixPerDeg;
+  if (arM.hasGyro && arM.baseBeta !== null && arM.topBeta !== null) {
+    var deltaAbs = Math.abs(arM.baseBeta - arM.topBeta);
+    topY = (H / 2) - deltaAbs * pixPerDeg;
   }
-  if (arM.hasGyro && arM.topBeta !== null && arM.curBeta !== null) {
-    topY = (H / 2) + (arM.topBeta - arM.curBeta) * pixPerDeg;
-  }
+  topY = Math.max(40 * dpr, topY);
 
   // Línea punteada congelada entre punto 1 (verde) y punto 2 (azul)
   ctx.save();
@@ -694,6 +709,10 @@ function _arUndo() {
   // Re-habilitar tap-zone
   var tz = document.getElementById('ar-tap-zone');
   if (tz) tz.style.pointerEvents = 'auto';
+
+  // Re-mostrar crosshair HTML
+  var hc = document.getElementById('ar-html-crosshair');
+  if (hc) hc.style.display = 'block';
 
   var r = document.getElementById('ar-result');
   if (r) r.remove();
