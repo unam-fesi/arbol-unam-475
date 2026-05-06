@@ -240,35 +240,50 @@ a:hover { color: var(--primary-dark); }
 .dropdown-divider { height: 1px; background: var(--border-light); margin: 0.4rem 0; }
 
 /* ============================================================
-   Login screen — hero with horizon + growing root
+   Login screen — hero photo background + overlay
    ============================================================ */
 .login-container {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   padding: 1.5rem; position: relative;
-  background:
-    radial-gradient(ellipse at top, rgba(74,124,42,0.18), transparent 60%),
-    radial-gradient(ellipse at bottom, rgba(212,165,116,0.22), transparent 70%),
-    linear-gradient(135deg, #f5ede0 0%, #e8dfc8 100%);
+  /* Foto de fondo (img/background.jpg) con fallback a gradiente cálido */
+  background-color: #2d5016;
+  background-image: url('img/background.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   overflow: hidden;
 }
 
+/* Overlay degradado para legibilidad del login-box.
+   Vignette + tinte verde-cálido coherente con el tema. */
 .login-container::before {
-  content: ''; position: absolute;
-  bottom: 0; left: 0; width: 100%; height: 35vh;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 300' preserveAspectRatio='xMidYMax meet'><path fill='%232d5016' fill-opacity='0.12' d='M0 300 L0 220 Q60 200 100 210 Q180 180 240 220 Q300 200 360 215 Q400 175 470 210 Q540 180 590 220 Q650 200 720 215 Q780 180 850 210 Q920 200 990 220 Q1080 195 1140 215 Q1180 200 1200 220 L1200 300Z'/><g fill='%232d5016' fill-opacity='0.18'><ellipse cx='200' cy='195' rx='40' ry='18'/><rect x='196' y='205' width='8' height='40'/><ellipse cx='400' cy='180' rx='55' ry='22'/><rect x='395' y='195' width='10' height='55'/><ellipse cx='620' cy='185' rx='48' ry='20'/><rect x='615' y='200' width='10' height='50'/><ellipse cx='830' cy='175' rx='60' ry='25'/><rect x='824' y='195' width='12' height='60'/><ellipse cx='1050' cy='190' rx='42' ry='18'/><rect x='1046' y='205' width='8' height='45'/></g></svg>");
-  background-size: cover; background-position: bottom;
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(15,30,5,0.20) 0%, rgba(15,30,5,0.55) 100%),
+    linear-gradient(135deg, rgba(45,80,22,0.25) 0%, rgba(60,40,15,0.30) 100%);
   pointer-events: none; z-index: 1;
 }
 
+/* En móvil, evitar background-attachment:fixed (problemas de performance/iOS) */
+@media (max-width: 768px) {
+  .login-container { background-attachment: scroll; }
+}
+
 .login-box {
-  background: rgba(255,253,247,0.92);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,253,247,0.5);
+  background: rgba(255,253,247,0.95);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.6);
   border-radius: var(--radius-lg);
   padding: 3rem 2.5rem 2.5rem;
   width: 100%; max-width: 440px;
-  box-shadow: 0 24px 64px rgba(45,80,22,0.15), 0 8px 24px rgba(45,80,22,0.08);
+  /* Sombras más pronunciadas para destacar contra foto */
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.35),
+    0 12px 30px rgba(0,0,0,0.20),
+    inset 0 1px 0 rgba(255,255,255,0.6);
   position: relative; z-index: 2;
   animation: card-rise 700ms cubic-bezier(0.16,1,0.3,1);
 }
