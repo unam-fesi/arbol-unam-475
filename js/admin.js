@@ -1355,53 +1355,40 @@ window.populateSpecialistDropdown = populateSpecialistDropdown;
 // INNOVACIÓN #1 — QR físico por árbol
 // =============================================================
 function showTreeQR(treeId, treeCode, commonName) {
+  // Un solo QR por árbol. Al escanearlo, el usuario ve una pantalla de
+  // bienvenida con dos opciones: iniciar sesión o reportar como ciudadano.
   const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '/');
-  const targetUrl = `${baseUrl}?t=${encodeURIComponent(treeCode)}`;
-  const reportUrl = `${baseUrl}?report=${encodeURIComponent(treeCode)}`;
+  const targetUrl = `${baseUrl}?tree=${encodeURIComponent(treeCode)}`;
 
   showModal(`QR — ${treeCode}`, `
     <div style="text-align:center;">
-      <p class="text-muted text-small">Imprime y pega esta placa en el árbol. Cualquiera con el celular puede escanearla.</p>
-      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin:1rem 0;">
-        <div>
-          <h5>Identificación</h5>
-          <div id="qr-canvas-id" style="background:white;padding:1rem;border:1px solid #ddd;border-radius:6px;"></div>
-          <p class="text-small" style="margin-top:0.5rem;">Abre la ficha del árbol</p>
-        </div>
-        <div>
-          <h5>Reporte ciudadano</h5>
-          <div id="qr-canvas-report" style="background:white;padding:1rem;border:1px solid #ddd;border-radius:6px;"></div>
-          <p class="text-small" style="margin-top:0.5rem;">Reporta un problema</p>
-        </div>
+      <p class="text-muted text-small">Imprime y pega esta placa en el árbol. Al escanear, el usuario verá un menú con dos opciones: iniciar sesión (cuidador) o reportar problema (ciudadano sin cuenta).</p>
+      <div style="margin:1.5rem auto;max-width:240px;">
+        <div id="qr-canvas-tree" style="background:white;padding:1.25rem;border:1px solid #ddd;border-radius:12px;display:inline-block;"></div>
       </div>
-      <div style="background:#f5f5f5;padding:0.5rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">
+      <div style="background:rgba(74,124,42,0.08);padding:0.75rem 1rem;border-radius:8px;font-size:0.8rem;border-left:3px solid var(--primary);">
         <strong>${escapeHtml(commonName || treeCode)}</strong><br>
-        Código: <code>${escapeHtml(treeCode)}</code>
+        <span class="text-muted">Código: <code>${escapeHtml(treeCode)}</code></span>
       </div>
-      <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1rem;">
+      <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1.25rem;flex-wrap:wrap;">
         <button class="btn btn-primary" onclick="printTreeQR('${escapeHtml(treeCode)}','${escapeHtml(commonName || '')}')">
           <i class="fas fa-print"></i> Imprimir placa
         </button>
-        <button class="btn btn-outline" onclick="downloadQR('qr-canvas-id','${escapeHtml(treeCode)}')">
+        <button class="btn btn-outline" onclick="downloadQR('qr-canvas-tree','${escapeHtml(treeCode)}')">
           <i class="fas fa-download"></i> Descargar PNG
         </button>
       </div>
     </div>
   `);
 
-  // Generate QRs after modal renders
   setTimeout(() => {
     if (typeof QRCode === 'undefined') {
-      document.getElementById('qr-canvas-id').innerHTML = '<p class="text-muted">QRCode lib no cargada</p>';
+      document.getElementById('qr-canvas-tree').innerHTML = '<p class="text-muted">QRCode lib no cargada</p>';
       return;
     }
-    new QRCode(document.getElementById('qr-canvas-id'), {
-      text: targetUrl, width: 180, height: 180,
-      colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M
-    });
-    new QRCode(document.getElementById('qr-canvas-report'), {
-      text: reportUrl, width: 180, height: 180,
-      colorDark: '#1b3a31', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M
+    new QRCode(document.getElementById('qr-canvas-tree'), {
+      text: targetUrl, width: 200, height: 200,
+      colorDark: '#1b3a0a', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M
     });
   }, 100);
 }
@@ -1417,32 +1404,27 @@ function downloadQR(containerId, treeCode) {
 }
 
 function printTreeQR(treeCode, commonName) {
-  const idImg = document.querySelector('#qr-canvas-id img, #qr-canvas-id canvas');
-  const repImg = document.querySelector('#qr-canvas-report img, #qr-canvas-report canvas');
-  if (!idImg || !repImg) { showToast('QRs aún generándose, intenta de nuevo', 'warning'); return; }
-  const idData = idImg.tagName === 'CANVAS' ? idImg.toDataURL() : idImg.src;
-  const repData = repImg.tagName === 'CANVAS' ? repImg.toDataURL() : repImg.src;
+  const img = document.querySelector('#qr-canvas-tree img, #qr-canvas-tree canvas');
+  if (!img) { showToast('QR aún generándose, intenta de nuevo', 'warning'); return; }
+  const data = img.tagName === 'CANVAS' ? img.toDataURL() : img.src;
   const w = window.open('', '_blank');
   w.document.write(`<!DOCTYPE html><html><head><title>Placa ${treeCode}</title>
     <style>
       body{font-family:Inter,sans-serif;padding:20mm;margin:0;}
-      .placa{border:2px solid #2d6a4f;padding:14mm 10mm;text-align:center;border-radius:8mm;max-width:100mm;margin:0 auto;}
-      .placa h1{color:#2d6a4f;margin:0;font-size:14pt;}
+      .placa{border:3px solid #2d5016;padding:14mm 10mm;text-align:center;border-radius:8mm;max-width:100mm;margin:0 auto;}
+      .placa h1{color:#2d5016;margin:0;font-size:14pt;}
       .placa .code{font-family:'Courier New',monospace;font-size:18pt;background:#e8f5e9;padding:2mm 4mm;border-radius:2mm;display:inline-block;margin:3mm 0;}
-      .qrs{display:flex;gap:8mm;justify-content:center;margin-top:6mm;}
-      .qrs > div{text-align:center;}
-      .qrs img{width:30mm;height:30mm;}
-      .label{font-size:9pt;margin-top:2mm;color:#555;}
+      .qr{margin:6mm 0;}
+      .qr img{width:50mm;height:50mm;}
+      .instr{font-size:8pt;color:#555;margin-top:2mm;line-height:1.4;}
       .footer{margin-top:6mm;font-size:8pt;color:#888;}
     </style></head><body>
     <div class="placa">
       <h1>🌳 Proyecto Árbol UNAM 475</h1>
       <div style="margin-top:4mm;font-size:11pt;">${escapeHtml(commonName || '')}</div>
       <div class="code">${escapeHtml(treeCode)}</div>
-      <div class="qrs">
-        <div><img src="${idData}"><div class="label">Ficha</div></div>
-        <div><img src="${repData}"><div class="label">Reportar</div></div>
-      </div>
+      <div class="qr"><img src="${data}"></div>
+      <div class="instr">Escanea con la cámara<br>de tu celular para ver el<br>árbol o reportar un problema</div>
       <div class="footer">FES Iztacala · UNAM</div>
     </div>
     <script>setTimeout(()=>{window.print();},500)</script>
