@@ -82,17 +82,40 @@ function skipIntro() {
 }
 
 async function initApp() {
-  // ----- Public deep link: ?report=<tree_code> NO requiere login -----
-  // Esto permite que cualquier persona escanee el QR del árbol y reporte
-  // un problema sin tener cuenta.
+  // ----- Deep link unificado: ?tree=<code> -----
+  // Un solo QR por árbol. Al escanearlo, se muestra una pantalla de
+  // bienvenida con dos opciones: iniciar sesión (cuidador/admin) o
+  // reportar problema como ciudadano (sin cuenta).
+  // Backwards compat: ?t= y ?report= siguen funcionando.
   const _params = new URLSearchParams(window.location.search);
-  const _publicReport = _params.get('report');
-  if (_publicReport) {
-    // Salta el video intro y la pantalla de login
+  const _treeCode = _params.get('tree') || _params.get('t') || _params.get('report');
+  const _isReportShortcut = !!_params.get('report');  // legacy
+  if (_treeCode) {
     introFinished = true;
     const overlay = document.getElementById('intro-video-overlay');
     if (overlay) overlay.style.display = 'none';
-    showPublicReportScreen(_publicReport);
+
+    // Si la sesión ya está activa, llevarlo directo al árbol (sin landing)
+    const { data: { session: _s } } = await sb.auth.getSession();
+    if (_s) {
+      currentUser = _s.user;
+      await loadUserProfile();
+      showMainApp();
+      setTimeout(() => {
+        if (typeof showSpecialistTree === 'function' || typeof loadMyTree === 'function') {
+          handleDeepLinkTree(_treeCode);
+        }
+      }, 500);
+      return;
+    }
+
+    // Sin sesión: si vino con ?report=, ir directo al form. Si vino con
+    // ?tree= o ?t=, mostrar landing con elección.
+    if (_isReportShortcut) {
+      showPublicReportScreen(_treeCode);
+    } else {
+      showQrLandingScreen(_treeCode);
+    }
     return;
   }
 
@@ -149,8 +172,15 @@ function showMainApp() {
       }
     }).catch(() => {});
   }
-  // Handle deep links (?t=<code> from QR)
-  setTimeout(handleDeepLink, 600);
+  // Pending tree code (de QR + login flow): redirigir al árbol
+  let pendingTree = null;
+  try { pendingTree = sessionStorage.getItem('pending_tree_code'); } catch (e) {}
+  if (pendingTree) {
+    setTimeout(() => handleDeepLinkTree(pendingTree), 600);
+  } else {
+    // Handle deep links legacy (?t=<code> from QR)
+    setTimeout(handleDeepLink, 600);
+  }
 }
 
 function updateUserDisplay() {
@@ -441,6 +471,87 @@ async function handleDeepLink() {
   }
 }
 
+// ========== QR LANDING SCREEN (un solo QR → 2 caminos) ==========
+// Cuando alguien escanea el QR ?tree=<code> y NO tiene sesión,
+// le mostramos una pantalla con dos opciones:
+//  1) Iniciar sesión (cuidador / admin / especialista)
+//  2) Reportar problema sin cuenta (ciudadano)
+function showQrLandingScreen(treeCode) {
+  const login = document.getElementById('login-screen');
+  const main = document.getElementById('main-app');
+  if (login) login.style.display = 'none';
+  if (main) main.style.display = 'none';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-landing-overlay';
+  overlay.className = 'login-container';
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="login-box" style="max-width:480px;text-align:center;">
+      <div class="login-logo">
+        <div style="font-size:3rem;margin-bottom:0.5rem;">🌳</div>
+        <div class="login-logo-text">${escapeHtml(treeCode)}</div>
+        <div class="login-logo-subtitle">Proyecto Árbol UNAM 475</div>
+      </div>
+      <p style="color:var(--text-light);margin:1.5rem 0;">
+        Escaneaste el QR de este árbol.<br>¿Cómo quieres continuar?
+      </p>
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <button class="login-btn" onclick="qrLandingChooseLogin('${escapeHtml(treeCode)}')">
+          <i class="fas fa-sign-in-alt"></i> Tengo cuenta &mdash; Iniciar sesión
+        </button>
+        <button class="btn btn-outline" style="padding:0.85rem;font-size:0.95rem;" onclick="qrLandingChooseAnon('${escapeHtml(treeCode)}')">
+          <i class="fas fa-flag"></i> Reportar problema sin cuenta
+        </button>
+      </div>
+      <div class="login-footer" style="margin-top:1.5rem;">
+        <p style="font-size:0.78rem;color:var(--text-light);">Universidad Nacional Autónoma de México</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function qrLandingChooseLogin(treeCode) {
+  // Cerrar landing y mostrar login. Guardar treeCode para redirección después
+  const overlay = document.getElementById('qr-landing-overlay');
+  if (overlay) overlay.remove();
+  // Stash el tree_code en sessionStorage para que post-login redirija al árbol
+  try { sessionStorage.setItem('pending_tree_code', treeCode); } catch (e) {}
+  showLoginScreen();
+}
+
+function qrLandingChooseAnon(treeCode) {
+  const overlay = document.getElementById('qr-landing-overlay');
+  if (overlay) overlay.remove();
+  showPublicReportScreen(treeCode);
+}
+
+// Después de un login exitoso, si hay un treeCode pendiente, navegar al árbol
+async function handleDeepLinkTree(treeCode) {
+  if (!treeCode) return;
+  try { sessionStorage.removeItem('pending_tree_code'); } catch (e) {}
+  // Lookup tree
+  const { data: tree } = await sb.from('trees_catalog')
+    .select('id, tree_code, common_name, species, campus')
+    .eq('tree_code', treeCode).maybeSingle();
+  if (!tree) {
+    if (typeof showToast === 'function') showToast('Árbol ' + treeCode + ' no encontrado', 'warning');
+    return;
+  }
+  // Decidir vista según rol
+  const role = currentUserProfile && currentUserProfile.role;
+  if (role === 'specialist' || role === 'admin') {
+    if (typeof showSection === 'function') showSection('section-specialist');
+    setTimeout(() => {
+      if (typeof showSpecialistTree === 'function') showSpecialistTree(tree.id);
+    }, 400);
+  } else {
+    // Usuario regular: ir a Mi Árbol y dejarle ver el suyo
+    if (typeof showSection === 'function') showSection('section-mi-arbol');
+  }
+}
+
 // ========== PUBLIC REPORT SCREEN (QR ciudadano, sin login) ==========
 async function showPublicReportScreen(treeCode) {
   // Oculta login y main app
@@ -621,3 +732,7 @@ window.handleDeepLink = handleDeepLink;
 window.registerServiceWorker = registerServiceWorker;
 window.showPublicReportScreen = showPublicReportScreen;
 window.submitPublicReport = submitPublicReport;
+window.showQrLandingScreen = showQrLandingScreen;
+window.qrLandingChooseLogin = qrLandingChooseLogin;
+window.qrLandingChooseAnon = qrLandingChooseAnon;
+window.handleDeepLinkTree = handleDeepLinkTree;
