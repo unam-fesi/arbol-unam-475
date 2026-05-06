@@ -31,6 +31,7 @@ window.IztacalaMap = (function() {
   let mapData = null;
   let initialized = false;
   let hoveredObj = null;
+  let windowTexture = null; // textura procedural de ventanas (lazy init)
 
   // ============================================================================
   // PROYECCIÓN lat/lon → x,y modelo (metros)
@@ -112,8 +113,8 @@ window.IztacalaMap = (function() {
 
     // ---- Three.js scene ----
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xc7e0f2);
-    scene.fog = new THREE.Fog(0xc7e0f2, 800, 1800);
+    scene.background = new THREE.Color(0xe8f0f5); // cielo muy claro casi blanco
+    scene.fog = new THREE.Fog(0xe8f0f5, 1000, 2200);
 
     const w = containerEl.clientWidth || 800;
     const h = containerEl.clientHeight || 500;
@@ -134,24 +135,26 @@ window.IztacalaMap = (function() {
     containerEl.appendChild(renderer.domElement);
     renderer.domElement.style.cssText = 'display:block;width:100%;height:100%;outline:none;';
 
-    // ---- Iluminación ----
-    const amb = new THREE.AmbientLight(0xffffff, 0.55);
+    // ---- Iluminación tipo "render arquitectónico" ----
+    // Ambient suave + directional fuerte desde arriba-este (similar al mapa oficial UNAM)
+    const amb = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(amb);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 0.95);
-    sun.position.set(300, 600, 200);
+    const sun = new THREE.DirectionalLight(0xfff8e8, 0.85);
+    sun.position.set(400, 700, 250);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 100;
-    sun.shadow.camera.far = 1500;
-    sun.shadow.camera.left = -600;
-    sun.shadow.camera.right = 600;
-    sun.shadow.camera.top = 600;
-    sun.shadow.camera.bottom = -600;
+    sun.shadow.camera.far = 2000;
+    sun.shadow.camera.left = -700;
+    sun.shadow.camera.right = 700;
+    sun.shadow.camera.top = 700;
+    sun.shadow.camera.bottom = -700;
+    sun.shadow.bias = -0.0005;
     scene.add(sun);
 
-    // Hemilight para llenar sombras suavemente
-    const hemi = new THREE.HemisphereLight(0xc7e0f2, 0x9bc285, 0.35);
+    // Hemilight cielo→pasto para rellenar sombras con tonos correctos
+    const hemi = new THREE.HemisphereLight(0xe8f0f5, 0x6fb24a, 0.4);
     scene.add(hemi);
 
     // ---- Terreno + boundary ----
@@ -218,76 +221,280 @@ window.IztacalaMap = (function() {
   function addTerrain(boundary) {
     if (!boundary || boundary.length < 3) return;
 
-    // Plano grande de pasto (verde) bajo todo
+    // Plano grande gris exterior (banqueta/fuera del campus)
     const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(2000, 2000),
-      new THREE.MeshLambertMaterial({ color: 0xc8c0a0 })
+      new THREE.PlaneGeometry(3000, 3000),
+      new THREE.MeshLambertMaterial({ color: 0xa8a8a8 })
     );
     plane.rotation.x = -Math.PI / 2;
-    plane.position.y = -0.5;
+    plane.position.y = -0.6;
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Polígono del campus (verde más vivo)
+    // ---- Anillo gris oscuro del boundary (estilo isométrico UNAM) ----
+    // Generamos un ring extruido alrededor del polígono del campus
     const shape = makeShape(boundary);
-    const geom = new THREE.ShapeGeometry(shape);
-    geom.rotateX(-Math.PI / 2);
 
-    const mat = new THREE.MeshLambertMaterial({
-      color: 0x9bc285,
+    // Banqueta gris (extrudida levemente para dar sensación de "isla")
+    const baseGeom = new THREE.ExtrudeGeometry(shape, {
+      depth: 0.5, bevelEnabled: false,
+    });
+    baseGeom.rotateX(-Math.PI / 2);
+    const baseMat = new THREE.MeshLambertMaterial({ color: 0x8a8a8a });
+    const base = new THREE.Mesh(baseGeom, baseMat);
+    base.position.y = -0.5;
+    base.receiveShadow = true;
+    scene.add(base);
+
+    // ---- Pasto verde brillante (encima de la banqueta) ----
+    const grassGeom = new THREE.ShapeGeometry(shape);
+    grassGeom.rotateX(-Math.PI / 2);
+    const grassMat = new THREE.MeshLambertMaterial({
+      color: 0x6fb24a, // verde vivo tipo mapa UNAM
       side: THREE.DoubleSide,
     });
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.position.y = 0;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
+    const grass = new THREE.Mesh(grassGeom, grassMat);
+    grass.position.y = 0.05;
+    grass.receiveShadow = true;
+    scene.add(grass);
 
-    // Borde del campus (línea oscura)
-    const pts = boundary.map(p => new THREE.Vector3(p[0], 0.05, -p[1]));
+    // ---- Borde oscuro del campus (acento) ----
+    const pts = boundary.map(p => new THREE.Vector3(p[0], 0.1, -p[1]));
     pts.push(pts[0]);
     const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x2E7D32, linewidth: 2 });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x2d4a1a, linewidth: 2 });
     scene.add(new THREE.Line(lineGeom, lineMat));
   }
 
   // ============================================================================
-  // EDIFICIOS
+  // TEXTURA PROCEDURAL DE VENTANAS
+  // ============================================================================
+  // Genera un canvas con un patrón de ventanas azules sobre pared crema.
+  // La textura tiles 1 unidad horizontal = 4 m, 1 unidad vertical = 3.5 m
+  // (un piso). UV coords se escalan en metros físicos por edificio.
+  // ============================================================================
+  function getWindowTexture() {
+    if (windowTexture) return windowTexture;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 224; // proporción 4×3.5 metros
+    const ctx = canvas.getContext('2d');
+
+    // Pared base (crema/beige claro)
+    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bg.addColorStop(0, '#fbf3e2');
+    bg.addColorStop(1, '#eee2c5');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Línea horizontal sutil (separación de pisos)
+    ctx.strokeStyle = 'rgba(150,120,80,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 4);
+    ctx.lineTo(canvas.width, 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height - 4);
+    ctx.lineTo(canvas.width, canvas.height - 4);
+    ctx.stroke();
+
+    // Ventanas: 4 columnas × 1 fila (un piso)
+    const cols = 4;
+    const winW = 38, winH = 60;
+    const yPad = 70; // arriba para sea zócalo del piso
+    const xMargin = 12;
+    const usableW = canvas.width - 2 * xMargin;
+    const colSpacing = (usableW - cols * winW) / (cols - 1);
+
+    for (let c = 0; c < cols; c++) {
+      const x = xMargin + c * (winW + colSpacing);
+      const y = yPad;
+
+      // Marco oscuro
+      ctx.fillStyle = '#3a5066';
+      ctx.fillRect(x - 1, y - 1, winW + 2, winH + 2);
+
+      // Vidrio (gradiente azul cielo reflejo)
+      const glassG = ctx.createLinearGradient(x, y, x, y + winH);
+      glassG.addColorStop(0, '#9bc4dc');
+      glassG.addColorStop(0.5, '#6fa3c4');
+      glassG.addColorStop(1, '#5a8eb0');
+      ctx.fillStyle = glassG;
+      ctx.fillRect(x, y, winW, winH);
+
+      // Cruz blanca de marco interno
+      ctx.strokeStyle = '#f0e8d8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + winW / 2, y);
+      ctx.lineTo(x + winW / 2, y + winH);
+      ctx.moveTo(x, y + winH / 2);
+      ctx.lineTo(x + winW, y + winH / 2);
+      ctx.stroke();
+
+      // Reflejo blanco diagonal sutil (esquina superior izquierda)
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y + 2);
+      ctx.lineTo(x + winW * 0.4, y + 2);
+      ctx.lineTo(x + 2, y + winH * 0.4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Zócalo inferior (banda gris claro)
+    ctx.fillStyle = '#cfc1a3';
+    ctx.fillRect(0, canvas.height - 12, canvas.width, 12);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipMapLinearFilter;
+    windowTexture = tex;
+    return tex;
+  }
+
+  // ============================================================================
+  // EDIFICIOS — paredes con ventanas + techo coral
   // ============================================================================
   function addBuilding(b) {
-    if (!b.pts || b.pts.length < 3) return;
+    if (!b.pts || !b.pts.length || b.pts.length < 3) return;
 
-    // Altura (default 6m, escalada por tamaño visualmente)
-    let height = parseFloat(b.tags?.height) || parseFloat(b.tags?.height_m) || 6;
-
-    // Color según tipo
-    const isSchool = b.tags?.building === 'school';
-    const baseColor = isSchool ? 0xe8d8b8 : 0xd9c8a8; // tonos beige
-    const roofColor = isSchool ? 0xa0826d : 0x8a6d56;
-
-    // Footprint extruido
-    const shape = makeShape(b.pts);
-    const extrude = new THREE.ExtrudeGeometry(shape, {
-      depth: height,
-      bevelEnabled: false,
-    });
-    extrude.rotateX(-Math.PI / 2);
-
-    const mat = new THREE.MeshLambertMaterial({ color: baseColor });
-    const mesh = new THREE.Mesh(extrude, mat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { type: 'building', data: b };
-    scene.add(mesh);
-    buildingMeshes.push(mesh);
-
-    // Borde superior del edificio (línea oscura para realzar techos)
-    const ringPts = b.pts.map(p => new THREE.Vector3(p[0], height + 0.05, -p[1]));
-    if (ringPts.length > 1) {
-      ringPts.push(ringPts[0]);
-      const lineG = new THREE.BufferGeometry().setFromPoints(ringPts);
-      const lineM = new THREE.LineBasicMaterial({ color: roofColor });
-      scene.add(new THREE.Line(lineG, lineM));
+    // ---- Altura: si no viene en tags, derivar del área del footprint ----
+    // Edificios chicos (<200 m²) → 1 piso (3.5 m)
+    // Medianos (200-700 m²) → 2 pisos (7 m)
+    // Grandes (>700 m²) → 3 pisos (10.5 m)
+    let height = parseFloat(b.tags?.height) || parseFloat(b.tags?.height_m);
+    if (!height || isNaN(height)) {
+      const area = polygonArea(b.pts);
+      if (area < 200) height = 3.5;
+      else if (area < 700) height = 7;
+      else height = 10.5;
     }
+    const numFloors = Math.max(1, Math.round(height / 3.5));
+
+    // ---- Asegurar polígono cerrado ----
+    const pts = b.pts.slice();
+    const first = pts[0], last = pts[pts.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) pts.push(first);
+
+    // ---- WALLS custom: BufferGeometry con UVs físicamente correctos ----
+    // Para cada arista del polígono, generar un quad (2 triángulos).
+    // U = perímetro acumulado / 4m (ancho de tile)
+    // V = altura / 3.5m (alto de tile = 1 piso)
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    let vIdx = 0;
+
+    const TILE_W = 4.0;  // 4 metros horizontales por tile
+    const TILE_H = 3.5;  // 3.5 metros verticales por piso
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i], p1 = pts[i + 1];
+      const dx = p1[0] - p0[0];
+      const dy = p1[1] - p0[1];
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.001) continue;
+
+      // Coords Three.js: x = JSON.x, z = -JSON.y
+      const x0 = p0[0], z0 = -p0[1];
+      const x1 = p1[0], z1 = -p1[1];
+
+      // 4 vértices del quad
+      // 0: bottom-start, 1: bottom-end, 2: top-end, 3: top-start
+      positions.push(x0, 0, z0);
+      positions.push(x1, 0, z1);
+      positions.push(x1, height, z1);
+      positions.push(x0, height, z0);
+
+      // UVs: U va de 0 a (len/TILE_W), V va de 0 a (height/TILE_H)
+      const uMax = len / TILE_W;
+      const vMax = height / TILE_H;
+      uvs.push(0, 0);
+      uvs.push(uMax, 0);
+      uvs.push(uMax, vMax);
+      uvs.push(0, vMax);
+
+      // Indices (2 triángulos por quad) — winding CCW visto desde fuera
+      // Los pts del JSON están en CCW (visto desde +Z, mirando -Z),
+      // pero después de mapear y → -z, el winding desde +Y queda invertido.
+      // Para que las normales miren hacia afuera del edificio, usamos:
+      //   tri 1: 0, 2, 1
+      //   tri 2: 0, 3, 2
+      indices.push(vIdx + 0, vIdx + 2, vIdx + 1);
+      indices.push(vIdx + 0, vIdx + 3, vIdx + 2);
+      vIdx += 4;
+    }
+
+    const wallGeom = new THREE.BufferGeometry();
+    wallGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    wallGeom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    wallGeom.setIndex(indices);
+    wallGeom.computeVertexNormals();
+
+    const wallMat = new THREE.MeshLambertMaterial({
+      map: getWindowTexture(),
+      side: THREE.DoubleSide,
+    });
+    const walls = new THREE.Mesh(wallGeom, wallMat);
+    walls.castShadow = true;
+    walls.receiveShadow = true;
+    walls.userData = { type: 'building', data: b };
+    scene.add(walls);
+    buildingMeshes.push(walls);
+
+    // ---- TECHO coral/salmón (ShapeGeometry separada) ----
+    const shape = makeShape(b.pts);
+    const roofGeom = new THREE.ShapeGeometry(shape);
+    roofGeom.rotateX(-Math.PI / 2);
+    // Variación de tono de techo (coral con leve aleatoriedad por edificio)
+    const isSchool = b.tags?.building === 'school';
+    const baseRoof = isSchool ? [0xc8554a, 0xd05a4d, 0xd86250] : [0xb04a40, 0xa84538];
+    const roofColor = baseRoof[Math.abs(b.id || 0) % baseRoof.length];
+
+    const roofMat = new THREE.MeshLambertMaterial({ color: roofColor });
+    const roof = new THREE.Mesh(roofGeom, roofMat);
+    roof.position.y = height + 0.02;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    roof.userData = { type: 'building', data: b };
+    scene.add(roof);
+    buildingMeshes.push(roof);
+
+    // ---- Borde oscuro del techo (alero) ----
+    const ringPts = pts.map(p => new THREE.Vector3(p[0], height + 0.04, -p[1]));
+    const lineG = new THREE.BufferGeometry().setFromPoints(ringPts);
+    const lineM = new THREE.LineBasicMaterial({ color: 0x6b2820 });
+    scene.add(new THREE.Line(lineG, lineM));
+
+    // ---- Línea de separación de pisos en la pared (sutil) ----
+    if (numFloors > 1) {
+      for (let f = 1; f < numFloors; f++) {
+        const yLine = (height / numFloors) * f;
+        const floorRing = pts.map(p => new THREE.Vector3(p[0], yLine, -p[1]));
+        const fG = new THREE.BufferGeometry().setFromPoints(floorRing);
+        const fM = new THREE.LineBasicMaterial({ color: 0xb59f78, transparent: true, opacity: 0.5 });
+        scene.add(new THREE.Line(fG, fM));
+      }
+    }
+  }
+
+  // Área de un polígono (shoelace) — para estimar pisos
+  function polygonArea(pts) {
+    if (!pts || pts.length < 3) return 0;
+    let a = 0;
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[i];
+      const p1 = pts[(i + 1) % n];
+      a += p0[0] * p1[1] - p1[0] * p0[1];
+    }
+    return Math.abs(a) / 2;
   }
 
   // ============================================================================
