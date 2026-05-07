@@ -223,12 +223,22 @@ function _renderSelector() {
 function _setupPortfolioDelegation() {
   if (document._portfolioDelegation) return;
   document.addEventListener('click', (e) => {
-    const target = e.target.closest('[data-portfolio-action="select-entity"]');
-    if (!target) return;
-    e.preventDefault();
-    const type = target.dataset.entityType;
-    const id = target.dataset.entityId;
-    if (type && id != null) selectPortfolioEntity(type, id);
+    // Selección de entidad (chips, cards, links del mapa)
+    const sel = e.target.closest('[data-portfolio-action="select-entity"]');
+    if (sel) {
+      e.preventDefault();
+      const type = sel.dataset.entityType;
+      const id = sel.dataset.entityId;
+      if (type && id != null) selectPortfolioEntity(type, id);
+      return;
+    }
+    // Abrir form de visita al jardín
+    const visitBtn = e.target.closest('[data-portfolio-action="open-garden-visit"]');
+    if (visitBtn) {
+      e.preventDefault();
+      openGardenVisitForm(visitBtn.dataset.gardenId);
+      return;
+    }
   });
   document._portfolioDelegation = true;
 }
@@ -280,22 +290,25 @@ async function renderGardenView(gardenId) {
       <i class="fas fa-spinner fa-spin"></i> Cargando jardín…
     </div>`;
 
-  // Cargar árboles del jardín + sus mediciones más recientes
-  const treesInGarden = await _fetchTreesInGarden(gardenId);
-  const aggStats = _computeGardenStats(treesInGarden);
+  // Cargar árboles del jardín + sus visitas + mediciones
+  const [treesInGarden, gardenVisits] = await Promise.all([
+    _fetchTreesInGarden(gardenId),
+    _fetchGardenVisits(gardenId),
+  ]);
+  const aggStats = _computeGardenStats(treesInGarden, gardenVisits);
 
   // Render shell con tabs
   container.innerHTML = `
     <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
       <button class="btn btn-primary btn-sm garden-tab active" data-tab="g-info" onclick="switchGardenTab('g-info')"><i class="fas fa-leaf"></i> Info</button>
-      <button class="btn btn-outline btn-sm garden-tab" data-tab="g-seguimiento" onclick="switchGardenTab('g-seguimiento')"><i class="fas fa-chart-line"></i> Seguimiento (${treesInGarden.length})</button>
+      <button class="btn btn-outline btn-sm garden-tab" data-tab="g-seguimiento" onclick="switchGardenTab('g-seguimiento')"><i class="fas fa-chart-line"></i> Seguimiento</button>
       <button class="btn btn-outline btn-sm garden-tab" data-tab="g-registro" onclick="switchGardenTab('g-registro')"><i class="fas fa-plus-circle"></i> Nuevo Registro</button>
       <button class="btn btn-outline btn-sm garden-tab" data-tab="g-metas" onclick="switchGardenTab('g-metas')"><i class="fas fa-bullseye"></i> Metas</button>
     </div>
 
     <div id="g-info" class="garden-tab-content active">${_renderGardenInfo(garden, aggStats)}</div>
-    <div id="g-seguimiento" class="garden-tab-content" style="display:none;">${_renderGardenSeguimiento(treesInGarden)}</div>
-    <div id="g-registro" class="garden-tab-content" style="display:none;">${_renderGardenRegistro(treesInGarden)}</div>
+    <div id="g-seguimiento" class="garden-tab-content" style="display:none;">${_renderGardenSeguimiento(treesInGarden, gardenVisits)}</div>
+    <div id="g-registro" class="garden-tab-content" style="display:none;">${_renderGardenRegistro(garden, treesInGarden, gardenVisits)}</div>
     <div id="g-metas" class="garden-tab-content" style="display:none;">${_renderGardenMetas(garden, treesInGarden, aggStats)}</div>
 
     <div id="g-map-container" style="margin-top:2rem;border-radius:14px;overflow:hidden;height:400px;border:1px solid #d6d6d6;"></div>
@@ -304,6 +317,31 @@ async function renderGardenView(gardenId) {
   // Inicializar mapa con árboles del jardín + bounds
   setTimeout(() => _initGardenMap(garden, treesInGarden), 50);
 }
+
+// Tipos de actividad disponibles para visitas al jardín
+const GARDEN_ACTIVITIES = [
+  { id: 'riego', label: 'Riego', icon: '💧' },
+  { id: 'limpieza', label: 'Limpieza / basura', icon: '🧹' },
+  { id: 'poda', label: 'Poda', icon: '✂️' },
+  { id: 'fertilizacion', label: 'Fertilización', icon: '🌱' },
+  { id: 'control_plagas', label: 'Control de plagas', icon: '🪲' },
+  { id: 'control_maleza', label: 'Control de maleza', icon: '🌾' },
+  { id: 'siembra_reposicion', label: 'Siembra / reposición', icon: '🪴' },
+  { id: 'mantillo_hojarasca', label: 'Mantillo / hojarasca', icon: '🍂' },
+  { id: 'aireacion', label: 'Aireación de suelo', icon: '🪛' },
+  { id: 'inspeccion', label: 'Inspección general', icon: '🔍' },
+  { id: 'mantenimiento_estructural', label: 'Mantenimiento estructural', icon: '🔧' },
+  { id: 'cuidado_polinizadores', label: 'Cuidado de polinizadores', icon: '🐝' },
+  { id: 'otro', label: 'Otro', icon: '📌' },
+];
+
+// Rúbrica de salud del jardín (0-25 cada criterio, total 0-100)
+const GARDEN_RUBRIC = [
+  { id: 'cobertura', label: 'Cobertura y densidad vegetal', desc: 'Qué tan cubierto y denso luce el jardín' },
+  { id: 'vitalidad', label: 'Vitalidad de plantas/flores', desc: 'Sin marchitez, color saludable, hojas verdes' },
+  { id: 'mantenimiento', label: 'Limpieza y mantenimiento', desc: 'Ausencia de basura, maleza controlada, podas al día' },
+  { id: 'suelo_riego', label: 'Estado del suelo y riego', desc: 'Suelo húmedo, sin compactación ni encharcamiento' },
+];
 
 async function _fetchTreesInGarden(gardenId) {
   try {
@@ -336,17 +374,46 @@ async function _fetchTreesInGarden(gardenId) {
   }
 }
 
-function _computeGardenStats(trees) {
+async function _fetchGardenVisits(gardenId) {
+  try {
+    const { data: visits } = await sb
+      .from('garden_visits')
+      .select('id, garden_id, user_id, visit_date, visit_type, photo_url, health_score, rubric, activities, observations, location_lat, location_lng')
+      .eq('garden_id', gardenId)
+      .order('visit_date', { ascending: false });
+    return visits || [];
+  } catch (e) {
+    console.error('_fetchGardenVisits error:', e);
+    return [];
+  }
+}
+
+function _computeGardenStats(trees, visits) {
   const total = trees.length;
   const withHealth = trees.filter(t => t.health_score != null);
-  const avgHealth = withHealth.length > 0
+  const treesAvgHealth = withHealth.length > 0
     ? withHealth.reduce((s, t) => s + t.health_score, 0) / withHealth.length
     : null;
   const sano = trees.filter(t => t.health_score >= 70).length;
   const medio = trees.filter(t => t.health_score >= 40 && t.health_score < 70).length;
   const malo = trees.filter(t => t.health_score < 40 && t.health_score != null).length;
   const sinDato = trees.filter(t => t.health_score == null).length;
-  return { total, avgHealth, sano, medio, malo, sinDato };
+
+  // Salud del jardín como tal — viene de la última visita registrada
+  const lastVisit = (visits && visits.length > 0) ? visits[0] : null;
+  const gardenHealth = lastVisit?.health_score ?? null;
+
+  // Salud combinada = average de gardenHealth y treesAvgHealth (si hay árboles)
+  let avgHealth = null;
+  if (gardenHealth != null && treesAvgHealth != null) {
+    avgHealth = Math.round((gardenHealth + treesAvgHealth) / 2);
+  } else if (gardenHealth != null) {
+    avgHealth = gardenHealth;
+  } else if (treesAvgHealth != null) {
+    avgHealth = Math.round(treesAvgHealth);
+  }
+
+  return { total, avgHealth, gardenHealth, treesAvgHealth, sano, medio, malo, sinDato, totalVisits: (visits || []).length, lastVisit };
 }
 
 // ============================================================================
@@ -372,8 +439,11 @@ function _renderGardenInfo(g, stats) {
       <span style="font-weight:500;color:#333;font-size:0.9rem;text-align:right;">${escapeHtml(String(f.value))}</span>
     </div>`).join('');
 
-  const avgHealth = stats.avgHealth != null ? stats.avgHealth.toFixed(0) : '—';
+  const avgHealth = stats.avgHealth != null ? stats.avgHealth : '—';
   const avgColor = stats.avgHealth >= 70 ? '#4CAF50' : stats.avgHealth >= 40 ? '#FFA726' : stats.avgHealth != null ? '#EF5350' : '#9e9e9e';
+  const lastVisitDate = stats.lastVisit?.visit_date
+    ? new Date(stats.lastVisit.visit_date).toLocaleDateString()
+    : 'Nunca';
 
   return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
@@ -385,28 +455,41 @@ function _renderGardenInfo(g, stats) {
         <h4 style="margin:0 0 0.8rem;color:#1a4480;"><i class="fas fa-heart"></i> Estado actual</h4>
         <div style="text-align:center;margin:1rem 0;">
           <div style="font-size:3rem;font-weight:700;color:${avgColor};line-height:1;">${avgHealth}</div>
-          <div style="color:#888;font-size:0.85rem;margin-top:0.3rem;">Salud promedio del jardín</div>
+          <div style="color:#888;font-size:0.85rem;margin-top:0.3rem;">Salud combinada del jardín</div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.4rem;text-align:center;font-size:0.75rem;margin-top:1rem;">
-          <div style="background:rgba(76,175,80,0.12);padding:0.5rem 0.3rem;border-radius:8px;">
-            <div style="font-weight:700;color:#2E7D32;">${stats.sano}</div>
-            <div style="color:#666;">sanos</div>
+
+        <!-- Desglose: jardín vs árboles -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;margin-top:1rem;">
+          <div style="background:rgba(26,68,128,0.08);padding:0.6rem;border-radius:8px;text-align:center;">
+            <div style="font-size:0.65rem;color:#1a4480;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Jardín</div>
+            <div style="font-weight:700;color:#0d2d5c;font-size:1.2rem;margin-top:2px;">${stats.gardenHealth != null ? stats.gardenHealth : '—'}</div>
+            <div style="font-size:0.65rem;color:#666;">${stats.totalVisits} visita${stats.totalVisits !== 1 ? 's' : ''}</div>
           </div>
-          <div style="background:rgba(255,167,38,0.12);padding:0.5rem 0.3rem;border-radius:8px;">
-            <div style="font-weight:700;color:#E65100;">${stats.medio}</div>
-            <div style="color:#666;">atención</div>
-          </div>
-          <div style="background:rgba(239,83,80,0.12);padding:0.5rem 0.3rem;border-radius:8px;">
-            <div style="font-weight:700;color:#C62828;">${stats.malo}</div>
-            <div style="color:#666;">críticos</div>
-          </div>
-          <div style="background:#f0f0f0;padding:0.5rem 0.3rem;border-radius:8px;">
-            <div style="font-weight:700;color:#666;">${stats.sinDato}</div>
-            <div style="color:#888;">sin dato</div>
+          <div style="background:rgba(46,125,50,0.08);padding:0.6rem;border-radius:8px;text-align:center;">
+            <div style="font-size:0.65rem;color:#2E7D32;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">Árboles</div>
+            <div style="font-weight:700;color:#1b5e20;font-size:1.2rem;margin-top:2px;">${stats.treesAvgHealth != null ? Math.round(stats.treesAvgHealth) : '—'}</div>
+            <div style="font-size:0.65rem;color:#666;">${stats.total} árbol${stats.total !== 1 ? 'es' : ''}</div>
           </div>
         </div>
-        <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #f0f0f0;text-align:center;color:#666;font-size:0.85rem;">
-          <strong>${stats.total}</strong> árbol${stats.total !== 1 ? 'es' : ''} en este jardín
+
+        ${stats.total > 0 ? `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.3rem;text-align:center;font-size:0.7rem;margin-top:0.8rem;">
+          <div style="background:rgba(76,175,80,0.12);padding:0.4rem 0.2rem;border-radius:6px;">
+            <div style="font-weight:700;color:#2E7D32;">${stats.sano}</div><div style="color:#666;font-size:0.62rem;">sanos</div>
+          </div>
+          <div style="background:rgba(255,167,38,0.12);padding:0.4rem 0.2rem;border-radius:6px;">
+            <div style="font-weight:700;color:#E65100;">${stats.medio}</div><div style="color:#666;font-size:0.62rem;">atención</div>
+          </div>
+          <div style="background:rgba(239,83,80,0.12);padding:0.4rem 0.2rem;border-radius:6px;">
+            <div style="font-weight:700;color:#C62828;">${stats.malo}</div><div style="color:#666;font-size:0.62rem;">críticos</div>
+          </div>
+          <div style="background:#f0f0f0;padding:0.4rem 0.2rem;border-radius:6px;">
+            <div style="font-weight:700;color:#666;">${stats.sinDato}</div><div style="color:#888;font-size:0.62rem;">s/dato</div>
+          </div>
+        </div>` : ''}
+
+        <div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid #f0f0f0;text-align:center;color:#888;font-size:0.78rem;">
+          Último registro del jardín: <strong style="color:#444;">${lastVisitDate}</strong>
         </div>
       </div>
     </div>
@@ -419,60 +502,127 @@ function _renderGardenInfo(g, stats) {
 }
 
 // ============================================================================
-// TAB: SEGUIMIENTO (tabla agregada de árboles del jardín)
+// TAB: SEGUIMIENTO (visitas al jardín + tabla agregada de árboles)
 // ============================================================================
-function _renderGardenSeguimiento(trees) {
-  if (trees.length === 0) {
-    return '<div class="card" style="padding:2rem;text-align:center;color:#888;">Este jardín aún no tiene árboles registrados.</div>';
+function _renderGardenSeguimiento(trees, visits) {
+  // ---- Sección 1: Visitas al jardín ----
+  let visitsHtml;
+  if (!visits || visits.length === 0) {
+    visitsHtml = '<p style="color:#888;text-align:center;padding:1rem;">Aún no hay visitas registradas. Crea la primera en el tab "Nuevo Registro".</p>';
+  } else {
+    const visitRows = visits.slice(0, 10).map(v => {
+      const score = v.health_score;
+      const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+      const dt = new Date(v.visit_date).toLocaleDateString();
+      const acts = (v.activities || []).map(a => {
+        const act = GARDEN_ACTIVITIES.find(x => x.id === a);
+        return act ? act.icon + ' ' + act.label : a;
+      }).slice(0, 3).join(' · ');
+      const moreActs = (v.activities || []).length > 3 ? ` +${(v.activities || []).length - 3}` : '';
+      return `
+        <div style="display:flex;gap:0.7rem;padding:0.7rem;border-bottom:1px solid #f0f0f0;align-items:center;">
+          ${v.photo_url ? `<img src="${escapeHtml(v.photo_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:48px;height:48px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;">📷</div>'}
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+              <strong style="color:#0d2d5c;font-size:0.88rem;">
+                ${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'}
+              </strong>
+              ${score != null ? `<span style="background:${color};color:#fff;padding:1px 8px;border-radius:10px;font-size:0.7rem;font-weight:600;">${score}/100</span>` : ''}
+            </div>
+            <div style="color:#666;font-size:0.78rem;margin-top:2px;">${escapeHtml(acts || '—')}${moreActs}</div>
+            <div style="color:#999;font-size:0.7rem;margin-top:2px;">${dt}</div>
+          </div>
+        </div>`;
+    }).join('');
+    visitsHtml = `<div style="max-height:380px;overflow-y:auto;">${visitRows}</div>`;
   }
 
-  const rows = trees.map(t => {
-    const score = t.health_score;
-    const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
-    const scoreText = score != null ? `${score}/100` : 's/d';
-    const lastDate = t.last_measurement?.measurement_date
-      ? new Date(t.last_measurement.measurement_date).toLocaleDateString()
-      : 'Nunca';
-    return `
-      <tr>
-        <td style="padding:0.7rem 0.5rem;font-weight:500;">
-          ${escapeHtml(t.common_name || 'Árbol')}
-          ${t.tree_code ? `<span style="color:#999;font-size:0.7rem;font-family:ui-monospace,monospace;margin-left:0.4rem;">${escapeHtml(t.tree_code)}</span>` : ''}
-        </td>
-        <td style="padding:0.7rem 0.5rem;color:#666;font-size:0.85rem;font-style:italic;">${escapeHtml(t.species || '-')}</td>
-        <td style="padding:0.7rem 0.5rem;text-align:center;">
-          <span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${scoreText}</span>
-        </td>
-        <td style="padding:0.7rem 0.5rem;text-align:center;color:#666;font-size:0.85rem;">${lastDate}</td>
-      </tr>`;
-  }).join('');
+  // ---- Sección 2: Tabla de árboles (si hay) ----
+  let treesHtml = '';
+  if (trees && trees.length > 0) {
+
+    const rows = trees.map(t => {
+      const score = t.health_score;
+      const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+      const scoreText = score != null ? `${score}/100` : 's/d';
+      const lastDate = t.last_measurement?.measurement_date
+        ? new Date(t.last_measurement.measurement_date).toLocaleDateString()
+        : 'Nunca';
+      return `
+        <tr>
+          <td style="padding:0.7rem 0.5rem;font-weight:500;">
+            ${escapeHtml(t.common_name || 'Árbol')}
+            ${t.tree_code ? `<span style="color:#999;font-size:0.7rem;font-family:ui-monospace,monospace;margin-left:0.4rem;">${escapeHtml(t.tree_code)}</span>` : ''}
+          </td>
+          <td style="padding:0.7rem 0.5rem;color:#666;font-size:0.85rem;font-style:italic;">${escapeHtml(t.species || '-')}</td>
+          <td style="padding:0.7rem 0.5rem;text-align:center;">
+            <span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${scoreText}</span>
+          </td>
+          <td style="padding:0.7rem 0.5rem;text-align:center;color:#666;font-size:0.85rem;">${lastDate}</td>
+        </tr>`;
+    }).join('');
+
+    treesHtml = `
+      <div class="card" style="padding:1.2rem;margin-top:1rem;">
+        <h4 style="margin:0 0 1rem;color:#1a4480;"><i class="fas fa-tree"></i> Árboles dentro del jardín</h4>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+            <thead>
+              <tr style="border-bottom:2px solid #ddd;text-align:left;">
+                <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Árbol</th>
+                <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Especie</th>
+                <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;text-align:center;">Salud</th>
+                <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;text-align:center;">Último</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
 
   return `
     <div class="card" style="padding:1.2rem;">
-      <h4 style="margin:0 0 1rem;color:#1a4480;"><i class="fas fa-clipboard-list"></i> Estado de los árboles del jardín</h4>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
-          <thead>
-            <tr style="border-bottom:2px solid #ddd;text-align:left;">
-              <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Árbol</th>
-              <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;">Especie</th>
-              <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;text-align:center;">Salud</th>
-              <th style="padding:0.5rem;color:#666;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;text-align:center;">Último seguimiento</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      <h4 style="margin:0 0 1rem;color:#1a4480;"><i class="fas fa-clipboard-list"></i> Visitas al jardín</h4>
+      ${visitsHtml}
     </div>
+    ${treesHtml}
   `;
 }
 
 // ============================================================================
-// TAB: NUEVO REGISTRO (lista clickeable de árboles del jardín)
+// TAB: NUEVO REGISTRO — botón principal de visita al jardín + árboles si hay
 // ============================================================================
-function _renderGardenRegistro(trees) {
-  if (trees.length === 0) {
-    return '<div class="card" style="padding:2rem;text-align:center;color:#888;">No hay árboles en este jardín para registrar.</div>';
+function _renderGardenRegistro(garden, trees, visits) {
+  const isFirst = !visits || visits.length === 0;
+  const visitButtonLabel = isFirst ? '🌱 Hacer primer registro del jardín' : '➕ Nueva visita al jardín';
+  const visitButtonHelp = isFirst
+    ? 'Este será el registro inicial del jardín. Necesita foto y rúbrica de salud.'
+    : 'Riego, limpieza, mantenimiento general. Foto + actividades + rúbrica.';
+
+  const visitButton = `
+    <div class="card" style="padding:1.2rem;background:linear-gradient(135deg,rgba(46,125,50,0.10),rgba(102,153,204,0.08));border:2px dashed rgba(46,125,50,0.35);">
+      <h4 style="margin:0 0 0.4rem;color:#1a4480;"><i class="fas fa-leaf"></i> Visita al jardín</h4>
+      <p style="color:#555;font-size:0.85rem;margin:0 0 0.9rem;">${visitButtonHelp}</p>
+      <button data-portfolio-action="open-garden-visit" data-garden-id="${escapeHtml(String(garden.id))}"
+        style="background:#2E7D32;color:#fff;border:none;padding:0.85rem 1.4rem;border-radius:11px;
+        font-size:1rem;font-weight:600;cursor:pointer;width:100%;
+        box-shadow:0 2px 10px rgba(46,125,50,0.35);transition:all 0.15s;"
+        onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 14px rgba(46,125,50,0.45)';"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 2px 10px rgba(46,125,50,0.35)';">
+        ${visitButtonLabel}
+      </button>
+    </div>
+  `;
+
+  if (!trees || trees.length === 0) {
+    return `
+      ${visitButton}
+      <div class="card" style="padding:1.2rem;margin-top:1rem;background:#fafafa;color:#888;text-align:center;font-size:0.85rem;">
+        Este jardín no tiene árboles individuales registrados aún.<br>
+        Las visitas que registres arriba quedarán a nivel del jardín completo.
+      </div>
+    `;
   }
 
   const cards = trees.map(t => {
@@ -497,9 +647,10 @@ function _renderGardenRegistro(trees) {
   }).join('');
 
   return `
-    <div class="card" style="padding:1.2rem;">
-      <h4 style="margin:0 0 0.4rem;color:#1a4480;"><i class="fas fa-tree"></i> Selecciona un árbol para registrar</h4>
-      <p style="color:#666;font-size:0.85rem;margin:0 0 1rem;">Toca un árbol para abrir su formulario de seguimiento.</p>
+    ${visitButton}
+    <div class="card" style="padding:1.2rem;margin-top:1rem;">
+      <h4 style="margin:0 0 0.4rem;color:#1a4480;"><i class="fas fa-tree"></i> ...o registra el seguimiento de un árbol</h4>
+      <p style="color:#666;font-size:0.85rem;margin:0 0 1rem;">Toca un árbol del jardín para abrir su formulario.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0.7rem;">
         ${cards}
       </div>
@@ -690,9 +841,271 @@ function switchGardenTab(tabId) {
 }
 
 // ============================================================================
+// FORM MODAL — Nueva visita al jardín
+// ============================================================================
+let _currentGardenVisitId = null; // jardín activo para el form
+
+async function openGardenVisitForm(gardenId) {
+  const garden = _myGardenRecords.find(g => String(g.id) === String(gardenId));
+  if (!garden) {
+    alert('Jardín no encontrado.');
+    return;
+  }
+
+  // Verificar si ya hubo primer registro
+  const { data: existing } = await sb
+    .from('garden_visits')
+    .select('id')
+    .eq('garden_id', gardenId)
+    .limit(1);
+  const isFirst = !existing || existing.length === 0;
+
+  _currentGardenVisitId = gardenId;
+
+  // Construir modal
+  let modal = document.getElementById('garden-visit-modal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'garden-visit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(3px);';
+
+  const activitiesChips = GARDEN_ACTIVITIES.map(a => `
+    <label style="cursor:pointer;display:inline-flex;align-items:center;gap:0.35rem;padding:0.35rem 0.7rem;border:1.5px solid #d6d6d6;border-radius:18px;font-size:0.78rem;font-weight:500;transition:all 0.15s;background:#fff;color:#444;"
+      onmouseover="this.style.borderColor='#2E7D32';"
+      onmouseout="if(!this.querySelector('input').checked) this.style.borderColor='#d6d6d6';">
+      <input type="checkbox" name="gv-activity" value="${a.id}" style="display:none;"
+        onchange="this.parentElement.style.background = this.checked ? 'rgba(46,125,50,0.12)' : '#fff';
+                  this.parentElement.style.borderColor = this.checked ? '#2E7D32' : '#d6d6d6';
+                  this.parentElement.style.color = this.checked ? '#1b5e20' : '#444';">
+      ${a.icon} ${a.label}
+    </label>`).join('');
+
+  const rubricSliders = GARDEN_RUBRIC.map((r, i) => `
+    <div style="margin-bottom:0.9rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.3rem;">
+        <label style="font-size:0.85rem;font-weight:500;color:#333;">${r.label}</label>
+        <span id="gv-rubric-${r.id}-val" style="font-size:0.78rem;color:#2E7D32;font-weight:600;font-family:ui-monospace,monospace;">15/25</span>
+      </div>
+      <input type="range" min="0" max="25" value="15" id="gv-rubric-${r.id}"
+        oninput="document.getElementById('gv-rubric-${r.id}-val').textContent=this.value+'/25'; _updateGardenVisitTotal();"
+        style="width:100%;accent-color:#2E7D32;">
+      <div style="font-size:0.7rem;color:#888;margin-top:2px;">${r.desc}</div>
+    </div>
+  `).join('');
+
+  modal.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:18px;padding:1.5rem;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;">
+        <div>
+          <h3 style="margin:0;color:#1a4480;">${isFirst ? '🌱 Primer registro del jardín' : '➕ Nueva visita al jardín'}</h3>
+          <p style="margin:0.2rem 0 0;color:#666;font-size:0.85rem;">${escapeHtml(garden.name || 'Jardín')}</p>
+        </div>
+        <button onclick="closeGardenVisitForm()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#999;line-height:1;">×</button>
+      </div>
+
+      <form id="form-garden-visit" onsubmit="return false;">
+        <input type="hidden" id="gv-garden-id" value="${escapeHtml(String(gardenId))}">
+        <input type="hidden" id="gv-visit-type" value="${isFirst ? 'primer_registro' : 'seguimiento'}">
+
+        <!-- Foto OBLIGATORIA -->
+        <div style="margin-bottom:1.2rem;">
+          <label style="font-weight:600;font-size:0.9rem;color:#333;display:block;margin-bottom:0.4rem;">
+            <i class="fas fa-camera" style="color:#2E7D32;"></i> Foto del jardín
+            <span style="color:#c00;">*obligatoria</span>
+          </label>
+          <input type="file" id="gv-photo" accept="image/*" capture="environment" required
+            style="width:100%;padding:0.6rem;border:1.5px dashed #2E7D32;border-radius:10px;background:rgba(46,125,50,0.05);cursor:pointer;">
+          <div id="gv-photo-preview" style="margin-top:0.6rem;display:none;">
+            <img id="gv-photo-img" src="" style="max-width:100%;max-height:200px;border-radius:10px;">
+          </div>
+        </div>
+
+        <!-- Actividades realizadas -->
+        <div style="margin-bottom:1.2rem;">
+          <label style="font-weight:600;font-size:0.9rem;color:#333;display:block;margin-bottom:0.4rem;">
+            <i class="fas fa-tools" style="color:#2E7D32;"></i> ¿Qué hiciste en esta visita?
+          </label>
+          <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">${activitiesChips}</div>
+        </div>
+
+        <!-- Rúbrica de salud -->
+        <div style="margin-bottom:1.2rem;padding:1rem;background:#f8f8f5;border-radius:12px;">
+          <label style="font-weight:600;font-size:0.9rem;color:#333;display:block;margin-bottom:0.7rem;">
+            <i class="fas fa-clipboard-check" style="color:#2E7D32;"></i> Rúbrica de salud del jardín
+            <span id="gv-total" style="float:right;background:#2E7D32;color:#fff;padding:2px 10px;border-radius:12px;font-size:0.85rem;">60/100</span>
+          </label>
+          ${rubricSliders}
+        </div>
+
+        <!-- Observaciones -->
+        <div style="margin-bottom:1.2rem;">
+          <label style="font-weight:600;font-size:0.9rem;color:#333;display:block;margin-bottom:0.4rem;">
+            <i class="fas fa-pen" style="color:#2E7D32;"></i> Observaciones libres
+          </label>
+          <textarea id="gv-observations" rows="3" placeholder="¿Notaste algo importante? ¿Algún problema? ¿Qué se ve mejor?"
+            style="width:100%;padding:0.7rem;border:1.5px solid #d6d6d6;border-radius:10px;font-family:inherit;font-size:0.9rem;resize:vertical;"></textarea>
+        </div>
+
+        <!-- GPS automático -->
+        <div style="margin-bottom:1.2rem;font-size:0.78rem;color:#666;display:flex;align-items:center;gap:0.5rem;">
+          <i class="fas fa-map-marker-alt" style="color:#2E7D32;"></i>
+          <span id="gv-gps-status">Capturando ubicación…</span>
+        </div>
+
+        <!-- Botones -->
+        <div style="display:flex;gap:0.6rem;justify-content:flex-end;">
+          <button type="button" onclick="closeGardenVisitForm()"
+            style="background:#f0f0f0;color:#444;border:none;padding:0.7rem 1.2rem;border-radius:10px;font-weight:500;cursor:pointer;">
+            Cancelar
+          </button>
+          <button type="button" onclick="saveGardenVisit()" id="gv-save-btn"
+            style="background:#2E7D32;color:#fff;border:none;padding:0.7rem 1.4rem;border-radius:10px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(46,125,50,0.35);">
+            Guardar visita
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Preview de foto al seleccionar
+  document.getElementById('gv-photo').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      document.getElementById('gv-photo-img').src = ev.target.result;
+      document.getElementById('gv-photo-preview').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // GPS
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        document.getElementById('gv-gps-status').textContent =
+          `Ubicación: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+        document.getElementById('gv-gps-status').dataset.lat = pos.coords.latitude;
+        document.getElementById('gv-gps-status').dataset.lng = pos.coords.longitude;
+      },
+      () => {
+        document.getElementById('gv-gps-status').textContent = 'Sin ubicación (puedes guardar igual)';
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+
+  _updateGardenVisitTotal();
+}
+
+function _updateGardenVisitTotal() {
+  let total = 0;
+  GARDEN_RUBRIC.forEach(r => {
+    const v = parseInt(document.getElementById('gv-rubric-' + r.id)?.value || '0', 10);
+    total += v;
+  });
+  const el = document.getElementById('gv-total');
+  if (el) {
+    el.textContent = total + '/100';
+    el.style.background = total >= 70 ? '#2E7D32' : total >= 40 ? '#FFA726' : '#EF5350';
+  }
+}
+
+function closeGardenVisitForm() {
+  const m = document.getElementById('garden-visit-modal');
+  if (m) m.remove();
+  _currentGardenVisitId = null;
+}
+
+async function saveGardenVisit() {
+  const btn = document.getElementById('gv-save-btn');
+  const photoInput = document.getElementById('gv-photo');
+  const file = photoInput?.files?.[0];
+
+  if (!file) {
+    alert('La foto es obligatoria.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
+    const gardenId = document.getElementById('gv-garden-id').value;
+    const visitType = document.getElementById('gv-visit-type').value;
+
+    // Subir foto al bucket tree-photos con prefijo gardens/
+    const visitId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `gardens/${gardenId}/${visitId}.${ext}`;
+    const { error: upErr } = await sb.storage.from('tree-photos').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+    if (upErr) throw upErr;
+    const { data: urlData } = sb.storage.from('tree-photos').createSignedUrl
+      ? await sb.storage.from('tree-photos').createSignedUrl(path, 60 * 60 * 24 * 7)
+      : { data: { signedUrl: path } };
+    const photoUrl = urlData?.signedUrl || path;
+
+    // Actividades seleccionadas
+    const activities = Array.from(document.querySelectorAll('input[name="gv-activity"]:checked'))
+      .map(c => c.value);
+
+    // Rúbrica
+    const rubric = {};
+    let totalScore = 0;
+    GARDEN_RUBRIC.forEach(r => {
+      const v = parseInt(document.getElementById('gv-rubric-' + r.id)?.value || '0', 10);
+      rubric[r.id] = v;
+      totalScore += v;
+    });
+
+    // GPS
+    const gpsEl = document.getElementById('gv-gps-status');
+    const lat = gpsEl?.dataset?.lat ? parseFloat(gpsEl.dataset.lat) : null;
+    const lng = gpsEl?.dataset?.lng ? parseFloat(gpsEl.dataset.lng) : null;
+
+    // Observaciones
+    const obs = document.getElementById('gv-observations').value.trim();
+
+    // Insertar en BD
+    const { error } = await sb.from('garden_visits').insert([{
+      id: visitId,
+      garden_id: gardenId,
+      user_id: currentUser.id,
+      visit_type: visitType,
+      photo_url: photoUrl,
+      health_score: totalScore,
+      rubric,
+      activities,
+      observations: obs || null,
+      location_lat: lat,
+      location_lng: lng,
+    }]);
+    if (error) throw error;
+
+    if (typeof showToast === 'function') showToast('Visita registrada ✓', 'success');
+    closeGardenVisitForm();
+    // Recargar la vista del jardín
+    renderGardenView(gardenId);
+  } catch (e) {
+    console.error('saveGardenVisit error:', e);
+    alert('Error al guardar: ' + (e.message || e));
+    btn.disabled = false;
+    btn.textContent = 'Guardar visita';
+  }
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 window.loadMyPortfolio = loadMyPortfolio;
 window.selectPortfolioEntity = selectPortfolioEntity;
 window.renderGardenView = renderGardenView;
 window.switchGardenTab = switchGardenTab;
+window.openGardenVisitForm = openGardenVisitForm;
+window.closeGardenVisitForm = closeGardenVisitForm;
+window.saveGardenVisit = saveGardenVisit;
+window._updateGardenVisitTotal = _updateGardenVisitTotal;
