@@ -143,8 +143,8 @@ async function _fetchAssignedGardens() {
 
 function _isEntityValid(entity) {
   if (!entity) return false;
-  if (entity.type === 'tree') return _myTreeRecords.some(t => t.id === entity.id);
-  if (entity.type === 'garden') return _myGardenRecords.some(g => g.id === entity.id);
+  if (entity.type === 'tree') return _myTreeRecords.some(t => String(t.id) === String(entity.id));
+  if (entity.type === 'garden') return _myGardenRecords.some(g => String(g.id) === String(entity.id));
   return false;
 }
 
@@ -166,8 +166,9 @@ function _renderSelector() {
     const activeStyle = isActive
       ? 'background:#2E7D32;color:#fff;border-color:#2E7D32;'
       : 'background:#fff;color:#444;border-color:#d6d6d6;';
+    // ID va entre comillas en HTML (UUIDs y enteros se pasan como string)
     return `
-      <button onclick="selectPortfolioEntity('${type}', ${id})"
+      <button onclick="selectPortfolioEntity('${type}', '${id}')"
         style="padding:0.45rem 0.85rem;border-radius:20px;border:1.5px solid;font-size:0.82rem;
         font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:0.4rem;
         transition:all 0.15s;${activeStyle}">
@@ -179,14 +180,14 @@ function _renderSelector() {
     chip('tree', t.id,
       t.common_name || t.tree_code || `Árbol #${t.id}`,
       '🌳',
-      _activeEntity?.type === 'tree' && _activeEntity.id === t.id)
+      _activeEntity?.type === 'tree' && String(_activeEntity.id) === String(t.id))
   ).join('');
 
   const gardenChips = _myGardenRecords.map(g =>
     chip('garden', g.id,
-      g.name || `Jardín #${g.id}`,
+      g.name || `Jardín`,
       '🌿',
-      _activeEntity?.type === 'garden' && _activeEntity.id === g.id)
+      _activeEntity?.type === 'garden' && String(_activeEntity.id) === String(g.id))
   ).join('');
 
   sel.innerHTML = `
@@ -207,7 +208,12 @@ function _renderSelector() {
 // SWITCH — el usuario seleccionó una entidad
 // ============================================================================
 function selectPortfolioEntity(type, id) {
-  _activeEntity = { type, id: parseInt(id, 10) };
+  // Preservar id como vino: tree.id es int, garden.id es UUID string.
+  // Si vino como string numérico (ej: "5"), convertir a number; si tiene
+  // guiones/letras (UUID), dejarlo como string.
+  let parsedId = id;
+  if (typeof id === 'string' && /^\d+$/.test(id)) parsedId = parseInt(id, 10);
+  _activeEntity = { type, id: parsedId };
   _renderSelector();
   _renderActiveEntity();
 }
@@ -234,8 +240,10 @@ async function renderGardenView(gardenId) {
   const container = document.getElementById('mi-arbol-content');
   if (!container) return;
 
-  const garden = _myGardenRecords.find(g => g.id === gardenId);
+  // Comparación robusta — gardens.id es UUID string
+  const garden = _myGardenRecords.find(g => String(g.id) === String(gardenId));
   if (!garden) {
+    console.warn('Jardín no encontrado:', gardenId, 'records:', _myGardenRecords);
     container.innerHTML = '<p style="padding:2rem;text-align:center;">Jardín no encontrado.</p>';
     return;
   }
@@ -445,7 +453,7 @@ function _renderGardenRegistro(trees) {
     const score = t.health_score;
     const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
     return `
-      <div onclick="selectPortfolioEntity('tree', ${t.id})"
+      <div onclick="selectPortfolioEntity('tree', '${t.id}')"
         style="background:#fff;border:1px solid #d6d6d6;border-radius:12px;padding:0.9rem;cursor:pointer;
         transition:all 0.15s;display:flex;align-items:center;gap:0.8rem;"
         onmouseover="this.style.borderColor='#2E7D32';this.style.boxShadow='0 2px 8px rgba(46,125,50,0.15)';"
@@ -631,7 +639,7 @@ function _initGardenMap(garden, trees) {
       .bindPopup(`<strong>${escapeHtml(t.common_name || 'Árbol')}</strong><br>
         ${t.species ? `<em>${escapeHtml(t.species)}</em><br>` : ''}
         Salud: ${score != null ? score + '/100' : 's/d'}<br>
-        <a href="#" onclick="selectPortfolioEntity('tree', ${t.id});return false;">Ver detalle</a>`);
+        <a href="#" onclick="selectPortfolioEntity('tree', '${t.id}');return false;">Ver detalle</a>`);
   });
 
   // Ajustar viewport para mostrar todo
