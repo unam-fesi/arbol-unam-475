@@ -777,40 +777,71 @@ function _renderGardenRegistro(garden, trees, visits) {
 // TAB: METAS (dual — del jardín + mías)
 // ============================================================================
 function _renderGardenMetas(garden, trees, stats) {
-  // Estado del jardín
+  // Leer metas configuradas del jardín o usar defaults
+  const goals = garden.goals || {};
+  const targetHealth = goals.target_health ?? 70;
+  const targetVisits = goals.target_visits ?? 1;
+  const targetCoverage = goals.target_tree_coverage_pct ?? 80;
+  const targetVariety = goals.target_activity_variety ?? 3;
+  const period = goals.period || 'mensual';
+  const aiSuggested = !!goals.ai_suggested;
+  const aiReasoning = goals.ai_reasoning || '';
+
+  const periodLabel = { mensual: 'mes', trimestral: 'trimestre', anual: 'año' }[period] || 'mes';
+
+  // ---- Estado del jardín (datos reales) ----
   const pctSano = stats.total > 0 ? Math.round((stats.sano / stats.total) * 100) : 0;
   const pctConDato = stats.total > 0 ? Math.round(((stats.total - stats.sinDato) / stats.total) * 100) : 0;
+  const gardenHealthPct = stats.gardenHealth != null ? stats.gardenHealth : 0;
 
-  const metaSano = pctSano >= 70;
-  const metaCobertura = pctConDato >= 80;
+  // Visitas en el periodo
+  const periodStart = _periodStart(period);
+  const visitsInPeriod = (stats.lastVisit && new Date(stats.lastVisit.visit_date) >= periodStart)
+    ? _countVisitsSince(garden.id, periodStart)
+    : 0; // se recalcula async abajo
 
-  // Mi contribución (mediciones del usuario actual en árboles de este jardín)
-  // Esto se calcula con un fetch async — placeholder por ahora, luego lo lleno
+  // Variedad de actividades — async se calcula
   const myContribId = 'g-my-contrib-' + garden.id;
-
   setTimeout(() => _loadMyContribution(garden.id, trees.map(t => t.id), myContribId), 100);
 
-  const stateBox = (label, current, target, isMet, suffix) => `
-    <div class="card" style="padding:1rem;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.6rem;">
-        <div>
-          <div style="font-size:0.78rem;color:#666;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(label)}</div>
-          <div style="font-size:1.6rem;font-weight:700;color:${isMet ? '#2E7D32' : '#666'};margin-top:0.2rem;">${current}${suffix || ''}</div>
+  // ---- Builder de meta cards ----
+  const metaCard = (label, current, target, suffix, helpText) => {
+    const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+    const isMet = current >= target;
+    const color = isMet ? '#4CAF50' : pct >= 50 ? '#FFA726' : '#90CAF9';
+    return `
+      <div class="card" style="padding:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.6rem;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:0.74rem;color:#666;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(label)}</div>
+            <div style="font-size:1.6rem;font-weight:700;color:${isMet ? '#2E7D32' : '#444'};margin-top:0.2rem;font-family:ui-monospace,monospace;">${current}${suffix || ''}<span style="font-size:0.85rem;color:#999;font-weight:500;"> / ${target}${suffix || ''}</span></div>
+          </div>
+          <div style="font-size:1.3rem;">${isMet ? '✅' : '🎯'}</div>
         </div>
-        <div style="font-size:1.3rem;">${isMet ? '✅' : '🎯'}</div>
-      </div>
-      <div style="background:#eee;height:8px;border-radius:4px;overflow:hidden;">
-        <div style="background:${isMet ? '#4CAF50' : '#90CAF9'};height:100%;width:${Math.min(100, (parseInt(current) / target) * 100)}%;transition:width 0.3s;"></div>
-      </div>
-      <div style="font-size:0.72rem;color:#888;margin-top:0.4rem;">Meta: ${target}${suffix || ''}</div>
-    </div>`;
+        <div style="background:#eee;height:8px;border-radius:4px;overflow:hidden;">
+          <div style="background:${color};height:100%;width:${pct}%;transition:width 0.3s;"></div>
+        </div>
+        ${helpText ? `<div style="font-size:0.7rem;color:#888;margin-top:0.4rem;">${escapeHtml(helpText)}</div>` : ''}
+      </div>`;
+  };
+
+  const aiBadge = aiSuggested
+    ? `<span style="background:rgba(26,68,128,0.10);color:#1a4480;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:600;margin-left:0.5rem;"><i class="fas fa-robot"></i> sugerido por PUM-AI</span>`
+    : '';
 
   return `
     <div style="margin-bottom:1.5rem;">
-      <h4 style="margin:0 0 1rem;color:#1a4480;"><i class="fas fa-globe"></i> Estado del jardín</h4>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.4rem;">
+        <h4 style="margin:0;color:#1a4480;"><i class="fas fa-globe"></i> Estado del jardín</h4>
+        ${aiBadge}
+        <span style="background:#f0f0f0;color:#444;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:500;">Periodo: ${period}</span>
+      </div>
+      ${aiReasoning ? `<p style="font-size:0.78rem;color:#666;margin:0 0 0.8rem;line-height:1.4;"><i class="fas fa-quote-left" style="opacity:0.4;"></i> ${escapeHtml(aiReasoning)}</p>` : ''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
-        ${stateBox('Árboles sanos', pctSano, 70, metaSano, '%')}
-        ${stateBox('Cobertura de seguimiento', pctConDato, 80, metaCobertura, '%')}
+        ${metaCard('Salud del jardín', gardenHealthPct, targetHealth, '/100', 'Promedio de salud (jardín + árboles)')}
+        ${stats.total > 0 ? metaCard('Árboles sanos', pctSano, 70, '%', `${stats.sano}/${stats.total} con salud ≥70`) : ''}
+        ${stats.total > 0 ? metaCard('Cobertura', pctConDato, targetCoverage, '%', `Árboles con seguimiento`) : ''}
+        ${metaCard(`Visitas este ${periodLabel}`, visitsInPeriod, targetVisits, '', `Visitas al jardín en el ${periodLabel} actual`)}
       </div>
     </div>
 
@@ -823,44 +854,116 @@ function _renderGardenMetas(garden, trees, stats) {
   `;
 }
 
+function _periodStart(period) {
+  const now = new Date();
+  if (period === 'anual') return new Date(now.getFullYear(), 0, 1);
+  if (period === 'trimestral') {
+    const q = Math.floor(now.getMonth() / 3);
+    return new Date(now.getFullYear(), q * 3, 1);
+  }
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+function _countVisitsSince(gardenId, sinceDate) {
+  // Cuenta sincrónica desde el cache (las visitas ya fueron cargadas)
+  if (!_lastGardenVisits) return 0;
+  return _lastGardenVisits.filter(v =>
+    String(v.garden_id) === String(gardenId)
+    && new Date(v.visit_date) >= sinceDate
+  ).length;
+}
+
 async function _loadMyContribution(gardenId, treeIds, containerId) {
   const el = document.getElementById(containerId);
-  if (!el || treeIds.length === 0) return;
+  if (!el) return;
   try {
-    const { data: myMeas, error } = await sb
-      .from('tree_measurements')
-      .select('id, tree_id, measurement_date')
-      .in('tree_id', treeIds)
+    // 1) Mediciones de árboles del jardín hechas por el usuario
+    let treeMeas = [];
+    if (treeIds && treeIds.length > 0) {
+      const { data } = await sb
+        .from('tree_measurements')
+        .select('id, tree_id, measurement_date')
+        .in('tree_id', treeIds)
+        .eq('user_id', currentUser.id)
+        .order('measurement_date', { ascending: false });
+      treeMeas = data || [];
+    }
+
+    // 2) Visitas al jardín hechas por el usuario
+    const { data: gardenV } = await sb
+      .from('garden_visits')
+      .select('id, visit_date, activities')
+      .eq('garden_id', gardenId)
       .eq('user_id', currentUser.id)
-      .order('measurement_date', { ascending: false });
-    if (error) throw error;
+      .order('visit_date', { ascending: false });
+    const myGardenVisits = gardenV || [];
 
-    const total = (myMeas || []).length;
-    const lastDate = myMeas?.[0]?.measurement_date
-      ? new Date(myMeas[0].measurement_date).toLocaleDateString()
-      : '—';
+    // ---- Métricas combinadas ----
+    const totalContributions = treeMeas.length + myGardenVisits.length;
 
-    // Mediciones del último mes
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-    const lastMonth = (myMeas || []).filter(m => new Date(m.measurement_date) >= oneMonthAgo).length;
+    const lastMonthMeas = treeMeas.filter(m => new Date(m.measurement_date) >= oneMonthAgo).length;
+    const lastMonthVisits = myGardenVisits.filter(v => new Date(v.visit_date) >= oneMonthAgo).length;
+    const totalLastMonth = lastMonthMeas + lastMonthVisits;
+
+    // Última actividad (la más reciente entre ambas)
+    const allDates = [
+      ...treeMeas.map(m => m.measurement_date),
+      ...myGardenVisits.map(v => v.visit_date),
+    ].filter(Boolean).sort((a, b) => new Date(b) - new Date(a));
+    const lastDate = allDates[0] ? new Date(allDates[0]).toLocaleDateString() : '—';
+    const daysSinceLast = allDates[0]
+      ? Math.floor((Date.now() - new Date(allDates[0])) / (1000 * 60 * 60 * 24))
+      : null;
+
+    // Variedad: tipos de actividades distintas que el usuario ha hecho en este jardín
+    const allActivities = new Set();
+    myGardenVisits.forEach(v => (v.activities || []).forEach(a => allActivities.add(a)));
+    const varietyCount = allActivities.size;
+
+    // ---- Meta personal: ≥1 visita este mes ----
+    const monthlyMet = totalLastMonth >= 1;
+
+    // Estilo de "días desde última" (alerta si >30)
+    const lastColor = daysSinceLast == null ? '#999' :
+                      daysSinceLast > 30 ? '#EF5350' :
+                      daysSinceLast > 14 ? '#FFA726' : '#4CAF50';
 
     el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;text-align:center;">
-        <div>
-          <div style="font-size:2rem;font-weight:700;color:#2E7D32;">${total}</div>
-          <div style="font-size:0.78rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Seguimientos totales</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.7rem;text-align:center;margin-bottom:1rem;">
+        <div style="background:rgba(46,125,50,0.08);padding:0.7rem;border-radius:10px;">
+          <div style="font-size:1.8rem;font-weight:700;color:#2E7D32;">${totalContributions}</div>
+          <div style="font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Total</div>
+          <div style="font-size:0.66rem;color:#888;margin-top:2px;">${myGardenVisits.length} visitas · ${treeMeas.length} medidas</div>
         </div>
-        <div>
-          <div style="font-size:2rem;font-weight:700;color:#1976D2;">${lastMonth}</div>
-          <div style="font-size:0.78rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Este mes</div>
+        <div style="background:rgba(25,118,210,0.08);padding:0.7rem;border-radius:10px;">
+          <div style="font-size:1.8rem;font-weight:700;color:#1976D2;">${totalLastMonth}</div>
+          <div style="font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Este mes</div>
         </div>
-        <div>
-          <div style="font-size:1.1rem;font-weight:600;color:#333;margin-top:0.5rem;">${lastDate}</div>
-          <div style="font-size:0.78rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;margin-top:0.2rem;">Último</div>
+        <div style="background:rgba(142,36,170,0.08);padding:0.7rem;border-radius:10px;">
+          <div style="font-size:1.8rem;font-weight:700;color:#8E24AA;">${varietyCount}</div>
+          <div style="font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Variedad de actividades</div>
+        </div>
+        <div style="padding:0.7rem;border-radius:10px;background:rgba(0,0,0,0.04);">
+          <div style="font-size:1rem;font-weight:600;color:${lastColor};">${daysSinceLast != null ? daysSinceLast + ' días' : '—'}</div>
+          <div style="font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.04em;">Desde última</div>
+          <div style="font-size:0.66rem;color:#888;margin-top:2px;">${lastDate}</div>
         </div>
       </div>
-      ${total === 0 ? '<p style="text-align:center;color:#888;margin-top:1rem;font-size:0.85rem;">Aún no has hecho seguimientos en este jardín. Ve a "Nuevo Registro" y elige un árbol para empezar.</p>' : ''}
+
+      <!-- Meta del mes -->
+      <div style="background:${monthlyMet ? 'rgba(76,175,80,0.10)' : '#fff8e1'};padding:0.8rem 1rem;border-radius:10px;border-left:3px solid ${monthlyMet ? '#4CAF50' : '#FFA726'};">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+          <div>
+            <strong style="color:#333;">${monthlyMet ? '✓ Meta del mes cumplida' : '🎯 Meta del mes'}</strong>
+            <div style="font-size:0.78rem;color:#666;">Hacer al menos 1 actividad en el jardín cada mes.</div>
+          </div>
+          <div style="font-size:1.4rem;font-weight:700;color:${monthlyMet ? '#2E7D32' : '#E65100'};font-family:ui-monospace,monospace;">${totalLastMonth}/1</div>
+        </div>
+      </div>
+
+      ${totalContributions === 0 ? '<p style="text-align:center;color:#888;margin-top:1rem;font-size:0.85rem;">Aún no has hecho actividad en este jardín. Ve a <strong>"Nuevo Registro"</strong> y haz tu primera visita.</p>' : ''}
     `;
   } catch (e) {
     console.error('_loadMyContribution error:', e);
