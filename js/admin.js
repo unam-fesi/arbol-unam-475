@@ -445,6 +445,10 @@ async function populateGardenDropdown(selectId, currentValue) {
 
 async function saveAdminTree(e) {
   if (e) e.preventDefault();
+
+  // Recoger metas del árbol (sección "Metas del árbol")
+  const goals = _readTreeGoalsFromForm('admin-tree');
+
   const tree = {
     tree_code: document.getElementById('admin-tree-code')?.value.trim(),
     species: document.getElementById('admin-tree-species')?.value.trim(),
@@ -460,7 +464,8 @@ async function saveAdminTree(e) {
     initial_trunk_diameter_cm: parseFloat(document.getElementById('admin-tree-trunk')?.value) || null,
     initial_crown_diameter_cm: parseFloat(document.getElementById('admin-tree-crown')?.value) || null,
     initial_notes: document.getElementById('admin-tree-notes')?.value.trim() || null,
-    created_by: currentUser?.id
+    goals: goals,
+    created_by: currentUser?.id,
   };
   if (!tree.tree_code || !tree.species) { showToast('Código y especie son requeridos', 'error'); return; }
   if (!TREE_STATUS_VALUES.includes(tree.status)) { showToast('Estado inválido', 'error'); return; }
@@ -476,6 +481,204 @@ async function saveAdminTree(e) {
     populateGardenDropdown('admin-tree-garden');
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
+  }
+}
+
+// Lee los selectores de metas del árbol del form
+function _readTreeGoalsFromForm(prefix) {
+  const v = id => document.getElementById(`${prefix}-${id}`)?.value || '';
+  return {
+    frequency: v('goal-frequency') || null,
+    target_health: parseInt(v('goal-health'), 10) || null,
+    growth_cm_per_year: parseInt(v('goal-growth'), 10) || null,
+    focus: v('goal-focus') || null,
+    period: v('goal-period') || 'mensual',
+    season_at_creation: getCurrentSeason(),
+    ai_suggested: !!document.getElementById(`${prefix}-goals-ai-flag`)?.value,
+    ai_reasoning: document.getElementById(`${prefix}-goals-ai-reasoning`)?.value || null,
+  };
+}
+
+// ============================================================================
+// HELPER — estación del año (hemisferio norte / México)
+// ============================================================================
+function getCurrentSeason(date) {
+  const d = date || new Date();
+  const m = d.getMonth() + 1; // 1-12
+  if (m >= 3 && m <= 5) return 'primavera';
+  if (m >= 6 && m <= 8) return 'verano';
+  if (m >= 9 && m <= 11) return 'otoño';
+  return 'invierno';
+}
+
+// ============================================================================
+// HELPER — comprimir foto a base64 (reutiliza compressImageForAI si existe)
+// ============================================================================
+async function _imageFileToBase64(file, maxW = 1024, maxH = 1024, quality = 0.7) {
+  if (!file) return null;
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  // Si compressImageForAI está global, usarla. Si no, fallback simple.
+  let compressed = dataUrl;
+  if (typeof compressImageForAI === 'function') {
+    try { compressed = await compressImageForAI(dataUrl, maxW, maxH, quality); }
+    catch (_) {}
+  } else {
+    compressed = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        const ratio = Math.min(maxW / w, maxH / h, 1);
+        w = Math.round(w * ratio); h = Math.round(h * ratio);
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(cv.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+  const base64 = compressed.split(',')[1];
+  const mime = (compressed.match(/^data:(image\/[a-zA-Z+]+);/) || [, 'image/jpeg'])[1];
+  return { base64, mime };
+}
+
+// ============================================================================
+// PUM-AI sugiere metas para ÁRBOL (foto + estación + ubicación + especie)
+// ============================================================================
+async function suggestTreeGoalsWithAI() {
+  const btn = document.getElementById('btn-tree-goals-ai');
+  const feedback = document.getElementById('admin-tree-goals-ai-feedback');
+  if (!btn) return;
+
+  // Recoger contexto
+  const ctx = {
+    code: document.getElementById('admin-tree-code')?.value || 'sin código',
+    species: document.getElementById('admin-tree-species')?.value || 'no especificada',
+    common_name: document.getElementById('admin-tree-common-name')?.value || '',
+    tree_type: document.getElementById('admin-tree-type')?.value || 'no especificado',
+    size: document.getElementById('admin-tree-size')?.value || 'mediano',
+    campus: document.getElementById('admin-tree-campus')?.value || 'desconocido',
+    health: document.getElementById('admin-tree-health')?.value || '80',
+    height: document.getElementById('admin-tree-height')?.value || '?',
+    notes: document.getElementById('admin-tree-notes')?.value || '',
+  };
+
+  if (!ctx.species || ctx.species === 'no especificada') {
+    showToast('Llena al menos la especie del árbol antes de pedir sugerencias', 'warning');
+    return;
+  }
+
+  // Foto opcional
+  const photoFile = document.getElementById('admin-tree-photo')?.files?.[0];
+  let imageData = null;
+  try {
+    if (photoFile) imageData = await _imageFileToBase64(photoFile);
+  } catch (_) {}
+
+  const season = (document.getElementById('admin-tree-season')?.value) || getCurrentSeason();
+
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
+  if (feedback) { feedback.style.display = 'none'; feedback.innerHTML = ''; }
+
+  try {
+    const prompt = `Eres PUM-AI, experto en arboricultura urbana del Valle de México (UNAM/FES Iztacala). Estoy registrando un árbol y necesito que sugieras metas de gestión razonables y alcanzables.
+
+Datos del árbol:
+- Código: ${ctx.code}
+- Especie: ${ctx.species}
+- Nombre común: ${ctx.common_name || '(no especificado)'}
+- Tipo: ${ctx.tree_type}
+- Tamaño actual: ${ctx.size}
+- Campus: ${ctx.campus}
+- Salud inicial: ${ctx.health}/100
+- Altura inicial: ${ctx.height} cm
+- Notas: ${ctx.notes || 'sin notas'}
+- Estación del año al registrar: ${season} (hemisferio norte, Valle de México ~2240m altura, clima templado)
+${imageData ? '\nSe adjunta una foto del árbol para que la analices.' : '\n(No hay foto disponible — usa solo datos textuales)'}
+
+Considerando especie, tamaño actual, estación del año y clima local, sugiere metas. Responde ÚNICAMENTE con JSON válido (sin markdown):
+
+{
+  "frequency": "quincenal" | "mensual" | "trimestral" | "anual",
+  "target_health": <50, 60, 70, 80 o 90>,
+  "growth_cm_per_year": <5, 15, 30 o 60 según especie/edad>,
+  "focus": "riego" | "poda" | "control_plagas" | "general" | "establecimiento",
+  "period": "mensual" | "trimestral" | "anual",
+  "reasoning": "<2-3 frases explicando por qué estas metas para esta especie en esta estación>"
+}
+
+Notas:
+- Para árboles jóvenes recién plantados (talla 'pequeño'), recomienda focus 'establecimiento' y frecuencia 'quincenal' o 'mensual'
+- Para árboles maduros sanos (talla 'grande'), suele bastar 'trimestral' o 'anual'
+- En verano caluroso de Valle de México, riego es prioridad
+- En invierno, poda y revisión estructural`;
+
+    const body = imageData
+      ? { message: prompt, imageBase64: imageData.base64, imageType: imageData.mime }
+      : { message: prompt };
+
+    const { data, error } = await sb.functions.invoke('pum-ai', { body });
+    if (error) throw error;
+
+    let reply = data?.reply || '';
+    reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    let parsed;
+    try { parsed = JSON.parse(reply); }
+    catch (_) {
+      const m = reply.match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+    }
+    if (!parsed) throw new Error('Respuesta de PUM-AI no interpretable');
+
+    const setIf = (id, val) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const opt = Array.from(sel.options).find(o => String(o.value) === String(val));
+      if (opt) sel.value = String(val);
+    };
+    setIf('admin-tree-goal-frequency', parsed.frequency);
+    setIf('admin-tree-goal-health', parsed.target_health);
+    setIf('admin-tree-goal-growth', parsed.growth_cm_per_year);
+    setIf('admin-tree-goal-focus', parsed.focus);
+    setIf('admin-tree-goal-period', parsed.period);
+
+    // Marcador interno
+    const ensureHidden = (id, val) => {
+      let el = document.getElementById(id);
+      if (!el) {
+        el = document.createElement('input');
+        el.type = 'hidden';
+        el.id = id;
+        btn.parentElement?.appendChild(el);
+      }
+      el.value = val;
+    };
+    ensureHidden('admin-tree-goals-ai-flag', '1');
+    ensureHidden('admin-tree-goals-ai-reasoning', parsed.reasoning || '');
+
+    if (feedback) {
+      feedback.innerHTML = `<strong style="color:#0d2d5c;"><i class="fas fa-robot"></i> PUM-AI sugiere:</strong> ${escapeHtml(parsed.reasoning || 'Metas aplicadas al formulario.')}`;
+      feedback.style.display = 'block';
+    }
+    showToast('Metas del árbol sugeridas por PUM-AI ✓', 'success');
+  } catch (e) {
+    console.error('suggestTreeGoalsWithAI error:', e);
+    if (feedback) {
+      feedback.innerHTML = `<span style="color:#c00;"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || String(e))}. Llena las metas manualmente.</span>`;
+      feedback.style.display = 'block';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
   }
 }
 
@@ -688,6 +891,8 @@ async function suggestGardenGoalsWithAI() {
   const ctx = {
     name: document.getElementById('admin-garden-name')?.value || 'jardín sin nombre',
     campus: document.getElementById('admin-garden-campus')?.value || 'desconocido',
+    lat: document.getElementById('admin-garden-lat')?.value || '',
+    lng: document.getElementById('admin-garden-lng')?.value || '',
     soil: document.getElementById('admin-garden-soil')?.value || 'no especificado',
     irrigation: document.getElementById('admin-garden-irrigation')?.value || 'no especificado',
     exposure: document.getElementById('admin-garden-exposure')?.value || 'no especificada',
@@ -702,6 +907,14 @@ async function suggestGardenGoalsWithAI() {
     return;
   }
 
+  // Foto opcional + estación
+  const photoFile = document.getElementById('admin-garden-photo')?.files?.[0];
+  let imageData = null;
+  try {
+    if (photoFile) imageData = await _imageFileToBase64(photoFile);
+  } catch (_) {}
+  const season = (document.getElementById('admin-garden-season')?.value) || getCurrentSeason();
+
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
@@ -713,6 +926,7 @@ async function suggestGardenGoalsWithAI() {
 Datos del jardín:
 - Nombre: ${ctx.name}
 - Campus: ${ctx.campus}
+- Ubicación: lat ${ctx.lat || 'no especif.'}, lon ${ctx.lng || 'no especif.'}
 - Suelo: ${ctx.soil}
 - Riego: ${ctx.irrigation}
 - Exposición solar: ${ctx.exposure}
@@ -720,21 +934,27 @@ Datos del jardín:
 - Capacidad: ${ctx.capacity} árboles
 - Zona climática: ${ctx.climate}
 - Notas: ${ctx.notes || 'sin notas adicionales'}
+- Estación del año al registrar: ${season} (hemisferio norte, Valle de México ~2240m altura, clima templado)
+${imageData ? '\nSe adjunta una foto del jardín para que la analices.' : '\n(No hay foto disponible — usa solo datos textuales)'}
 
-Sugiere metas realistas considerando que un usuario común visita el jardín y registra observaciones. Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional):
+Considera que en verano el riego es crítico, en invierno la poda es prioritaria, y las visitas deben ser más frecuentes para jardines en establecimiento.
+
+Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional):
 
 {
-  "target_health": <número entero entre 50 y 90, salud objetivo del jardín en escala 0-100>,
+  "target_health": <número entero entre 50 y 90>,
   "target_visits": <número de visitas objetivo en el periodo: 1, 2, 4, 8 o 12>,
-  "target_tree_coverage_pct": <50, 70, 80 o 100, % de árboles con seguimiento reciente>,
-  "target_activity_variety": <2, 3, 5 o 7, tipos diferentes de actividades como riego/poda/limpieza>,
+  "target_tree_coverage_pct": <50, 70, 80 o 100>,
+  "target_activity_variety": <2, 3, 5 o 7>,
   "period": "mensual" | "trimestral" | "anual",
-  "reasoning": "<2-3 frases explicando por qué estas metas son adecuadas para este jardín>"
+  "reasoning": "<2-3 frases explicando por qué estas metas son adecuadas para este jardín en esta estación>"
 }`;
 
-    const { data, error } = await sb.functions.invoke('pum-ai', {
-      body: { message: prompt },
-    });
+    const body = imageData
+      ? { message: prompt, imageBase64: imageData.base64, imageType: imageData.mime }
+      : { message: prompt };
+
+    const { data, error } = await sb.functions.invoke('pum-ai', { body });
     if (error) throw error;
 
     let reply = data?.reply || '';
@@ -1511,6 +1731,8 @@ window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
 window.suggestGardenGoalsWithAI = suggestGardenGoalsWithAI;
+window.suggestTreeGoalsWithAI = suggestTreeGoalsWithAI;
+window.getCurrentSeason = getCurrentSeason;
 window.deleteAdminTree = deleteAdminTree;
 window.loadAdminGardens = loadAdminGardens;
 window.saveAdminGarden = saveAdminGarden;
