@@ -349,10 +349,10 @@ async function loadMyTree(forceReload, specificTreeId) {
       return;
     }
 
-    // Seleccionar el árbol a renderizar
+    // Seleccionar el árbol a renderizar — comparación robusta (string/int)
     let tree;
-    if (specificTreeId) {
-      tree = trees.find(t => t.id === specificTreeId) || trees[0];
+    if (specificTreeId != null) {
+      tree = trees.find(t => String(t.id) === String(specificTreeId)) || trees[0];
     } else {
       tree = trees[0];
     }
