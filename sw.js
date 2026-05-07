@@ -1,6 +1,10 @@
 // Service Worker — Proyecto Árbol UNAM 475
 // Estrategia: app shell cacheada + queue offline para mediciones
-const CACHE_NAME = 'arbol-unam-v1';
+//
+// ⚠ IMPORTANTE: cuando agregues nuevos archivos JS o cambies HTML,
+// SUBE EL NÚMERO DE VERSIÓN (v1 → v2 → v3 ...) para forzar invalidación
+// del cache en los navegadores de los usuarios.
+const CACHE_NAME = 'arbol-unam-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,10 +14,15 @@ const APP_SHELL = [
   './js/auth.js',
   './js/navigation.js',
   './js/mi-arbol.js',
+  './js/mi-portafolio.js',
   './js/pumai.js',
   './js/ar-height.js',
   './js/admin.js',
   './js/offline-queue.js',
+  './js/dashboard-tree-3d.js',
+  './js/dashboard-vis.js',
+  './js/dashboard-iztacala.js',
+  './forest-theme.css',
 ];
 
 self.addEventListener('install', (event) => {
@@ -32,22 +41,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network-first for HTML/JS, cache fallback. Bypass for Supabase (always network).
+// Estrategia diferenciada:
+//   • Supabase → siempre red (sin cache nunca)
+//   • HTML (navegación) → network-first, cache solo como fallback offline
+//   • JS / CSS / fonts / etc. → network-first, cache como fallback
+//   • La cache se actualiza siempre que haya red para evitar pegado
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache Supabase API calls
-  if (url.host.includes('supabase.co') || url.host.includes('supabase.in')) {
-    return; // let browser handle
-  }
-
+  if (url.host.includes('supabase.co') || url.host.includes('supabase.in')) return;
   if (event.request.method !== 'GET') return;
 
-  // Network-first, cache as fallback
+  const isHtml = event.request.mode === 'navigate'
+    || (event.request.headers.get('accept') || '').includes('text/html');
+
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, isHtml ? { cache: 'no-store' } : undefined)
       .then((res) => {
-        // Cache same-origin and CDN responses
+        // Actualizar cache con la respuesta fresca
         if (res.ok && (url.origin === self.location.origin || url.host.includes('cdn'))) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((c) => c.put(event.request, clone)).catch(() => {});
