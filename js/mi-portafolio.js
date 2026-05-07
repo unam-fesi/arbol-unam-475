@@ -1059,19 +1059,27 @@ async function saveGardenVisit() {
     const gardenId = document.getElementById('gv-garden-id').value;
     const visitType = document.getElementById('gv-visit-type').value;
 
-    // Subir foto al bucket tree-photos con prefijo gardens/
-    const visitId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    // Subir foto al bucket garden-photos
+    // Path: <garden_id>/<visit_id>.<ext> — la policy RLS verifica que el
+    // primer segmento (garden_id) esté en garden_assignments del usuario.
+    const visitId = (crypto.randomUUID && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `gardens/${gardenId}/${visitId}.${ext}`;
-    const { error: upErr } = await sb.storage.from('tree-photos').upload(path, file, {
+    const path = `${gardenId}/${visitId}.${ext}`;
+    const { error: upErr } = await sb.storage.from('garden-photos').upload(path, file, {
       cacheControl: '3600',
       upsert: false,
+      contentType: file.type || 'image/jpeg',
     });
     if (upErr) throw upErr;
-    const { data: urlData } = sb.storage.from('tree-photos').createSignedUrl
-      ? await sb.storage.from('tree-photos').createSignedUrl(path, 60 * 60 * 24 * 7)
-      : { data: { signedUrl: path } };
-    const photoUrl = urlData?.signedUrl || path;
+
+    // Generar URL firmada (válida 7 días) para guardar como photo_url
+    let photoUrl = path; // fallback al path crudo si createSignedUrl no funciona
+    try {
+      const { data: urlData } = await sb.storage.from('garden-photos').createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (urlData?.signedUrl) photoUrl = urlData.signedUrl;
+    } catch (_) {}
 
     // Actividades seleccionadas
     const activities = Array.from(document.querySelectorAll('input[name="gv-activity"]:checked'))
