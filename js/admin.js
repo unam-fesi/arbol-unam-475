@@ -628,6 +628,9 @@ async function saveAdminGarden(e) {
   if (irrigation && !GARDEN_IRRIGATION_VALUES.includes(irrigation)) { showToast('Riego inválido', 'error'); return; }
   if (exposure && !GARDEN_EXPOSURE_VALUES.includes(exposure)) { showToast('Exposición inválida', 'error'); return; }
 
+  // Recoger metas del jardín (sección "Metas del jardín")
+  const goals = _readGardenGoalsFromForm('admin-garden');
+
   const garden = {
     name: document.getElementById('admin-garden-name')?.value.trim(),
     campus: document.getElementById('admin-garden-campus')?.value || null,
@@ -642,7 +645,8 @@ async function saveAdminGarden(e) {
     climate_zone: document.getElementById('admin-garden-climate')?.value.trim() || null,
     established_date: document.getElementById('admin-garden-established')?.value || null,
     responsible_specialist_id: document.getElementById('admin-garden-specialist')?.value || null,
-    notes: document.getElementById('admin-garden-notes')?.value.trim() || null
+    notes: document.getElementById('admin-garden-notes')?.value.trim() || null,
+    goals: goals,
   };
   if (!garden.name) { showToast('Nombre requerido', 'error'); return; }
   if (!garden.campus) { showToast('Campus requerido', 'error'); return; }
@@ -652,6 +656,147 @@ async function saveAdminGarden(e) {
   document.getElementById('form-admin-garden')?.reset();
   populateSpecialistDropdown('admin-garden-specialist');
   loadAdminGardens();
+}
+
+// Lee los selectores de metas del form (prefijo del id determina si es create o edit)
+function _readGardenGoalsFromForm(prefix) {
+  const v = id => document.getElementById(`${prefix}-${id}`)?.value || '';
+  const num = id => {
+    const x = parseInt(v(id), 10);
+    return isNaN(x) ? null : x;
+  };
+  return {
+    target_health: num('target-health'),
+    target_visits: num('target-visits'),
+    target_tree_coverage_pct: num('target-coverage'),
+    target_activity_variety: num('target-variety'),
+    period: v('target-period') || 'mensual',
+    ai_suggested: !!document.getElementById(`${prefix}-goals-ai-flag`)?.value,
+    ai_reasoning: document.getElementById(`${prefix}-goals-ai-reasoning`)?.value || null,
+  };
+}
+
+// ============================================================================
+// PUM-AI sugiere metas del jardín basándose en su metadata
+// ============================================================================
+async function suggestGardenGoalsWithAI() {
+  const btn = document.getElementById('btn-garden-goals-ai');
+  const feedback = document.getElementById('admin-garden-goals-ai-feedback');
+  if (!btn) return;
+
+  // Recoger contexto del jardín del form
+  const ctx = {
+    name: document.getElementById('admin-garden-name')?.value || 'jardín sin nombre',
+    campus: document.getElementById('admin-garden-campus')?.value || 'desconocido',
+    soil: document.getElementById('admin-garden-soil')?.value || 'no especificado',
+    irrigation: document.getElementById('admin-garden-irrigation')?.value || 'no especificado',
+    exposure: document.getElementById('admin-garden-exposure')?.value || 'no especificada',
+    area: document.getElementById('admin-garden-area')?.value || '?',
+    capacity: document.getElementById('admin-garden-capacity')?.value || '?',
+    climate: document.getElementById('admin-garden-climate')?.value || 'Valle de México',
+    notes: document.getElementById('admin-garden-notes')?.value || '',
+  };
+
+  if (!ctx.name || ctx.name === 'jardín sin nombre') {
+    showToast('Llena al menos el nombre del jardín antes de pedir sugerencias', 'warning');
+    return;
+  }
+
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando…';
+  if (feedback) { feedback.style.display = 'none'; feedback.innerHTML = ''; }
+
+  try {
+    const prompt = `Eres PUM-AI, experto en jardinería del Valle de México (UNAM/FES Iztacala). Estoy registrando un jardín y necesito que me sugieras metas de gestión razonables y alcanzables.
+
+Datos del jardín:
+- Nombre: ${ctx.name}
+- Campus: ${ctx.campus}
+- Suelo: ${ctx.soil}
+- Riego: ${ctx.irrigation}
+- Exposición solar: ${ctx.exposure}
+- Área: ${ctx.area} m²
+- Capacidad: ${ctx.capacity} árboles
+- Zona climática: ${ctx.climate}
+- Notas: ${ctx.notes || 'sin notas adicionales'}
+
+Sugiere metas realistas considerando que un usuario común visita el jardín y registra observaciones. Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional):
+
+{
+  "target_health": <número entero entre 50 y 90, salud objetivo del jardín en escala 0-100>,
+  "target_visits": <número de visitas objetivo en el periodo: 1, 2, 4, 8 o 12>,
+  "target_tree_coverage_pct": <50, 70, 80 o 100, % de árboles con seguimiento reciente>,
+  "target_activity_variety": <2, 3, 5 o 7, tipos diferentes de actividades como riego/poda/limpieza>,
+  "period": "mensual" | "trimestral" | "anual",
+  "reasoning": "<2-3 frases explicando por qué estas metas son adecuadas para este jardín>"
+}`;
+
+    const { data, error } = await sb.functions.invoke('pum-ai', {
+      body: { message: prompt },
+    });
+    if (error) throw error;
+
+    let reply = data?.reply || '';
+    reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    let parsed;
+    try { parsed = JSON.parse(reply); }
+    catch (_) {
+      const m = reply.match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+    }
+    if (!parsed) throw new Error('Respuesta de PUM-AI no interpretable');
+
+    // Setear los selectores con clamp a opciones válidas
+    const setIf = (id, val) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const opt = Array.from(sel.options).find(o => String(o.value) === String(val));
+      if (opt) sel.value = String(val);
+    };
+    setIf('admin-garden-target-health', parsed.target_health);
+    setIf('admin-garden-target-visits', parsed.target_visits);
+    setIf('admin-garden-target-coverage', parsed.target_tree_coverage_pct);
+    setIf('admin-garden-target-variety', parsed.target_activity_variety);
+    if (parsed.period && document.getElementById('admin-garden-target-period')) {
+      document.getElementById('admin-garden-target-period').value = parsed.period;
+    }
+
+    // Marcador interno (para guardar que fueron AI-suggested)
+    let flag = document.getElementById('admin-garden-goals-ai-flag');
+    if (!flag) {
+      flag = document.createElement('input');
+      flag.type = 'hidden';
+      flag.id = 'admin-garden-goals-ai-flag';
+      btn.parentElement?.appendChild(flag);
+    }
+    flag.value = '1';
+
+    let reason = document.getElementById('admin-garden-goals-ai-reasoning');
+    if (!reason) {
+      reason = document.createElement('input');
+      reason.type = 'hidden';
+      reason.id = 'admin-garden-goals-ai-reasoning';
+      btn.parentElement?.appendChild(reason);
+    }
+    reason.value = parsed.reasoning || '';
+
+    if (feedback) {
+      feedback.innerHTML = `<strong style="color:#0d2d5c;"><i class="fas fa-robot"></i> PUM-AI sugiere:</strong> ${escapeHtml(parsed.reasoning || 'Metas aplicadas al formulario.')}`;
+      feedback.style.display = 'block';
+    }
+    showToast('Metas sugeridas por PUM-AI ✓', 'success');
+  } catch (e) {
+    console.error('suggestGardenGoalsWithAI error:', e);
+    if (feedback) {
+      feedback.innerHTML = `<span style="color:#c00;"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(e.message || String(e))}. Llena las metas manualmente.</span>`;
+      feedback.style.display = 'block';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
 }
 
 async function editAdminGarden(id) {
@@ -1365,6 +1510,7 @@ window.editAdminUser = editAdminUser;
 window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
+window.suggestGardenGoalsWithAI = suggestGardenGoalsWithAI;
 window.deleteAdminTree = deleteAdminTree;
 window.loadAdminGardens = loadAdminGardens;
 window.saveAdminGarden = saveAdminGarden;
