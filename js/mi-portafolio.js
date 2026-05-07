@@ -166,9 +166,11 @@ function _renderSelector() {
     const activeStyle = isActive
       ? 'background:#2E7D32;color:#fff;border-color:#2E7D32;'
       : 'background:#fff;color:#444;border-color:#d6d6d6;';
-    // ID va entre comillas en HTML (UUIDs y enteros se pasan como string)
+    // Usamos data-* attributes en lugar de onclick inline para evitar
+    // problemas de escapado con UUIDs / caracteres especiales en IDs.
+    // El handler se engancha por delegación al final.
     return `
-      <button onclick="selectPortfolioEntity('${type}', '${id}')"
+      <button class="portfolio-chip" data-entity-type="${escapeHtml(type)}" data-entity-id="${escapeHtml(String(id))}"
         style="padding:0.45rem 0.85rem;border-radius:20px;border:1.5px solid;font-size:0.82rem;
         font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:0.4rem;
         transition:all 0.15s;${activeStyle}">
@@ -202,6 +204,20 @@ function _renderSelector() {
       </div>
     </div>
   `;
+
+  // Event delegation — un solo handler para todos los chips, sobrevive
+  // a re-renders. Usamos data-* en lugar de onclick inline porque los
+  // UUIDs pueden tener caracteres que rompen onclick="..." en HTML.
+  if (!sel._chipHandlerAttached) {
+    sel.addEventListener('click', (e) => {
+      const btn = e.target.closest('.portfolio-chip');
+      if (!btn) return;
+      const type = btn.dataset.entityType;
+      const id = btn.dataset.entityId;
+      if (type && id != null) selectPortfolioEntity(type, id);
+    });
+    sel._chipHandlerAttached = true;
+  }
 }
 
 // ============================================================================
