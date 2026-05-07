@@ -970,15 +970,167 @@ async function showMeasurementDetail(measId) {
 }
 
 // ========== GOALS ==========
+// Dos secciones:
+//   A) Metas CONFIGURADAS para este árbol (de tree.goals — definidas por admin
+//      con ayuda de PUM-AI: frequency, target_health, growth_cm_per_year,
+//      focus, period). Si no hay goals, esta sección se omite.
+//   B) Metas UNIVERSALES de constancia (las hardcoded de antes — primer
+//      seguimiento, 3 registros, foto, IA, seguimiento mensual).
 function buildGoals(tree, measurements) {
+  const sectionA = _buildConfiguredGoals(tree, measurements);
+  const sectionB = _buildConstancyGoals(tree, measurements);
+
+  return `
+    ${sectionA}
+    <h4 style="margin:1.5rem 0 0.7rem;color:#1b5e20;"><i class="fas fa-medal"></i> Metas de constancia</h4>
+    <p class="text-small text-muted" style="margin:0 0 0.8rem;">Hitos universales de cuidado para todos los árboles.</p>
+    ${sectionB}
+  `;
+}
+
+// ----- Sección A: metas configuradas del árbol -----
+function _buildConfiguredGoals(tree, measurements) {
+  const goals = tree.goals || {};
+  const hasAny = goals.target_health || goals.frequency || goals.growth_cm_per_year || goals.focus;
+  if (!hasAny) {
+    return `
+      <div class="card" style="padding:1rem;background:#fafafa;color:#888;text-align:center;font-size:0.85rem;margin-bottom:1rem;">
+        <i class="fas fa-info-circle"></i> El admin aún no ha configurado metas específicas para este árbol.
+      </div>`;
+  }
+
+  const aiBadge = goals.ai_suggested
+    ? '<span style="background:rgba(26,68,128,0.10);color:#1a4480;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:600;margin-left:0.5rem;"><i class="fas fa-robot"></i> sugerido por PUM-AI</span>'
+    : '';
+
+  const cards = [];
+
+  // 1) Salud objetivo
+  if (goals.target_health) {
+    const h = tree.health_score || 0;
+    const pct = Math.min(100, Math.round((h / goals.target_health) * 100));
+    const isMet = h >= goals.target_health;
+    cards.push(_metaCard({
+      icon: '💚',
+      title: 'Salud objetivo',
+      currentLabel: `${h}/100`,
+      targetLabel: `${goals.target_health}/100`,
+      progress: pct,
+      done: isMet,
+      help: 'Salud actual vs meta configurada para este árbol.',
+    }));
+  }
+
+  // 2) Frecuencia de seguimiento
+  if (goals.frequency) {
+    const days = _daysSinceLastMeasurement(measurements);
+    const expectedDays = _frequencyToDays(goals.frequency);
+    const isMet = days != null && days <= expectedDays;
+    const pct = days == null ? 0 :
+      isMet ? 100 :
+      Math.max(0, Math.min(100, Math.round((1 - (days - expectedDays) / expectedDays) * 100)));
+    cards.push(_metaCard({
+      icon: '📅',
+      title: 'Frecuencia de seguimiento',
+      currentLabel: days == null ? 'Sin registros' : `Hace ${days} días`,
+      targetLabel: `Cada ${goals.frequency} (${expectedDays}d)`,
+      progress: pct,
+      done: isMet,
+      help: isMet ? 'Vas al día con el seguimiento.' : (days == null ? 'Aún no hay seguimientos.' : 'El siguiente seguimiento ya está atrasado.'),
+      warning: !isMet && days != null,
+    }));
+  }
+
+  // 3) Crecimiento
+  if (goals.growth_cm_per_year) {
+    const grew = _growthInLastYear(measurements);
+    const pct = Math.min(100, Math.round((grew / goals.growth_cm_per_year) * 100));
+    const isMet = grew >= goals.growth_cm_per_year;
+    cards.push(_metaCard({
+      icon: '📏',
+      title: 'Crecimiento esperado',
+      currentLabel: grew > 0 ? `+${grew.toFixed(1)} cm` : '0 cm',
+      targetLabel: `${goals.growth_cm_per_year} cm/año`,
+      progress: pct,
+      done: isMet,
+      help: 'Crecimiento medido en el último año (alturas registradas).',
+    }));
+  }
+
+  // 4) Foco de atención (badge informativo, sin barra)
+  if (goals.focus) {
+    const focusLabels = {
+      riego: '💧 Riego',
+      poda: '✂️ Poda',
+      control_plagas: '🪲 Control de plagas',
+      general: '🌳 General',
+      establecimiento: '🌱 Establecimiento (joven)',
+    };
+    cards.push(`
+      <div class="card" style="padding:0.85rem 1rem;display:flex;align-items:center;gap:0.7rem;">
+        <div style="font-size:1.5rem;">🎯</div>
+        <div style="flex:1;">
+          <strong>Foco principal de atención</strong>
+          <p class="text-small text-muted" style="margin:0.2rem 0 0;">${escapeHtml(focusLabels[goals.focus] || goals.focus)}</p>
+        </div>
+      </div>`);
+  }
+
+  // 5) Periodo (info)
+  if (goals.period) {
+    cards.push(`
+      <div class="card" style="padding:0.85rem 1rem;display:flex;align-items:center;gap:0.7rem;">
+        <div style="font-size:1.5rem;">📊</div>
+        <div style="flex:1;">
+          <strong>Periodo de evaluación</strong>
+          <p class="text-small text-muted" style="margin:0.2rem 0 0;text-transform:capitalize;">${escapeHtml(goals.period)}</p>
+        </div>
+      </div>`);
+  }
+
+  return `
+    <div style="margin-bottom:1rem;">
+      <h4 style="margin:0 0 0.4rem;color:#1a4480;">
+        <i class="fas fa-bullseye"></i> Metas configuradas para este árbol
+        ${aiBadge}
+      </h4>
+      ${goals.ai_reasoning ? `<p class="text-small text-muted" style="margin:0 0 0.8rem;line-height:1.4;"><i class="fas fa-quote-left" style="opacity:0.4;"></i> ${escapeHtml(goals.ai_reasoning)}</p>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.6rem;">
+        ${cards.join('')}
+      </div>
+    </div>`;
+}
+
+function _metaCard({ icon, title, currentLabel, targetLabel, progress, done, help, warning }) {
+  const barColor = done ? 'var(--success)' : warning ? '#EF5350' : 'var(--primary)';
+  const numColor = done ? '#2E7D32' : warning ? '#C62828' : '#444';
+  return `
+    <div class="card" style="padding:0.85rem 1rem;">
+      <div style="display:flex;align-items:flex-start;gap:0.7rem;">
+        <div style="font-size:1.4rem;">${done ? '✅' : (warning ? '⚠️' : icon)}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+            <strong style="color:#333;">${escapeHtml(title)}</strong>
+            <span style="font-family:ui-monospace,monospace;font-size:0.85rem;color:${numColor};font-weight:600;">${escapeHtml(currentLabel)} <span style="color:#999;font-weight:400;">/ ${escapeHtml(targetLabel)}</span></span>
+          </div>
+          <div style="height:6px;background:#eee;border-radius:3px;overflow:hidden;margin-top:0.4rem;">
+            <div style="height:100%;width:${progress}%;background:${barColor};border-radius:3px;transition:width 0.3s;"></div>
+          </div>
+          ${help ? `<p class="text-small text-muted" style="margin:0.3rem 0 0;font-size:0.7rem;">${escapeHtml(help)}</p>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ----- Sección B: metas universales de constancia -----
+function _buildConstancyGoals(tree, measurements) {
   const h = tree.health_score || 0;
   const n = measurements.length;
   const goals = [
-    { title: 'Alcanzar salud del 90%', desc: 'Mantener cuidado consistente', progress: Math.min(100, Math.round(h / 90 * 100)), done: h >= 90 },
     { title: 'Realizar primer seguimiento', desc: 'Registra las primeras medidas', progress: n > 0 ? 100 : 0, done: n > 0 },
     { title: '3 registros de seguimiento', desc: 'Documenta el crecimiento', progress: Math.min(100, Math.round(n / 3 * 100)), done: n >= 3 },
     { title: 'Subir foto del árbol', desc: 'Registro visual', progress: measurements.some(m => m.photo_url) ? 100 : 0, done: measurements.some(m => m.photo_url) },
-    { title: 'Evaluación completa con IA', desc: 'Usa PUM-AI para evaluar los 10 rubros', progress: measurements.some(m => m.observations?.includes('[RUBROS]')) ? 100 : 0, done: measurements.some(m => m.observations?.includes('[RUBROS]')) },
+    { title: 'Evaluación completa con IA', desc: 'Usa PUM-AI para evaluar los rubros', progress: measurements.some(m => m.observations?.includes('[RUBROS]')) ? 100 : 0, done: measurements.some(m => m.observations?.includes('[RUBROS]')) },
     { title: 'Seguimiento mensual (3 meses)', desc: 'Al menos 1 registro por mes', progress: Math.min(100, Math.round(getMonthlyProgress(measurements) / 3 * 100)), done: getMonthlyProgress(measurements) >= 3 }
   ];
   return goals.map(g => `
@@ -996,6 +1148,43 @@ function getMonthlyProgress(measurements) {
   const months = new Set();
   measurements.forEach(m => { const d = new Date(m.measurement_date); months.add(`${d.getFullYear()}-${d.getMonth()}`); });
   return months.size;
+}
+
+// ----- Helpers numéricos para metas configuradas -----
+function _daysSinceLastMeasurement(measurements) {
+  if (!measurements || measurements.length === 0) return null;
+  const sorted = [...measurements].sort((a, b) => new Date(b.measurement_date) - new Date(a.measurement_date));
+  const last = new Date(sorted[0].measurement_date);
+  return Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function _frequencyToDays(freq) {
+  switch (freq) {
+    case 'quincenal': return 15;
+    case 'mensual': return 30;
+    case 'trimestral': return 90;
+    case 'anual': return 365;
+    default: return 30;
+  }
+}
+
+// Cuánto creció el árbol en los últimos 365 días (cm), basado en altura registrada
+function _growthInLastYear(measurements) {
+  if (!measurements || measurements.length < 2) return 0;
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  const sorted = [...measurements]
+    .filter(m => m.height_cm != null)
+    .sort((a, b) => new Date(a.measurement_date) - new Date(b.measurement_date));
+  if (sorted.length < 2) return 0;
+
+  // Última altura registrada
+  const last = sorted[sorted.length - 1];
+  // Altura más cercana de hace 1 año (la primera medición ≥ hace 1 año, o la más antigua si no hay)
+  const baseline = sorted.find(m => new Date(m.measurement_date) >= oneYearAgo) || sorted[0];
+
+  return Math.max(0, (last.height_cm || 0) - (baseline.height_cm || 0));
 }
 
 // ========== SUB-TAB NAV ==========
