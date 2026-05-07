@@ -513,6 +513,97 @@
                                             <label for="admin-tree-notes">Notas iniciales</label>
                                             <textarea id="admin-tree-notes" rows="2" style="width:100%;padding:0.5rem;" placeholder="Observaciones del estado inicial..."></textarea>
                                         </div>
+
+                                        <!-- ===== Foto + Estación (ayuda a PUM-AI) ===== -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-tree-photo"><i class="fas fa-camera"></i> Foto del árbol (opcional)</label>
+                                                <input type="file" id="admin-tree-photo" accept="image/*" style="width:100%;padding:0.5rem;border:1.5px dashed #2E7D32;border-radius:8px;background:rgba(46,125,50,0.05);">
+                                                <small class="text-muted">Mejora las sugerencias de PUM-AI</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-season">Estación al registrar</label>
+                                                <select id="admin-tree-season">
+                                                    <option value="primavera">Primavera</option>
+                                                    <option value="verano">Verano</option>
+                                                    <option value="otoño">Otoño</option>
+                                                    <option value="invierno">Invierno</option>
+                                                </select>
+                                                <small class="text-muted">Auto-detectada — puedes cambiarla</small>
+                                            </div>
+                                        </div>
+
+                                        <!-- ===== Metas del Árbol ===== -->
+                                        <div style="grid-column:1/-1;border-top:1px solid #eee;margin-top:1rem;padding-top:1rem;">
+                                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.7rem;">
+                                                <h4 style="margin:0;color:#1a4480;"><i class="fas fa-bullseye"></i> Metas del árbol</h4>
+                                                <button type="button" class="btn btn-secondary btn-sm" onclick="suggestTreeGoalsWithAI()" id="btn-tree-goals-ai">
+                                                    <i class="fas fa-robot"></i> Sugerir con PUM-AI
+                                                </button>
+                                            </div>
+                                            <p class="text-muted text-small" style="margin:0 0 0.8rem;">PUM-AI analiza la foto, especie, estación y ubicación para sugerir metas adecuadas.</p>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="admin-tree-goal-frequency">Frecuencia de seguimiento</label>
+                                                    <select id="admin-tree-goal-frequency">
+                                                        <option value="">Sin meta</option>
+                                                        <option value="quincenal">Quincenal</option>
+                                                        <option value="mensual" selected>Mensual</option>
+                                                        <option value="trimestral">Trimestral</option>
+                                                        <option value="anual">Anual</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="admin-tree-goal-health">Salud objetivo</label>
+                                                    <select id="admin-tree-goal-health">
+                                                        <option value="">Sin meta (default 70)</option>
+                                                        <option value="60">≥ 60/100</option>
+                                                        <option value="70" selected>≥ 70/100</option>
+                                                        <option value="80">≥ 80/100</option>
+                                                        <option value="90">≥ 90/100</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="admin-tree-goal-growth">Crecimiento esperado (cm/año)</label>
+                                                    <select id="admin-tree-goal-growth">
+                                                        <option value="">Sin meta</option>
+                                                        <option value="5">5 cm (lento)</option>
+                                                        <option value="15" selected>15 cm</option>
+                                                        <option value="30">30 cm</option>
+                                                        <option value="60">60 cm (rápido)</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="admin-tree-goal-focus">Foco de atención principal</label>
+                                                    <select id="admin-tree-goal-focus">
+                                                        <option value="">Sin meta</option>
+                                                        <option value="riego">Riego</option>
+                                                        <option value="poda">Poda</option>
+                                                        <option value="control_plagas">Control de plagas</option>
+                                                        <option value="general" selected>General</option>
+                                                        <option value="establecimiento">Establecimiento (joven)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label for="admin-tree-goal-period">Periodo de evaluación</label>
+                                                    <select id="admin-tree-goal-period">
+                                                        <option value="mensual" selected>Mensual</option>
+                                                        <option value="trimestral">Trimestral</option>
+                                                        <option value="anual">Anual</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <div id="admin-tree-goals-ai-feedback" style="display:none;margin-top:0.7rem;padding:0.7rem 1rem;background:rgba(26,68,128,0.08);border-radius:8px;font-size:0.85rem;color:#444;line-height:1.4;border-left:3px solid #1a4480;"></div>
+                                        </div>
+
                                         <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar &Aacute;rbol</button>
                                     </form>
                                 </div>
@@ -639,6 +730,25 @@
                                             <div class="form-group">
                                                 <label for="admin-garden-notes">Notas</label>
                                                 <textarea id="admin-garden-notes" style="grid-column: 1 / -1;" placeholder="Notas adicionales, recomendaciones, restricciones..."></textarea>
+                                            </div>
+                                        </div>
+
+                                        <!-- ===== Foto + Estación (ayuda a PUM-AI) ===== -->
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="admin-garden-photo"><i class="fas fa-camera"></i> Foto del jardín (opcional)</label>
+                                                <input type="file" id="admin-garden-photo" accept="image/*" style="width:100%;padding:0.5rem;border:1.5px dashed #2E7D32;border-radius:8px;background:rgba(46,125,50,0.05);">
+                                                <small class="text-muted">Mejora las sugerencias de PUM-AI</small>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-garden-season">Estación al registrar</label>
+                                                <select id="admin-garden-season">
+                                                    <option value="primavera">Primavera</option>
+                                                    <option value="verano">Verano</option>
+                                                    <option value="otoño">Otoño</option>
+                                                    <option value="invierno">Invierno</option>
+                                                </select>
+                                                <small class="text-muted">Auto-detectada — puedes cambiarla</small>
                                             </div>
                                         </div>
 
@@ -1182,6 +1292,16 @@
             if (typeof registerServiceWorker === 'function') registerServiceWorker();
 
             initApp();
+
+            // Auto-seleccionar la estación actual en los selectores de admin
+            // (el admin puede cambiarla manualmente si quiere otra referencia)
+            if (typeof getCurrentSeason === 'function') {
+                var _season = getCurrentSeason();
+                var _treeSeasonEl = document.getElementById('admin-tree-season');
+                var _gardenSeasonEl = document.getElementById('admin-garden-season');
+                if (_treeSeasonEl) _treeSeasonEl.value = _season;
+                if (_gardenSeasonEl) _gardenSeasonEl.value = _season;
+            }
 
             // Form submissions
             document.getElementById('form-admin-user')?.addEventListener('submit', function(e) {
