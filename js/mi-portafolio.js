@@ -25,6 +25,9 @@ async function loadMyPortfolio(forceReload) {
   const contentEl = document.getElementById('mi-arbol-content');
   if (!contentEl) return;
 
+  // Setup delegation global UNA sola vez (sobrevive a innerHTML replacements)
+  _setupPortfolioDelegation();
+
   if (_portfolioLoaded && !forceReload) return;
 
   // Banners (jardines + grupos) los maneja la propia mi-arbol.js originalmente,
@@ -170,7 +173,10 @@ function _renderSelector() {
     // problemas de escapado con UUIDs / caracteres especiales en IDs.
     // El handler se engancha por delegación al final.
     return `
-      <button class="portfolio-chip" data-entity-type="${escapeHtml(type)}" data-entity-id="${escapeHtml(String(id))}"
+      <button class="portfolio-chip"
+        data-portfolio-action="select-entity"
+        data-entity-type="${escapeHtml(type)}"
+        data-entity-id="${escapeHtml(String(id))}"
         style="padding:0.45rem 0.85rem;border-radius:20px;border:1.5px solid;font-size:0.82rem;
         font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:0.4rem;
         transition:all 0.15s;${activeStyle}">
@@ -205,24 +211,28 @@ function _renderSelector() {
     </div>
   `;
 
-  // Event delegation — un solo handler para todos los chips, sobrevive
-  // a re-renders. Usamos data-* en lugar de onclick inline porque los
-  // UUIDs pueden tener caracteres que rompen onclick="..." en HTML.
-  if (!sel._chipHandlerAttached) {
-    sel.addEventListener('click', (e) => {
-      const btn = e.target.closest('.portfolio-chip');
-      if (!btn) return;
-      const type = btn.dataset.entityType;
-      const id = btn.dataset.entityId;
-      if (type && id != null) selectPortfolioEntity(type, id);
-    });
-    sel._chipHandlerAttached = true;
-  }
+  // Los clicks se manejan vía delegation global en _setupPortfolioDelegation
 }
 
 // ============================================================================
 // SWITCH — el usuario seleccionó una entidad
 // ============================================================================
+// Delegation GLOBAL — un solo handler para TODA la app, sobrevive a re-renders
+// y evita problemas de escapado de UUIDs/caracteres en onclick inline.
+// Cualquier elemento con data-portfolio-action="select-entity" funciona.
+function _setupPortfolioDelegation() {
+  if (document._portfolioDelegation) return;
+  document.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-portfolio-action="select-entity"]');
+    if (!target) return;
+    e.preventDefault();
+    const type = target.dataset.entityType;
+    const id = target.dataset.entityId;
+    if (type && id != null) selectPortfolioEntity(type, id);
+  });
+  document._portfolioDelegation = true;
+}
+
 function selectPortfolioEntity(type, id) {
   // Preservar id como vino: tree.id es int, garden.id es UUID string.
   // Si vino como string numérico (ej: "5"), convertir a number; si tiene
@@ -469,7 +479,9 @@ function _renderGardenRegistro(trees) {
     const score = t.health_score;
     const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
     return `
-      <div onclick="selectPortfolioEntity('tree', '${t.id}')"
+      <div data-portfolio-action="select-entity"
+        data-entity-type="tree"
+        data-entity-id="${escapeHtml(String(t.id))}"
         style="background:#fff;border:1px solid #d6d6d6;border-radius:12px;padding:0.9rem;cursor:pointer;
         transition:all 0.15s;display:flex;align-items:center;gap:0.8rem;"
         onmouseover="this.style.borderColor='#2E7D32';this.style.boxShadow='0 2px 8px rgba(46,125,50,0.15)';"
@@ -655,7 +667,7 @@ function _initGardenMap(garden, trees) {
       .bindPopup(`<strong>${escapeHtml(t.common_name || 'Árbol')}</strong><br>
         ${t.species ? `<em>${escapeHtml(t.species)}</em><br>` : ''}
         Salud: ${score != null ? score + '/100' : 's/d'}<br>
-        <a href="#" onclick="selectPortfolioEntity('tree', '${t.id}');return false;">Ver detalle</a>`);
+        <a href="#" data-portfolio-action="select-entity" data-entity-type="tree" data-entity-id="${escapeHtml(String(t.id))}">Ver detalle</a>`);
   });
 
   // Ajustar viewport para mostrar todo
