@@ -239,6 +239,13 @@ function _setupPortfolioDelegation() {
       openGardenVisitForm(visitBtn.dataset.gardenId);
       return;
     }
+    // Abrir modal de detalle de visita
+    const detailBtn = e.target.closest('[data-portfolio-action="open-garden-visit-detail"]');
+    if (detailBtn) {
+      e.preventDefault();
+      showGardenVisitDetail(detailBtn.dataset.visitId);
+      return;
+    }
   });
   document._portfolioDelegation = true;
 }
@@ -314,8 +321,14 @@ async function renderGardenView(gardenId) {
     <div id="g-map-container" style="margin-top:2rem;border-radius:14px;overflow:hidden;height:400px;border:1px solid #d6d6d6;"></div>
   `;
 
-  // Inicializar mapa con árboles del jardín + bounds
-  setTimeout(() => _initGardenMap(garden, treesInGarden), 50);
+  // Cache visitas para chart on-demand
+  _lastGardenVisits = gardenVisits;
+
+  // Inicializar mapa + chart si el tab seguimiento se vuelve activo
+  setTimeout(() => {
+    _initGardenMap(garden, treesInGarden);
+    _renderGardenHealthChart(gardenVisits);
+  }, 100);
 }
 
 // Tipos de actividad disponibles para visitas al jardín
@@ -502,39 +515,27 @@ function _renderGardenInfo(g, stats) {
 }
 
 // ============================================================================
-// TAB: SEGUIMIENTO (visitas al jardín + tabla agregada de árboles)
+// TAB: SEGUIMIENTO — header + chart + timeline de visitas + tabla de árboles
+// (mismo patrón que mi-arbol.js para consistencia visual)
 // ============================================================================
 function _renderGardenSeguimiento(trees, visits) {
-  // ---- Sección 1: Visitas al jardín ----
+  // ---- Sección 1: Header + Chart + Timeline de visitas al jardín ----
   let visitsHtml;
   if (!visits || visits.length === 0) {
-    visitsHtml = '<p style="color:#888;text-align:center;padding:1rem;">Aún no hay visitas registradas. Crea la primera en el tab "Nuevo Registro".</p>';
+    visitsHtml = `
+      <div class="card" style="padding:2rem;text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:0.6rem;">🌿</div>
+        <h4 style="margin:0 0 0.3rem;color:#1a4480;">Sin visitas registradas</h4>
+        <p style="color:#888;margin:0;">Crea la primera visita desde el tab <strong>"Nuevo Registro"</strong>.</p>
+      </div>`;
   } else {
-    const visitRows = visits.slice(0, 10).map(v => {
-      const score = v.health_score;
-      const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
-      const dt = new Date(v.visit_date).toLocaleDateString();
-      const acts = (v.activities || []).map(a => {
-        const act = GARDEN_ACTIVITIES.find(x => x.id === a);
-        return act ? act.icon + ' ' + act.label : a;
-      }).slice(0, 3).join(' · ');
-      const moreActs = (v.activities || []).length > 3 ? ` +${(v.activities || []).length - 3}` : '';
-      return `
-        <div style="display:flex;gap:0.7rem;padding:0.7rem;border-bottom:1px solid #f0f0f0;align-items:center;">
-          ${v.photo_url ? `<img src="${escapeHtml(v.photo_url)}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:48px;height:48px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;">📷</div>'}
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
-              <strong style="color:#0d2d5c;font-size:0.88rem;">
-                ${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'}
-              </strong>
-              ${score != null ? `<span style="background:${color};color:#fff;padding:1px 8px;border-radius:10px;font-size:0.7rem;font-weight:600;">${score}/100</span>` : ''}
-            </div>
-            <div style="color:#666;font-size:0.78rem;margin-top:2px;">${escapeHtml(acts || '—')}${moreActs}</div>
-            <div style="color:#999;font-size:0.7rem;margin-top:2px;">${dt}</div>
-          </div>
-        </div>`;
-    }).join('');
-    visitsHtml = `<div style="max-height:380px;overflow-y:auto;">${visitRows}</div>`;
+    const chartCard = visits.length >= 2 ? `
+      <div class="card" style="padding:1rem;margin-bottom:1rem;">
+        <h4 style="margin-bottom:0.5rem;color:#1a4480;"><i class="fas fa-chart-area"></i> Evolución temporal de la salud</h4>
+        <div style="height:280px;"><canvas id="garden-health-timeline-chart"></canvas></div>
+      </div>` : '';
+
+    visitsHtml = `${chartCard}${_buildGardenVisitTimeline(visits)}`;
   }
 
   // ---- Sección 2: Tabla de árboles (si hay) ----
@@ -582,12 +583,126 @@ function _renderGardenSeguimiento(trees, visits) {
   }
 
   return `
-    <div class="card" style="padding:1.2rem;">
-      <h4 style="margin:0 0 1rem;color:#1a4480;"><i class="fas fa-clipboard-list"></i> Visitas al jardín</h4>
-      ${visitsHtml}
-    </div>
+    <h3 style="margin-bottom:1rem;color:#1a4480;"><i class="fas fa-chart-line"></i> Historial del jardín</h3>
+    ${visitsHtml}
     ${treesHtml}
   `;
+}
+
+// ============================================================================
+// Timeline de visitas (cards clickeables — patrón idéntico al de árboles)
+// ============================================================================
+function _buildGardenVisitTimeline(visits) {
+  if (!visits || visits.length === 0) return '';
+
+  // Ordenadas DESC (más reciente primero) — _fetchGardenVisits ya las regresa así
+  return visits.map((v, i) => {
+    const date = new Date(v.visit_date);
+    const dateStr = date.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+    const score = v.health_score;
+    const scoreClass = score >= 70 ? 'success' : score >= 40 ? 'warning' : score != null ? 'danger' : '';
+    const scoreColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+
+    // Chips compactos con métricas
+    const chips = [];
+    chips.push(`<div style="background:rgba(26,68,128,0.08);padding:0.4rem;border-radius:8px;text-align:center;font-size:0.72rem;">
+      <div style="color:#666;font-size:0.65rem;">Tipo</div>
+      <strong style="color:#0d2d5c;">${v.visit_type === 'primer_registro' ? '🌟 Primer reg.' : 'Visita'}</strong>
+    </div>`);
+    if (v.activities && v.activities.length) {
+      chips.push(`<div style="background:rgba(46,125,50,0.10);padding:0.4rem;border-radius:8px;text-align:center;font-size:0.72rem;">
+        <div style="color:#666;font-size:0.65rem;">Actividades</div>
+        <strong style="color:#1b5e20;">${v.activities.length}</strong>
+      </div>`);
+    }
+    if (v.photo_url) {
+      chips.push(`<div style="background:rgba(2,136,209,0.10);padding:0.4rem;border-radius:8px;text-align:center;font-size:0.72rem;">
+        <div style="color:#666;font-size:0.65rem;">Foto</div>
+        <strong style="color:#01579b;"><i class="fas fa-camera"></i> Sí</strong>
+      </div>`);
+    }
+    if (v.location_lat && v.location_lng) {
+      chips.push(`<div style="background:rgba(255,167,38,0.12);padding:0.4rem;border-radius:8px;text-align:center;font-size:0.72rem;">
+        <div style="color:#666;font-size:0.65rem;">GPS</div>
+        <strong style="color:#E65100;"><i class="fas fa-map-marker-alt"></i> Sí</strong>
+      </div>`);
+    }
+
+    // Rúbrica desglosada como mini-bars
+    let rubricBar = '';
+    if (v.rubric && typeof v.rubric === 'object') {
+      const items = GARDEN_RUBRIC.map(r => {
+        const sc = parseInt(v.rubric[r.id], 10);
+        if (isNaN(sc)) return '';
+        const pct = (sc / 25) * 100;
+        const c = sc >= 18 ? '#4CAF50' : sc >= 12 ? '#FFA726' : '#EF5350';
+        return `<div style="display:inline-flex;align-items:center;gap:0.3rem;background:rgba(0,0,0,0.04);padding:3px 9px;border-radius:10px;font-size:0.7rem;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};"></span>
+          <span style="color:#555;">${escapeHtml(r.label.split(' ')[0])}</span>
+          <strong style="color:#222;font-family:ui-monospace,monospace;">${sc}</strong>
+        </div>`;
+      }).filter(Boolean);
+      if (items.length) {
+        rubricBar = `<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-top:0.6rem;">${items.join('')}</div>`;
+      }
+    }
+
+    // Lista corta de actividades (primeras 4 con icono)
+    let activitiesPreview = '';
+    if (v.activities && v.activities.length) {
+      const acts = v.activities.slice(0, 5).map(a => {
+        const def = GARDEN_ACTIVITIES.find(x => x.id === a);
+        return def ? `<span title="${escapeHtml(def.label)}" style="margin-right:0.4rem;">${def.icon}</span>` : '';
+      }).join('');
+      const more = v.activities.length > 5 ? ` <span style="color:#888;font-size:0.7rem;">+${v.activities.length - 5}</span>` : '';
+      activitiesPreview = `<div style="margin-top:0.5rem;font-size:1rem;">${acts}${more}</div>`;
+    }
+
+    // Observaciones preview (corto)
+    let obsPreview = '';
+    if (v.observations && v.observations.trim()) {
+      const clean = v.observations.trim();
+      const truncated = clean.length > 100 ? clean.substring(0, 100) + '…' : clean;
+      obsPreview = `<p class="text-small text-muted" style="margin-top:0.5rem;color:#666;font-size:0.8rem;">
+        <i class="fas fa-sticky-note"></i> ${escapeHtml(truncated)}</p>`;
+    }
+
+    const borderColor = i === 0 ? '#2E7D32' : '#e0e0e0';
+    const photoUrl = v.photo_url || '';
+    const photoThumb = photoUrl ? `
+      <img src="${escapeHtml(photoUrl)}"
+        style="width:80px;height:80px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid #eee;"
+        onerror="this.style.display='none'">` : '';
+
+    return `
+      <div class="card"
+        data-portfolio-action="open-garden-visit-detail"
+        data-visit-id="${escapeHtml(String(v.id))}"
+        style="padding:1.1rem;margin-bottom:0.8rem;border-left:4px solid ${borderColor};
+        cursor:pointer;transition:box-shadow 0.2s, transform 0.15s;"
+        onmouseover="this.style.boxShadow='0 4px 14px rgba(0,0,0,0.10)';this.style.transform='translateY(-1px)';"
+        onmouseout="this.style.boxShadow='';this.style.transform='';">
+        <div style="display:flex;gap:0.9rem;align-items:flex-start;">
+          ${photoThumb}
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+              <div>
+                <strong style="color:#0d2d5c;"><i class="fas fa-calendar"></i> ${dateStr}</strong>
+                ${score != null ? `<span class="badge badge-${scoreClass}" style="margin-left:0.5rem;background:${scoreColor};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">Salud: ${score}/100</span>` : ''}
+              </div>
+              <div style="display:flex;gap:0.5rem;align-items:center;">
+                ${i === 0 ? '<span class="badge badge-primary" style="background:#2E7D32;color:#fff;padding:2px 9px;border-radius:10px;font-size:0.7rem;font-weight:600;">Más reciente</span>' : ''}
+                <i class="fas fa-chevron-right" style="color:#bbb;"></i>
+              </div>
+            </div>
+            ${chips.length > 0 ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(85px,1fr));gap:0.4rem;margin-top:0.6rem;">${chips.join('')}</div>` : ''}
+            ${activitiesPreview}
+            ${rubricBar}
+            ${obsPreview}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ============================================================================
@@ -837,6 +952,84 @@ function switchGardenTab(tabId) {
   document.querySelectorAll('.garden-tab-content').forEach(p => {
     p.style.display = p.id === tabId ? 'block' : 'none';
     p.classList.toggle('active', p.id === tabId);
+  });
+
+  // Re-render chart al entrar al tab "Seguimiento" (canvas tiene que estar visible)
+  if (tabId === 'g-seguimiento' && _lastGardenVisits) {
+    setTimeout(() => _renderGardenHealthChart(_lastGardenVisits), 100);
+  }
+}
+
+// Cache de visitas para re-renderizar chart on demand
+let _lastGardenVisits = null;
+let _gardenChartInstance = null;
+
+function _renderGardenHealthChart(visits) {
+  const ctx = document.getElementById('garden-health-timeline-chart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (_gardenChartInstance) {
+    try { _gardenChartInstance.destroy(); } catch (_) {}
+    _gardenChartInstance = null;
+  }
+  if (!visits || visits.length < 2) return;
+
+  const sorted = [...visits].sort((a, b) => new Date(a.visit_date) - new Date(b.visit_date));
+  const labels = sorted.map(v => new Date(v.visit_date).toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }));
+  const healthData = sorted.map(v => v.health_score != null ? v.health_score : null);
+
+  // Datasets adicionales: cada criterio de la rúbrica (escalado a 0-100)
+  const rubricDatasets = GARDEN_RUBRIC.map((r, i) => {
+    const colors = ['#2E7D32', '#FFA726', '#1976D2', '#8E24AA'];
+    return {
+      label: r.label,
+      data: sorted.map(v => {
+        const s = v.rubric?.[r.id];
+        return (s != null && !isNaN(s)) ? Math.round(s * 4) : null; // 0-25 → 0-100
+      }),
+      borderColor: colors[i],
+      backgroundColor: 'transparent',
+      tension: 0.25,
+      hidden: true, // ocultos por default — el usuario los activa con click en la leyenda
+      spanGaps: true,
+      borderDash: [5, 5],
+    };
+  });
+
+  _gardenChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Salud total (%)',
+          data: healthData,
+          borderColor: '#1a4480',
+          backgroundColor: 'rgba(26,68,128,0.15)',
+          tension: 0.3,
+          fill: true,
+          spanGaps: true,
+          borderWidth: 3,
+          pointRadius: 5,
+          pointBackgroundColor: '#1a4480',
+        },
+        ...rubricDatasets,
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          title: { display: true, text: 'Puntaje (%)' },
+        },
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { mode: 'index', intersect: false },
+      },
+    },
   });
 }
 
@@ -1275,6 +1468,123 @@ function _compressImageGarden(dataUrl, maxW, maxH, quality) {
 }
 
 // ============================================================================
+// MODAL DE DETALLE DE VISITA AL JARDÍN
+// ============================================================================
+function showGardenVisitDetail(visitId) {
+  if (!_lastGardenVisits) return;
+  const v = _lastGardenVisits.find(x => String(x.id) === String(visitId));
+  if (!v) return;
+
+  let modal = document.getElementById('garden-visit-detail-modal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'garden-visit-detail-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(3px);';
+
+  const date = new Date(v.visit_date);
+  const dateStr = date.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  const score = v.health_score;
+  const scoreColor = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+
+  // Rúbrica desglosada — barras grandes
+  let rubricHtml = '';
+  if (v.rubric && typeof v.rubric === 'object') {
+    rubricHtml = GARDEN_RUBRIC.map(r => {
+      const sc = parseInt(v.rubric[r.id], 10);
+      if (isNaN(sc)) return '';
+      const pct = (sc / 25) * 100;
+      const c = sc >= 18 ? '#4CAF50' : sc >= 12 ? '#FFA726' : '#EF5350';
+      return `
+        <div style="margin-bottom:0.7rem;">
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.25rem;">
+            <span style="color:#333;font-weight:500;">${escapeHtml(r.label)}</span>
+            <strong style="color:${c};font-family:ui-monospace,monospace;">${sc}/25</strong>
+          </div>
+          <div style="background:#eee;height:8px;border-radius:4px;overflow:hidden;">
+            <div style="background:${c};width:${pct}%;height:100%;transition:width 0.3s;"></div>
+          </div>
+          <div style="font-size:0.7rem;color:#888;margin-top:2px;">${escapeHtml(r.desc)}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // Actividades
+  let activitiesHtml = '';
+  if (v.activities && v.activities.length) {
+    activitiesHtml = v.activities.map(a => {
+      const def = GARDEN_ACTIVITIES.find(x => x.id === a);
+      const label = def ? `${def.icon} ${def.label}` : a;
+      return `<span style="display:inline-flex;align-items:center;gap:0.35rem;background:rgba(46,125,50,0.10);color:#1b5e20;padding:0.35rem 0.75rem;border-radius:14px;font-size:0.8rem;font-weight:500;border:1px solid rgba(46,125,50,0.25);">${escapeHtml(label)}</span>`;
+    }).join('');
+  }
+
+  modal.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:18px;max-width:680px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.4);">
+      <div style="padding:1.3rem 1.4rem 1rem;border-bottom:1px solid #f0f0f0;position:sticky;top:0;background:#fff;z-index:1;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+          <div>
+            <div style="font-size:0.78rem;color:#888;text-transform:uppercase;letter-spacing:0.05em;">${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita al jardín'}</div>
+            <h3 style="margin:0.2rem 0 0;color:#0d2d5c;text-transform:capitalize;">${dateStr}</h3>
+            <div style="color:#888;font-size:0.85rem;">${timeStr} hrs</div>
+          </div>
+          <button onclick="closeGardenVisitDetail()" style="background:none;border:none;font-size:1.6rem;cursor:pointer;color:#999;line-height:1;">×</button>
+        </div>
+        ${score != null ? `
+          <div style="margin-top:0.9rem;background:${scoreColor};color:#fff;padding:0.6rem 1rem;border-radius:12px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-weight:500;">Salud del jardín</span>
+            <strong style="font-size:1.3rem;font-family:ui-monospace,monospace;">${score}/100</strong>
+          </div>` : ''}
+      </div>
+
+      <div style="padding:1.3rem 1.4rem;">
+        ${v.photo_url ? `
+          <div style="margin-bottom:1.2rem;">
+            <img src="${escapeHtml(v.photo_url)}"
+              style="width:100%;border-radius:12px;cursor:zoom-in;"
+              onclick="window.open(this.src,'_blank')"
+              onerror="this.style.display='none'">
+          </div>` : ''}
+
+        ${rubricHtml ? `
+          <div style="margin-bottom:1.3rem;">
+            <h4 style="margin:0 0 0.7rem;color:#1a4480;"><i class="fas fa-clipboard-check"></i> Rúbrica de salud</h4>
+            ${rubricHtml}
+          </div>` : ''}
+
+        ${activitiesHtml ? `
+          <div style="margin-bottom:1.3rem;">
+            <h4 style="margin:0 0 0.6rem;color:#1a4480;"><i class="fas fa-tools"></i> Actividades realizadas</h4>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">${activitiesHtml}</div>
+          </div>` : ''}
+
+        ${v.observations && v.observations.trim() ? `
+          <div style="margin-bottom:1.3rem;">
+            <h4 style="margin:0 0 0.5rem;color:#1a4480;"><i class="fas fa-sticky-note"></i> Observaciones</h4>
+            <p style="background:#f8f8f5;padding:0.85rem 1rem;border-radius:10px;color:#444;line-height:1.5;font-size:0.9rem;margin:0;white-space:pre-wrap;">${escapeHtml(v.observations.trim())}</p>
+          </div>` : ''}
+
+        ${v.location_lat && v.location_lng ? `
+          <div style="font-size:0.78rem;color:#666;display:flex;align-items:center;gap:0.4rem;">
+            <i class="fas fa-map-marker-alt" style="color:#2E7D32;"></i>
+            ${parseFloat(v.location_lat).toFixed(5)}, ${parseFloat(v.location_lng).toFixed(5)}
+          </div>` : ''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  // Click en el backdrop cierra
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeGardenVisitDetail();
+  });
+}
+
+function closeGardenVisitDetail() {
+  const m = document.getElementById('garden-visit-detail-modal');
+  if (m) m.remove();
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 window.loadMyPortfolio = loadMyPortfolio;
@@ -1286,3 +1596,5 @@ window.closeGardenVisitForm = closeGardenVisitForm;
 window.saveGardenVisit = saveGardenVisit;
 window._updateGardenVisitTotal = _updateGardenVisitTotal;
 window.analyzeGardenPhotoWithAI = analyzeGardenPhotoWithAI;
+window.showGardenVisitDetail = showGardenVisitDetail;
+window.closeGardenVisitDetail = closeGardenVisitDetail;
