@@ -918,6 +918,16 @@ async function openGardenVisitForm(gardenId) {
           <div id="gv-photo-preview" style="margin-top:0.6rem;display:none;">
             <img id="gv-photo-img" src="" style="max-width:100%;max-height:200px;border-radius:10px;">
           </div>
+
+          <!-- Botón Analizar con PUM-AI (auto-llena la rúbrica) -->
+          <button type="button" id="gv-ai-btn" onclick="analyzeGardenPhotoWithAI()" disabled
+            style="margin-top:0.6rem;width:100%;background:#1a4480;color:#fff;border:none;
+            padding:0.65rem 1rem;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:0.5rem;
+            opacity:0.5;transition:all 0.15s;">
+            <i class="fas fa-robot"></i> Analizar con PUM-AI y llenar rúbrica
+          </button>
+          <div id="gv-ai-justification" style="display:none;margin-top:0.5rem;padding:0.65rem 0.8rem;background:rgba(26,68,128,0.08);border-radius:8px;font-size:0.78rem;color:#444;line-height:1.4;"></div>
         </div>
 
         <!-- Actividades realizadas -->
@@ -968,7 +978,7 @@ async function openGardenVisitForm(gardenId) {
   `;
   document.body.appendChild(modal);
 
-  // Preview de foto al seleccionar
+  // Preview de foto al seleccionar + habilitar botón AI
   document.getElementById('gv-photo').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -978,6 +988,20 @@ async function openGardenVisitForm(gardenId) {
       document.getElementById('gv-photo-preview').style.display = 'block';
     };
     reader.readAsDataURL(file);
+
+    // Habilitar botón de PUM-AI
+    const aiBtn = document.getElementById('gv-ai-btn');
+    if (aiBtn) {
+      aiBtn.disabled = false;
+      aiBtn.style.opacity = '1';
+      aiBtn.style.cursor = 'pointer';
+    }
+    // Limpiar justificación previa
+    const just = document.getElementById('gv-ai-justification');
+    if (just) {
+      just.style.display = 'none';
+      just.innerHTML = '';
+    }
   });
 
   // GPS
@@ -1099,6 +1123,150 @@ async function saveGardenVisit() {
 }
 
 // ============================================================================
+// PUM-AI — Análisis de foto del jardín y autollenado de rúbrica
+// ============================================================================
+// Patrón idéntico al de árboles (mi-arbol.js → analyzePhotoWithAI):
+//   1. Comprimir foto a 1024px JPEG 70%
+//   2. Convertir a base64
+//   3. Llamar Edge Function 'pum-ai' con prompt específico de jardín
+//   4. Parsear JSON con los 4 criterios + justificación
+//   5. Setear sliders y mostrar justificación
+// ============================================================================
+
+async function analyzeGardenPhotoWithAI() {
+  const aiBtn = document.getElementById('gv-ai-btn');
+  const justEl = document.getElementById('gv-ai-justification');
+  const photoInput = document.getElementById('gv-photo');
+  const file = photoInput?.files?.[0];
+
+  if (!file) {
+    if (typeof showToast === 'function') showToast('Selecciona una foto primero', 'warning');
+    return;
+  }
+
+  const originalLabel = aiBtn.innerHTML;
+  aiBtn.disabled = true;
+  aiBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analizando…';
+  if (justEl) { justEl.style.display = 'none'; justEl.innerHTML = ''; }
+
+  try {
+    // 1) Leer y comprimir
+    const dataUrl = await _fileToDataUrl(file);
+    const compressed = (typeof compressImageForAI === 'function')
+      ? await compressImageForAI(dataUrl, 1024, 1024, 0.7)
+      : await _compressImageGarden(dataUrl, 1024, 1024, 0.7);
+    const base64Data = compressed.split(',')[1];
+    const mimeType = (compressed.match(/^data:(image\/[a-zA-Z+]+);/) || [, 'image/jpeg'])[1];
+
+    // 2) Prompt específico para jardín
+    const prompt = `Eres PUM-AI, un asistente experto en jardinería del Valle de México (FES Iztacala UNAM). Analiza esta foto de un JARDÍN (no un árbol individual) y evalúa estos 4 criterios en escala 0 a 25 cada uno:
+
+1. cobertura (0-25): cobertura y densidad vegetal — qué tan cubierto y denso luce el jardín, presencia de plantas/flores, áreas sin cubrir
+2. vitalidad (0-25): vitalidad de plantas/flores — ausencia de marchitez, color saludable, hojas verdes y turgentes, flores en buen estado
+3. mantenimiento (0-25): limpieza y mantenimiento — sin basura, maleza controlada, podas al día, bordes definidos
+4. suelo_riego (0-25): estado del suelo y riego — suelo aparentemente húmedo, sin compactación visible, sin encharcamiento ni erosión
+
+Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto adicional, sin explicaciones extra), así:
+
+{"cobertura": <num 0-25>, "vitalidad": <num 0-25>, "mantenimiento": <num 0-25>, "suelo_riego": <num 0-25>, "justificacion": "<2-3 frases breves de lo que ves>"}`;
+
+    // 3) Llamar Edge Function
+    const { data, error } = await sb.functions.invoke('pum-ai', {
+      body: { message: prompt, imageBase64: base64Data, imageType: mimeType },
+    });
+    if (error) throw error;
+
+    let reply = data?.reply || '';
+    // Limpiar markdown fences si los hay
+    reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // 4) Extraer JSON
+    let parsed = null;
+    try {
+      parsed = JSON.parse(reply);
+    } catch (_) {
+      // Fallback: buscar el primer objeto JSON en el texto
+      const m = reply.match(/\{[\s\S]*\}/);
+      if (m) {
+        try { parsed = JSON.parse(m[0]); } catch (_) {}
+      }
+    }
+    if (!parsed) throw new Error('No se pudo interpretar la respuesta de PUM-AI.');
+
+    // 5) Setear sliders (con clamp 0-25)
+    const setSlider = (key) => {
+      const v = parseInt(parsed[key], 10);
+      if (isNaN(v)) return;
+      const clamped = Math.max(0, Math.min(25, v));
+      const slider = document.getElementById('gv-rubric-' + key);
+      const valEl = document.getElementById('gv-rubric-' + key + '-val');
+      if (slider) {
+        slider.value = clamped;
+        if (valEl) valEl.textContent = clamped + '/25';
+      }
+    };
+    GARDEN_RUBRIC.forEach(r => setSlider(r.id));
+    _updateGardenVisitTotal();
+
+    // 6) Mostrar justificación
+    if (justEl) {
+      const justText = parsed.justificacion || parsed.justification || 'Análisis completado.';
+      justEl.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:0.5rem;">
+          <i class="fas fa-robot" style="color:#1a4480;margin-top:2px;flex-shrink:0;"></i>
+          <div>
+            <strong style="color:#0d2d5c;">PUM-AI dice:</strong>
+            ${escapeHtml(justText)}
+          </div>
+        </div>`;
+      justEl.style.display = 'block';
+    }
+
+    if (typeof showToast === 'function') showToast('Rúbrica autollenada por PUM-AI ✓', 'success');
+  } catch (e) {
+    console.error('analyzeGardenPhotoWithAI error:', e);
+    if (justEl) {
+      justEl.innerHTML = `<span style="color:#c00;"><i class="fas fa-exclamation-triangle"></i> No se pudo analizar la foto: ${escapeHtml(e.message || String(e))}. Llena la rúbrica manualmente.</span>`;
+      justEl.style.display = 'block';
+    }
+  } finally {
+    aiBtn.disabled = false;
+    aiBtn.innerHTML = originalLabel;
+  }
+}
+
+// Helpers locales
+function _fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// Fallback de compresión si compressImageForAI no está disponible globalmente
+function _compressImageGarden(dataUrl, maxW, maxH, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      const ratio = Math.min(maxW / w, maxH / h, 1);
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback al original
+    img.src = dataUrl;
+  });
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 window.loadMyPortfolio = loadMyPortfolio;
@@ -1109,3 +1277,4 @@ window.openGardenVisitForm = openGardenVisitForm;
 window.closeGardenVisitForm = closeGardenVisitForm;
 window.saveGardenVisit = saveGardenVisit;
 window._updateGardenVisitTotal = _updateGardenVisitTotal;
+window.analyzeGardenPhotoWithAI = analyzeGardenPhotoWithAI;
