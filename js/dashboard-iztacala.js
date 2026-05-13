@@ -1222,21 +1222,29 @@ window.IztacalaMap = (function() {
 
   function _getTreeModel(stem) {
     if (TREE_MODELS_CACHE[stem]) return TREE_MODELS_CACHE[stem];
-    // Intenta cargar .glb primero, luego .gltf. Ambas funcionan con GLTFLoader.
     TREE_MODELS_CACHE[stem] = new Promise((resolve) => {
-      if (typeof THREE.GLTFLoader === 'undefined') return resolve(null);
+      if (typeof THREE.GLTFLoader === 'undefined') {
+        console.error('❌ THREE.GLTFLoader no está cargado');
+        return resolve(null);
+      }
       const loader = new THREE.GLTFLoader();
       const tryLoad = (path, onFail) => {
+        console.log(`🔍 Intentando cargar ${path}…`);
         loader.load(path,
-          (gltf) => resolve(gltf.scene),
+          (gltf) => {
+            console.log(`✅ Modelo cargado: ${path}`);
+            resolve(gltf.scene);
+          },
           undefined,
-          (err) => onFail()
+          (err) => {
+            console.warn(`⚠ Falló ${path}:`, err?.message || err);
+            onFail();
+          }
         );
       };
-      // Probar .glb → .gltf → null
       tryLoad(stem + '.glb', () => {
         tryLoad(stem + '.gltf', () => {
-          console.warn(`No se cargó modelo ${stem} (.glb ni .gltf) — usando procedural`);
+          console.warn(`❌ No se cargó modelo ${stem} (.glb ni .gltf) — fallback procedural`);
           resolve(null);
         });
       });
@@ -1263,6 +1271,7 @@ window.IztacalaMap = (function() {
   }
 
   // Coloca un clon del modelo GLB en la posición del árbol
+  let _firstModelLogged = false;
   function _addTreeFromModel(treeData, x, y, heightM, template) {
     const tree = template.clone(true);
 
@@ -1270,23 +1279,27 @@ window.IztacalaMap = (function() {
     const box = new THREE.Box3().setFromObject(tree);
     const size = new THREE.Vector3();
     box.getSize(size);
-    const modelHeight = size.y || 1;
+    const modelHeight = size.y || size.x || 1;
     const scale = heightM / modelHeight;
     tree.scale.setScalar(scale);
+
+    // Log SOLO la primera vez para diagnosticar
+    if (!_firstModelLogged) {
+      _firstModelLogged = true;
+      console.log(`🌳 Primer árbol GLB plantado | modelSize=${size.x.toFixed(1)}x${size.y.toFixed(1)}x${size.z.toFixed(1)} | scale=${scale.toFixed(3)} | heightFinal=${heightM.toFixed(1)}m | pos=(${x.toFixed(1)}, 0, ${(-y).toFixed(1)})`);
+    }
 
     // Posicionar el árbol con la base al suelo
     tree.position.set(x, 0, -y);
 
-    // Pintar la copa del color de salud (busca el mesh con material de hojas)
+    // Tintar follaje con color de salud (busca meshes verdosos)
     const crownColor = colorForHealth(treeData.health_score);
     tree.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
-        // Si el material tiene tinte verde, tintarlo con crownColor
         if (o.material && o.material.color) {
           const c = o.material.color;
-          // Detectar si es follaje (más verde que rojo)
           if (c.g > c.r && c.g > c.b * 0.7) {
             o.material = o.material.clone();
             o.material.color.setHex(crownColor);
@@ -1295,7 +1308,6 @@ window.IztacalaMap = (function() {
       }
     });
 
-    // Anillo + disco del color de salud (siempre visibles desde arriba)
     const group = new THREE.Group();
     group.add(tree);
     _addHealthMarker(group, x, y, heightM, crownColor);
@@ -1307,24 +1319,50 @@ window.IztacalaMap = (function() {
     treeMeshes.push({ group, crown: pickable[0], trunk: pickable[0], pickable, data: treeData });
   }
 
+  // Círculo grande + anillo grueso + disco central blanco + cilindro corto
+  // del color de salud para que sea SUPER VISIBLE desde la cámara aérea.
   function _addHealthMarker(group, x, y, heightM, crownColor) {
-    const ringInnerR = heightM * 0.30;
-    const ringOuterR = heightM * 0.50;
+    // Disco BASE de color (relleno sólido, muy grande para verse de lejos)
+    const baseR = heightM * 0.65;
+    const base = new THREE.Mesh(
+      new THREE.CircleGeometry(baseR, 32),
+      new THREE.MeshBasicMaterial({ color: crownColor, side: THREE.DoubleSide, transparent: true, opacity: 0.55 })
+    );
+    base.rotation.x = -Math.PI / 2;
+    base.position.set(x, 0.15, -y);
+    group.add(base);
+
+    // Anillo de borde más oscuro (contraste)
+    const ringInnerR = heightM * 0.60;
+    const ringOuterR = heightM * 0.70;
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(ringInnerR, ringOuterR, 24),
-      new THREE.MeshBasicMaterial({ color: crownColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+      new THREE.RingGeometry(ringInnerR, ringOuterR, 32),
+      new THREE.MeshBasicMaterial({
+        color: _darken(crownColor, 0.4),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.95
+      })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.25, -y);
+    ring.position.set(x, 0.20, -y);
     group.add(ring);
 
-    const dot = new THREE.Mesh(
-      new THREE.CircleGeometry(heightM * 0.15, 16),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+    // Cilindro corto color salud al pie del árbol (visible desde el lateral)
+    const stub = new THREE.Mesh(
+      new THREE.CylinderGeometry(heightM * 0.08, heightM * 0.10, heightM * 0.20, 12),
+      new THREE.MeshLambertMaterial({ color: crownColor })
     );
-    dot.rotation.x = -Math.PI / 2;
-    dot.position.set(x, 0.27, -y);
-    group.add(dot);
+    stub.position.set(x, heightM * 0.10, -y);
+    group.add(stub);
+  }
+
+  function _darken(hex, amount) {
+    const c = new THREE.Color(hex);
+    c.r *= (1 - amount);
+    c.g *= (1 - amount);
+    c.b *= (1 - amount);
+    return c.getHex();
   }
 
   // Versión procedural (fallback si no hay modelo GLB cargado)
