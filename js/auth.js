@@ -142,11 +142,27 @@ async function initApp() {
   }
 
   // Listen for auth state changes
+  // IMPORTANTE: Supabase dispara SIGNED_IN cada vez que se refresca el token,
+  // incluyendo cuando regresas a la pestaña tras estar en otra app. Para evitar
+  // que showMainApp() se llame innecesariamente (lo que resetearía la sección
+  // activa visualmente), distinguimos entre INITIAL login y re-auth.
+  let _mainAppShown = false;
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
-      loadUserProfile().then(() => showMainApp());
+      // Solo mostrar la app la PRIMERA vez. Subsiguientes SIGNED_IN
+      // (por refresh de token) no deben tocar la UI.
+      if (!_mainAppShown) {
+        _mainAppShown = true;
+        loadUserProfile().then(() => showMainApp());
+      } else {
+        // Solo refrescar el perfil silenciosamente, sin tocar la sección
+        loadUserProfile();
+      }
+    } else if (event === 'TOKEN_REFRESHED') {
+      // Token refresh transparente — no tocar la UI
     } else if (event === 'SIGNED_OUT') {
+      _mainAppShown = false;
       currentUser = null;
       currentUserProfile = null;
       showLoginScreen();
@@ -162,6 +178,10 @@ function showLoginScreen() {
 function showMainApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
+  // Marca global: la app ya está montada, futuros SIGNED_IN del listener
+  // no deben re-llamar a showMainApp (evita reseteo de sección al volver
+  // de otra app cuando Supabase refresca el token).
+  try { window._mainAppShown = true; } catch (_) {}
   // Restaurar última sección activa (no resetear a Mi Árbol al regresar a la app)
   let savedSection = 'section-mi-arbol';
   try {

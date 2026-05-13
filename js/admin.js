@@ -1793,7 +1793,7 @@ async function viewTreeMeasurementsAdmin(treeId) {
         if (cleanObs.length > 120) cleanObs = cleanObs.substring(0, 120) + '…';
 
         const photoTag = m._photoSrc
-          ? `<img src="${escapeHtml(m._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;\\'>⚠️</div>'">`
+          ? `<img src="${escapeHtml(m._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`
           : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>';
 
         return `
@@ -1880,7 +1880,7 @@ async function viewGardenVisitsAdmin(gardenId) {
         const obs = obsTrunc + ((v.observations || '').length > 120 ? '…' : '');
 
         const photoTag = v._photoSrc
-          ? `<img src="${escapeHtml(v._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;\\'>⚠️</div>'">`
+          ? `<img src="${escapeHtml(v._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`
           : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>';
 
         return `
