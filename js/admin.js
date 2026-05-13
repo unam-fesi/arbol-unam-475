@@ -764,11 +764,37 @@ async function editAdminTree(treeId) {
 }
 
 async function deleteAdminTree(treeId) {
-  if (!confirm('¿Eliminar este árbol?')) return;
-  const { error } = await sb.from('trees_catalog').delete().eq('id', treeId);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
-  showToast('Árbol eliminado', 'success');
-  loadAdminTrees();
+  if (!confirm('¿Eliminar este árbol?\n\n⚠ Se eliminarán TAMBIÉN:\n• Todos sus seguimientos (mediciones)\n• Sus asignaciones a usuarios\n• Sus reportes ciudadanos\n• Sus bitácoras y resúmenes anuales')) return;
+
+  try {
+    // Borrar dependencias en orden (algunas tablas no tienen CASCADE)
+    // No-throw individual: si una falla, intentamos las siguientes
+    const tables = [
+      'tree_measurements',
+      'tree_assignments',
+      'problem_reports',
+      'specialist_followups',
+      'tree_monthly_summaries',
+      'tree_annual_summaries',
+    ];
+    for (const t of tables) {
+      const { error } = await sb.from(t).delete().eq('tree_id', treeId);
+      if (error && !/relation .* does not exist/.test(error.message)) {
+        // Solo log; continuamos. Si la tabla no existe, no es problema.
+        console.warn(`Cleanup ${t} warning:`, error.message);
+      }
+    }
+
+    // Finalmente borrar el árbol
+    const { error } = await sb.from('trees_catalog').delete().eq('id', treeId);
+    if (error) throw error;
+
+    showToast('Árbol eliminado correctamente', 'success');
+    loadAdminTrees();
+  } catch (err) {
+    showToast('Error al eliminar: ' + err.message, 'error');
+    console.error('deleteAdminTree:', err);
+  }
 }
 
 // ---- GARDENS ----
@@ -1098,11 +1124,37 @@ async function editAdminGarden(id) {
 }
 
 async function deleteAdminGarden(id) {
-  if (!confirm('¿Eliminar este jardín?')) return;
-  const { error } = await sb.from('gardens').delete().eq('id', id);
-  if (error) { showToast('Error: ' + error.message, 'error'); return; }
-  showToast('Jardín eliminado', 'success');
-  loadAdminGardens();
+  if (!confirm('¿Eliminar este jardín?\n\n⚠ Se eliminarán TAMBIÉN:\n• Todas sus visitas (seguimientos)\n• Sus asignaciones a usuarios\n• Sus bitácoras y resúmenes anuales\n\nLos árboles dentro del jardín NO se borrarán, solo perderán la asociación.')) return;
+
+  try {
+    // Borrar dependencias en orden
+    const tables = [
+      'garden_visits',
+      'garden_assignments',
+      'garden_monthly_summaries',
+      'garden_annual_summaries',
+    ];
+    for (const t of tables) {
+      const { error } = await sb.from(t).delete().eq('garden_id', id);
+      if (error && !/relation .* does not exist/.test(error.message)) {
+        console.warn(`Cleanup ${t} warning:`, error.message);
+      }
+    }
+
+    // Desasociar árboles del jardín (no los borra, solo nullifica garden_id)
+    const { error: utErr } = await sb.from('trees_catalog').update({ garden_id: null }).eq('garden_id', id);
+    if (utErr) console.warn('Tree disassociate warning:', utErr.message);
+
+    // Finalmente borrar el jardín
+    const { error } = await sb.from('gardens').delete().eq('id', id);
+    if (error) throw error;
+
+    showToast('Jardín eliminado correctamente', 'success');
+    loadAdminGardens();
+  } catch (err) {
+    showToast('Error al eliminar: ' + err.message, 'error');
+    console.error('deleteAdminGarden:', err);
+  }
 }
 
 // ---- GROUPS ----
@@ -1806,8 +1858,14 @@ async function viewTreeMeasurementsAdmin(treeId) {
             ${photoTag}
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
-                <strong style="color:#1b5e20;">${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
-                ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${score}/100</span>` : ''}
+                <div>
+                  <strong style="color:#1b5e20;">${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
+                  ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;margin-left:0.4rem;">${score}/100</span>` : ''}
+                </div>
+                <div style="display:flex;gap:0.3rem;">
+                  <button class="btn btn-sm btn-secondary" onclick="editAdminMeasurement(${m.id}, ${treeId})" style="padding:3px 8px;font-size:0.72rem;" title="Editar medición">✏️</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteAdminMeasurement(${m.id}, ${treeId})" style="padding:3px 8px;font-size:0.72rem;" title="Eliminar medición">🗑️</button>
+                </div>
               </div>
               <div style="font-size:0.78rem;color:#666;margin-top:2px;">por ${escapeHtml(userName)}</div>
               <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem;font-size:0.72rem;color:#444;">
@@ -1893,8 +1951,14 @@ async function viewGardenVisitsAdmin(gardenId) {
             ${photoTag}
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
-                <strong style="color:#0d2d5c;">${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'} — ${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
-                ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${score}/100</span>` : ''}
+                <div>
+                  <strong style="color:#0d2d5c;">${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'} — ${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
+                  ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;margin-left:0.4rem;">${score}/100</span>` : ''}
+                </div>
+                <div style="display:flex;gap:0.3rem;">
+                  <button class="btn btn-sm btn-secondary" onclick="editAdminGardenVisit('${v.id}','${gardenId}')" style="padding:3px 8px;font-size:0.72rem;" title="Editar">✏️</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteAdminGardenVisit('${v.id}','${gardenId}')" style="padding:3px 8px;font-size:0.72rem;" title="Eliminar">🗑️</button>
+                </div>
               </div>
               <div style="font-size:0.78rem;color:#666;margin-top:2px;">por ${escapeHtml(userName)}</div>
               ${acts ? `<div style="margin-top:0.5rem;font-size:0.75rem;color:#444;">${escapeHtml(acts)}</div>` : ''}
@@ -1919,6 +1983,151 @@ async function viewGardenVisitsAdmin(gardenId) {
 
 window.viewTreeMeasurementsAdmin = viewTreeMeasurementsAdmin;
 window.viewGardenVisitsAdmin = viewGardenVisitsAdmin;
+
+// ============================================================================
+// EDIT / DELETE de mediciones de árbol (admin)
+// ============================================================================
+async function editAdminMeasurement(measId, treeId) {
+  const { data: m } = await sb.from('tree_measurements').select('*').eq('id', measId).single();
+  if (!m) { showToast('Medición no encontrada', 'error'); return; }
+  const dateLocal = m.measurement_date ? new Date(m.measurement_date).toISOString().slice(0, 16) : '';
+
+  showModal('Editar medición', `
+    <form id="edit-meas-form">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem;">
+        <div class="form-group">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="em-date" value="${dateLocal}" style="width:100%;padding:0.5rem;">
+        </div>
+        <div class="form-group">
+          <label>Salud (0-100)</label>
+          <input type="number" id="em-health" min="0" max="100" value="${m.health_score ?? ''}" style="width:100%;padding:0.5rem;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.6rem;margin-bottom:0.6rem;">
+        <div class="form-group">
+          <label>Altura (cm)</label>
+          <input type="number" step="0.1" id="em-height" value="${m.height_cm ?? ''}" style="width:100%;padding:0.5rem;">
+        </div>
+        <div class="form-group">
+          <label>Tronco (cm)</label>
+          <input type="number" step="0.1" id="em-trunk" value="${m.trunk_diameter_cm ?? ''}" style="width:100%;padding:0.5rem;">
+        </div>
+        <div class="form-group">
+          <label>Copa (cm)</label>
+          <input type="number" step="0.1" id="em-crown" value="${m.crown_diameter_cm ?? ''}" style="width:100%;padding:0.5rem;">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0.6rem;">
+        <label>Observaciones</label>
+        <textarea id="em-obs" rows="3" style="width:100%;padding:0.5rem;">${escapeHtml(m.observations || '')}</textarea>
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById('edit-meas-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const updates = {
+      measurement_date: new Date(document.getElementById('em-date').value).toISOString(),
+      health_score: parseInt(document.getElementById('em-health').value) || null,
+      height_cm: parseFloat(document.getElementById('em-height').value) || null,
+      trunk_diameter_cm: parseFloat(document.getElementById('em-trunk').value) || null,
+      crown_diameter_cm: parseFloat(document.getElementById('em-crown').value) || null,
+      observations: document.getElementById('em-obs').value.trim() || null,
+    };
+    const { error } = await sb.from('tree_measurements').update(updates).eq('id', measId);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    showToast('Medición actualizada', 'success');
+    closeModal();
+    viewTreeMeasurementsAdmin(treeId);
+  });
+}
+
+async function deleteAdminMeasurement(measId, treeId) {
+  if (!confirm('¿Eliminar esta medición? No se puede deshacer.')) return;
+  const { error } = await sb.from('tree_measurements').delete().eq('id', measId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Medición eliminada', 'success');
+  viewTreeMeasurementsAdmin(treeId);
+}
+
+// ============================================================================
+// EDIT / DELETE de visitas al jardín (admin)
+// ============================================================================
+async function editAdminGardenVisit(visitId, gardenId) {
+  const { data: v } = await sb.from('garden_visits').select('*').eq('id', visitId).single();
+  if (!v) { showToast('Visita no encontrada', 'error'); return; }
+  const dateLocal = v.visit_date ? new Date(v.visit_date).toISOString().slice(0, 16) : '';
+  const activities = v.activities || [];
+  const allActivities = ['riego','limpieza','poda','fertilizacion','control_plagas','control_maleza','siembra_reposicion','mantillo_hojarasca','aireacion','inspeccion','mantenimiento_estructural','cuidado_polinizadores','otro'];
+
+  const actsHtml = allActivities.map(a => `
+    <label style="display:inline-flex;align-items:center;gap:0.3rem;background:${activities.includes(a) ? 'rgba(46,125,50,0.15)' : '#f5f5f5'};padding:4px 10px;border-radius:12px;font-size:0.78rem;cursor:pointer;border:1px solid ${activities.includes(a) ? '#2E7D32' : '#ddd'};">
+      <input type="checkbox" value="${a}" name="ev-activity" ${activities.includes(a) ? 'checked' : ''} style="margin:0;">
+      ${a.replace(/_/g, ' ')}
+    </label>
+  `).join('');
+
+  showModal('Editar visita al jardín', `
+    <form id="edit-visit-form">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem;">
+        <div class="form-group">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="ev-date" value="${dateLocal}" style="width:100%;padding:0.5rem;">
+        </div>
+        <div class="form-group">
+          <label>Salud (0-100)</label>
+          <input type="number" id="ev-health" min="0" max="100" value="${v.health_score ?? ''}" style="width:100%;padding:0.5rem;">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0.6rem;">
+        <label>Actividades realizadas</label>
+        <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-top:0.3rem;">${actsHtml}</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0.6rem;">
+        <label>Observaciones</label>
+        <textarea id="ev-obs" rows="3" style="width:100%;padding:0.5rem;">${escapeHtml(v.observations || '')}</textarea>
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById('edit-visit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const selectedActs = Array.from(document.querySelectorAll('input[name="ev-activity"]:checked')).map(c => c.value);
+    const updates = {
+      visit_date: new Date(document.getElementById('ev-date').value).toISOString(),
+      health_score: parseInt(document.getElementById('ev-health').value) || null,
+      activities: selectedActs,
+      observations: document.getElementById('ev-obs').value.trim() || null,
+    };
+    const { error } = await sb.from('garden_visits').update(updates).eq('id', visitId);
+    if (error) { showToast('Error: ' + error.message, 'error'); return; }
+    showToast('Visita actualizada', 'success');
+    closeModal();
+    viewGardenVisitsAdmin(gardenId);
+  });
+}
+
+async function deleteAdminGardenVisit(visitId, gardenId) {
+  if (!confirm('¿Eliminar esta visita al jardín? No se puede deshacer.')) return;
+  const { error } = await sb.from('garden_visits').delete().eq('id', visitId);
+  if (error) { showToast('Error: ' + error.message, 'error'); return; }
+  showToast('Visita eliminada', 'success');
+  viewGardenVisitsAdmin(gardenId);
+}
+
+window.editAdminMeasurement = editAdminMeasurement;
+window.deleteAdminMeasurement = deleteAdminMeasurement;
+window.editAdminGardenVisit = editAdminGardenVisit;
+window.deleteAdminGardenVisit = deleteAdminGardenVisit;
 window.suggestGardenGoalsWithAI = suggestGardenGoalsWithAI;
 
 // ============================================================================
