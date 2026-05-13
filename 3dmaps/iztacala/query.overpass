@@ -1,6 +1,0 @@
-[out:json][timeout:60];
-(
-  way["amenity"="university"]["name"~"Iztacala"];
-  relation["amenity"="university"]["name"~"Iztacala"];
-);
-out geom;
