@@ -1211,7 +1211,10 @@ window.IztacalaMap = (function() {
 
   function addTree(treeData) {
     const { x, y } = latlonToModelXY(treeData.location_lat, treeData.location_lng);
-    const heightM = Math.max(2.5, Math.min((treeData.initial_height_cm || 400) / 100, 14));
+    // Escala visual EXAGERADA porque el campus es de 800x500m y un árbol real
+    // de 5m sería un puntito desde la cámara. Los datos reales no cambian.
+    const realHeight = (treeData.initial_height_cm || 400) / 100;
+    const heightM = Math.max(8, Math.min(realHeight * 2.5, 28));
 
     // Determinar variante por especie/tipo del árbol (deterministic por id)
     const variantIdx = Math.abs(parseInt(String(treeData.id).replace(/[^\d]/g, '').slice(-4)) || 0) % 3;
@@ -1322,20 +1325,38 @@ window.IztacalaMap = (function() {
       });
     }
 
-    // ---- Anillo en el suelo (marcador visible desde arriba) ----
-    const ringGeom = new THREE.RingGeometry(0.8, 1.3, 18);
+    // ---- Anillo en el suelo (marcador visible desde arriba, grande para
+    // que se vea desde la cámara aérea del campus) ----
+    const ringInnerR = heightM * 0.30;
+    const ringOuterR = heightM * 0.50;
+    const ringGeom = new THREE.RingGeometry(ringInnerR, ringOuterR, 24);
     const ring = new THREE.Mesh(
       ringGeom,
       new THREE.MeshBasicMaterial({
         color: crownColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.75,
+        opacity: 0.85,
       })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.18, -y);
+    ring.position.set(x, 0.25, -y);
     group.add(ring);
+
+    // ---- Disco central blanco con borde para máxima visibilidad ----
+    const dotGeom = new THREE.CircleGeometry(heightM * 0.15, 16);
+    const dot = new THREE.Mesh(
+      dotGeom,
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9,
+      })
+    );
+    dot.rotation.x = -Math.PI / 2;
+    dot.position.set(x, 0.27, -y);
+    group.add(dot);
 
     group.userData = { type: 'tree', data: treeData };
     scene.add(group);
