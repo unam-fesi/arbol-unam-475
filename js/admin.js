@@ -1733,6 +1733,24 @@ window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
 // ============================================================================
+// HELPER — Resuelve photo_url de Storage a URL utilizable
+// ============================================================================
+// Si la URL ya es absoluta (https://...) la devuelve tal cual.
+// Si es un path relativo (ej: "196/1778517852295.jpg"), genera una signed URL
+// del bucket indicado, válida 1 hora.
+async function _resolveStoragePhoto(photoUrl, bucket) {
+  if (!photoUrl) return null;
+  if (/^https?:\/\//.test(photoUrl)) return photoUrl;
+  try {
+    const { data } = await sb.storage.from(bucket).createSignedUrl(photoUrl, 3600);
+    return data?.signedUrl || null;
+  } catch (e) {
+    console.warn('Signed URL error', bucket, photoUrl, e);
+    return null;
+  }
+}
+
+// ============================================================================
 // VER SEGUIMIENTOS DE UN ÁRBOL (modal admin)
 // ============================================================================
 async function viewTreeMeasurementsAdmin(treeId) {
@@ -1753,6 +1771,11 @@ async function viewTreeMeasurementsAdmin(treeId) {
       (users || []).forEach(u => { userMap[u.id] = u.full_name; });
     }
 
+    // Resolver TODAS las photo_url a signed URLs (en paralelo)
+    await Promise.all((meas || []).map(async (m) => {
+      m._photoSrc = await _resolveStoragePhoto(m.photo_url, 'tree-photos');
+    }));
+
     let rowsHtml;
     if (!meas || meas.length === 0) {
       rowsHtml = '<div style="padding:2rem;text-align:center;color:#888;">Este árbol aún no tiene seguimientos.</div>';
@@ -1769,9 +1792,13 @@ async function viewTreeMeasurementsAdmin(treeId) {
         let cleanObs = (m.observations || '').replace(/\[RUBROS\]\s*\{[^}]*\}/g, '').replace(/\[PLANTACION\]\s*\{[^}]*\}/g, '').trim();
         if (cleanObs.length > 120) cleanObs = cleanObs.substring(0, 120) + '…';
 
+        const photoTag = m._photoSrc
+          ? `<img src="${escapeHtml(m._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;\\'>⚠️</div>'">`
+          : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>';
+
         return `
           <div style="display:flex;gap:0.9rem;padding:0.9rem;border-bottom:1px solid #f0f0f0;align-items:flex-start;${i === 0 ? 'background:rgba(46,125,50,0.04);' : ''}">
-            ${m.photo_url ? `<img src="${escapeHtml(m.photo_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>'}
+            ${photoTag}
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
                 <strong style="color:#1b5e20;">${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
@@ -1822,6 +1849,11 @@ async function viewGardenVisitsAdmin(gardenId) {
       (users || []).forEach(u => { userMap[u.id] = u.full_name; });
     }
 
+    // Resolver photo_url de cada visita (bucket garden-photos)
+    await Promise.all((visits || []).map(async (v) => {
+      v._photoSrc = await _resolveStoragePhoto(v.photo_url, 'garden-photos');
+    }));
+
     const activitiesDict = {
       riego: '💧 Riego', limpieza: '🧹 Limpieza', poda: '✂️ Poda',
       fertilizacion: '🌱 Fertilización', control_plagas: '🪲 Plagas',
@@ -1847,9 +1879,13 @@ async function viewGardenVisitsAdmin(gardenId) {
         const obsTrunc = (v.observations || '').trim().substring(0, 120);
         const obs = obsTrunc + ((v.observations || '').length > 120 ? '…' : '');
 
+        const photoTag = v._photoSrc
+          ? `<img src="${escapeHtml(v._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;\\'>⚠️</div>'">`
+          : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>';
+
         return `
           <div style="display:flex;gap:0.9rem;padding:0.9rem;border-bottom:1px solid #f0f0f0;align-items:flex-start;${i === 0 ? 'background:rgba(26,68,128,0.04);' : ''}">
-            ${v.photo_url ? `<img src="${escapeHtml(v.photo_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>'}
+            ${photoTag}
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
                 <strong style="color:#0d2d5c;">${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'} — ${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
