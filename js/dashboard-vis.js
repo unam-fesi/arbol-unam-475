@@ -173,17 +173,19 @@
     const el = typeof containerSel === 'string' ? document.querySelector(containerSel) : containerSel;
     if (!el) return false;
     mosaicoDestroy();
-    el.innerHTML = '<div class="vis-loading" style="color:#c8aae0;">Cargando mosaico…</div>';
+    el.style.position = 'relative';
+    el.innerHTML = '<div class="vis-loading" style="color:#c8aae0;padding:2rem;text-align:center;">Cargando carretes…</div>';
 
     const w = el.clientWidth || 800;
-    const h = 520;
+    const h = 560;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x2d2418);
-    scene.fog = new THREE.Fog(0x2d2418, 25, 80);
+    scene.background = new THREE.Color(0x1a1410);
+    scene.fog = new THREE.Fog(0x1a1410, 30, 90);
 
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
-    camera.position.set(0, 6, 22);
+    camera.position.set(0, 8, 24);
+    camera.lookAt(0, 5, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -191,137 +193,188 @@
     el.innerHTML = '';
     el.appendChild(renderer.domElement);
 
-    // Luz suave para que las fotos sean visibles
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.4);
-    dir.position.set(5, 10, 5);
-    scene.add(dir);
+    // Iluminación
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 0.5);
+    key.position.set(5, 15, 8);
+    scene.add(key);
 
-    // 3 plataformas: verde, ámbar, rojo
+    // 3 zonas — carretes verticales separados horizontalmente
     const ZONES = [
-      { name: 'Sano',     color: 0x4a7c2a, x: -7,  filter: t => (t.health_score || 0) >= 70 },
-      { name: 'Atención', color: 0xd49b3a, x: 0,   filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xb54f3a, x: 7,   filter: t => (t.health_score || 0) < 40 }
+      { name: 'Sano',     color: 0x4a7c2a, x: -10, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Atención', color: 0xd49b3a, x:   0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
+      { name: 'Crítico',  color: 0xb54f3a, x:  10, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
-    // Plataforma base por zona (disco)
+    // ---- BASES de los carretes (discos en el suelo + columnas) ----
     ZONES.forEach(zone => {
-      const platGeo = new THREE.CylinderGeometry(3.5, 3.8, 0.3, 16);
-      const platMat = new THREE.MeshStandardMaterial({
-        color: zone.color, roughness: 0.7, emissive: zone.color, emissiveIntensity: 0.25
-      });
-      const plat = new THREE.Mesh(platGeo, platMat);
-      plat.position.set(zone.x, -0.5, 0);
-      scene.add(plat);
+      // Base disco
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(3.2, 3.4, 0.3, 24),
+        new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.7, emissive: zone.color, emissiveIntensity: 0.2 })
+      );
+      base.position.set(zone.x, -0.5, 0);
+      scene.add(base);
 
-      // Etiqueta flotante
+      // Columna central del carrete (transparente)
+      const col = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 11, 8),
+        new THREE.MeshBasicMaterial({ color: zone.color, transparent: true, opacity: 0.25 })
+      );
+      col.position.set(zone.x, 5, 0);
+      scene.add(col);
+
+      // Etiqueta arriba del carrete
       const labelTex = makeLabelTexture(zone.name);
       const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
       const label = new THREE.Sprite(labelMat);
-      label.position.set(zone.x, -1.5, 0);
-      label.scale.set(3, 0.8, 1);
+      label.position.set(zone.x, 11.5, 0);
+      label.scale.set(4, 1, 1);
       scene.add(label);
     });
 
-    // Foto planes por árbol
+    // ---- Cargar la ÚLTIMA foto de cada árbol (de tree_measurements) ----
+    // Si el árbol no tiene seguimientos, usar tree.photo_url
     const photoPlanes = [];
-    const treesWithPhotos = (trees || []).filter(t => t.photo_url);
+    const zoneGroups = {};  // { zoneIdx: THREE.Group } — el group permite rotar todo el carrete junto
+    ZONES.forEach((zone, i) => {
+      const g = new THREE.Group();
+      g.position.set(zone.x, 0, 0);
+      scene.add(g);
+      zoneGroups[i] = g;
+    });
 
-    if (treesWithPhotos.length === 0) {
-      // Si no hay fotos, mostrar emoji o placeholder
-      ZONES.forEach(zone => {
-        const treesInZone = (trees || []).filter(zone.filter);
-        treesInZone.forEach((t, i) => {
-          const placeholder = makePlaceholderPlane(t, zone.color);
-          const angle = (i / Math.max(treesInZone.length, 1)) * Math.PI * 2;
-          const r = 1.5 + Math.random() * 0.7;
-          placeholder.position.set(zone.x + Math.cos(angle) * r, Math.random() * 2 + 0.5, Math.sin(angle) * r);
-          placeholder.userData = { tree: t, isPhoto: true };
-          scene.add(placeholder);
-          photoPlanes.push(placeholder);
-        });
-      });
-    } else {
-      // Resolver signed URLs y crear texture-loaded planes
-      const loader = new THREE.TextureLoader();
-      loader.crossOrigin = 'anonymous';
-      for (const t of treesWithPhotos) {
-        try {
-          // Obtener signed URL del bucket
-          let url = t.photo_url;
-          if (!url.startsWith('http')) {
-            const { data } = await sb.storage.from('tree-photos').createSignedUrl(url, 3600);
-            url = data && data.signedUrl;
+    // Buscar última medición de cada árbol
+    const treeIds = (trees || []).map(t => t.id);
+    let lastMeasByTree = {};
+    if (treeIds.length > 0 && typeof sb !== 'undefined') {
+      try {
+        const { data: meas } = await sb
+          .from('tree_measurements')
+          .select('tree_id, photo_url, measurement_date')
+          .in('tree_id', treeIds)
+          .order('measurement_date', { ascending: false });
+        (meas || []).forEach(m => {
+          if (!lastMeasByTree[m.tree_id] && m.photo_url) {
+            lastMeasByTree[m.tree_id] = m;
           }
-          if (!url) continue;
+        });
+      } catch (e) { console.warn('mosaico last meas error:', e); }
+    }
 
-          const score = t.health_score || 0;
-          const zone = ZONES.find(z => z.filter(t)) || ZONES[1];
-          const idx = photoPlanes.length;
-          const angle = (idx % 8) * (Math.PI / 4) + Math.random() * 0.3;
-          const r = 1.5 + Math.random() * 0.8;
+    // Agrupar árboles por zona y crear carretes
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = 'anonymous';
 
-          loader.load(url, (tex) => {
-            const planeGeo = new THREE.PlaneGeometry(1.4, 1.4);
-            const planeMat = new THREE.MeshBasicMaterial({
-              map: tex, transparent: true, side: THREE.DoubleSide
-            });
-            const plane = new THREE.Mesh(planeGeo, planeMat);
-            plane.position.set(zone.x + Math.cos(angle) * r, idx * 0.05 + 1, Math.sin(angle) * r);
-            plane.lookAt(camera.position);
-            plane.userData = { tree: t, isPhoto: true };
-            scene.add(plane);
-            photoPlanes.push(plane);
-          }, undefined, () => {
-            // fallback al placeholder
-            const placeholder = makePlaceholderPlane(t, zone.color);
-            placeholder.position.set(zone.x + Math.cos(angle) * r, idx * 0.05 + 1, Math.sin(angle) * r);
-            placeholder.userData = { tree: t, isPhoto: true };
-            scene.add(placeholder);
-            photoPlanes.push(placeholder);
-          });
-        } catch (e) { console.warn('Foto no cargó:', e); }
+    for (let zIdx = 0; zIdx < ZONES.length; zIdx++) {
+      const zone = ZONES[zIdx];
+      const zg = zoneGroups[zIdx];
+      const treesInZone = (trees || []).filter(zone.filter);
+
+      // Distribuir en ESPIRAL VERTICAL: cada foto a una altura y ángulo
+      // (estilo carrete circular vertical)
+      for (let i = 0; i < treesInZone.length; i++) {
+        const tree = treesInZone[i];
+        const angle = (i / Math.max(treesInZone.length, 6)) * Math.PI * 2;
+        const r = 2.3;
+        const y = 1.0 + i * (9 / Math.max(treesInZone.length, 1));
+        const px = Math.cos(angle) * r;
+        const pz = Math.sin(angle) * r;
+
+        // Resolver la URL de la foto (última medición o foto del árbol)
+        let photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
+        if (photoUrl && !photoUrl.startsWith('http')) {
+          try {
+            const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
+            photoUrl = data?.signedUrl || null;
+          } catch (_) { photoUrl = null; }
+        }
+
+        // Crear plano inicial con placeholder
+        const plane = makePlaceholderPlane(tree, zone.color);
+        plane.position.set(px, y, pz);
+        plane.userData = { tree, zoneIdx: zIdx, angle, r, y };
+        zg.add(plane);
+        photoPlanes.push(plane);
+
+        // Si hay foto, cargar la textura encima
+        if (photoUrl) {
+          loader.load(photoUrl,
+            (tex) => {
+              const photoMat = new THREE.MeshBasicMaterial({
+                map: tex, transparent: true, side: THREE.DoubleSide
+              });
+              const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), photoMat);
+              photoPlane.position.set(px, y, pz);
+              photoPlane.userData = { tree, zoneIdx: zIdx, angle, r, y };
+              zg.add(photoPlane);
+              photoPlanes.push(photoPlane);
+              // Quitar el placeholder
+              zg.remove(plane);
+              const idx = photoPlanes.indexOf(plane);
+              if (idx > -1) photoPlanes.splice(idx, 1);
+            },
+            undefined,
+            () => {/* falla → se queda el placeholder */}
+          );
+        }
       }
-
-      // Para árboles SIN foto pero que pertenecen a alguna zona, mostrar placeholder
-      (trees || []).filter(t => !t.photo_url).forEach((t, i) => {
-        const zone = ZONES.find(z => z.filter(t)) || ZONES[1];
-        const placeholder = makePlaceholderPlane(t, zone.color);
-        const angle = (i / 8) * Math.PI + Math.random() * 0.3;
-        const r = 2.3 + Math.random() * 0.5;
-        placeholder.position.set(zone.x + Math.cos(angle) * r, 2.5 + Math.random(), Math.sin(angle) * r);
-        placeholder.userData = { tree: t, isPhoto: true };
-        scene.add(placeholder);
-        photoPlanes.push(placeholder);
-      });
     }
 
-    // Controls
-    let controls = null;
-    if (THREE.OrbitControls) {
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.5;
-      controls.minDistance = 12;
-      controls.maxDistance = 35;
-      controls.target.set(0, 1, 0);
-      controls.enablePan = false;
-    }
+    // ---- DRAG MANUAL — el usuario rota los 3 carretes con el mouse ----
+    // No usamos OrbitControls porque queremos un drag horizontal directo
+    // que rote las zonas alrededor de su eje Y individual.
+    let isDragging = false;
+    let lastX = 0;
+    let rotationSpeed = 0;
+    const autoSpeed = 0.003;
 
-    // Raycaster
+    renderer.domElement.style.cursor = 'grab';
+
+    const onPointerDown = (e) => {
+      isDragging = true;
+      lastX = (e.clientX != null) ? e.clientX : (e.touches && e.touches[0]?.clientX) || 0;
+      renderer.domElement.style.cursor = 'grabbing';
+    };
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+      const cx = (e.clientX != null) ? e.clientX : (e.touches && e.touches[0]?.clientX) || 0;
+      const dx = cx - lastX;
+      lastX = cx;
+      rotationSpeed = dx * 0.005;
+      Object.values(zoneGroups).forEach(zg => { zg.rotation.y += dx * 0.005; });
+    };
+    const onPointerUp = () => {
+      isDragging = false;
+      renderer.domElement.style.cursor = 'grab';
+    };
+    renderer.domElement.addEventListener('mousedown', onPointerDown);
+    renderer.domElement.addEventListener('mousemove', onPointerMove);
+    renderer.domElement.addEventListener('mouseup', onPointerUp);
+    renderer.domElement.addEventListener('mouseleave', onPointerUp);
+    renderer.domElement.addEventListener('touchstart', onPointerDown, { passive: true });
+    renderer.domElement.addEventListener('touchmove', onPointerMove, { passive: true });
+    renderer.domElement.addEventListener('touchend', onPointerUp);
+
+    // Raycaster — click en foto → modal de acción
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    let clickStartX = null;
     const onClick = (e) => {
+      // Si fue un drag, no es click
+      const cx = e.clientX != null ? e.clientX : 0;
+      if (clickStartX != null && Math.abs(cx - clickStartX) > 5) return;
+
       const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.x = ((cx - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObjects(photoPlanes);
-      if (hits.length > 0 && hits[0].object.userData.tree && typeof editAdminTree === 'function') {
-        editAdminTree(parseInt(hits[0].object.userData.tree.id, 10));
+      if (hits.length > 0 && hits[0].object.userData.tree) {
+        showMosaicoPhotoModal(hits[0].object.userData.tree, hits[0].object.material.map);
       }
     };
+    renderer.domElement.addEventListener('mousedown', (e) => { clickStartX = e.clientX; });
     renderer.domElement.addEventListener('click', onClick);
 
     let animId = null;
@@ -335,27 +388,91 @@
 
     function animate() {
       animId = requestAnimationFrame(animate);
-      if (controls) controls.update();
-      // Las fotos miran a la cámara (billboard)
-      photoPlanes.forEach(p => p.lookAt(camera.position));
+      // Auto-rotación lenta cuando no se arrastra (efecto "carrete idle")
+      if (!isDragging) {
+        Object.values(zoneGroups).forEach(zg => { zg.rotation.y += autoSpeed; });
+      }
+      // Las fotos miran a la cámara (billboard) en coordenadas globales
+      photoPlanes.forEach(p => {
+        p.getWorldPosition(_v0);
+        p.lookAt(camera.position);
+      });
       renderer.render(scene, camera);
     }
+    const _v0 = new THREE.Vector3();
     animate();
+
+    // HUD overlay con hint de uso
+    const hint = document.createElement('div');
+    hint.style.cssText = 'position:absolute;bottom:0.5rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:0.4rem 0.9rem;border-radius:18px;font-size:0.72rem;pointer-events:none;backdrop-filter:blur(4px);';
+    hint.innerHTML = '🖱️ Arrastra para rotar los carretes · clic en una foto para ver detalle';
+    el.appendChild(hint);
 
     mosaicoState = {
       destroy: () => {
         if (animId) cancelAnimationFrame(animId);
         window.removeEventListener('resize', onResize);
         renderer.domElement.removeEventListener('click', onClick);
-        if (controls) controls.dispose();
+        renderer.domElement.removeEventListener('mousedown', onPointerDown);
+        renderer.domElement.removeEventListener('mousemove', onPointerMove);
+        renderer.domElement.removeEventListener('mouseup', onPointerUp);
         renderer.dispose();
         if (renderer.domElement && renderer.domElement.parentNode) {
           renderer.domElement.parentNode.removeChild(renderer.domElement);
         }
+        if (hint && hint.parentNode) hint.parentNode.removeChild(hint);
       }
     };
     return true;
   }
+
+  // Modal cuando se hace click en una foto del carrete
+  function showMosaicoPhotoModal(tree, texture) {
+    let modal = document.getElementById('mosaico-photo-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'mosaico-photo-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px);';
+
+    // Convertir la textura (THREE.Texture) a data URL si es posible
+    let photoSrc = null;
+    try {
+      if (texture && texture.image) {
+        const c = document.createElement('canvas');
+        c.width = texture.image.width || 300;
+        c.height = texture.image.height || 300;
+        c.getContext('2d').drawImage(texture.image, 0, 0);
+        photoSrc = c.toDataURL('image/jpeg', 0.85);
+      }
+    } catch (_) {}
+
+    const score = tree.health_score;
+    const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.45);">
+        ${photoSrc ? `<img src="${photoSrc}" style="width:100%;max-height:50vh;object-fit:cover;border-radius:16px 16px 0 0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')">` : ''}
+        <div style="padding:1.3rem 1.4rem;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
+            <div>
+              <h3 style="margin:0;color:#1b5e20;">${(tree.common_name || tree.species || 'Árbol').replace(/[<>&"]/g, '')}</h3>
+              <p style="margin:0.3rem 0 0;color:#666;font-size:0.85rem;font-style:italic;">${(tree.species || '').replace(/[<>&"]/g, '')}</p>
+            </div>
+            ${score != null ? `<span style="background:${color};color:#fff;padding:4px 12px;border-radius:14px;font-weight:600;font-size:0.85rem;">${score}/100</span>` : ''}
+          </div>
+          ${tree.tree_code ? `<div style="color:#999;font-family:ui-monospace,monospace;font-size:0.78rem;margin-top:0.4rem;">${tree.tree_code}</div>` : ''}
+          <div style="display:flex;gap:0.5rem;margin-top:1.2rem;justify-content:flex-end;">
+            <button onclick="document.getElementById('mosaico-photo-modal').remove()" style="background:#f0f0f0;color:#444;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:500;cursor:pointer;">Cerrar</button>
+            ${photoSrc ? `<button onclick="window.open('${photoSrc}','_blank')" style="background:#1976D2;color:#fff;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:600;cursor:pointer;"><i class="fas fa-expand"></i> Ver foto completa</button>` : ''}
+            <button onclick="if(typeof editAdminTree==='function'){editAdminTree(${parseInt(tree.id, 10) || `'${tree.id}'`});document.getElementById('mosaico-photo-modal').remove();}" style="background:#2E7D32;color:#fff;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:600;cursor:pointer;">Ver detalle</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  }
+  window.showMosaicoPhotoModal = showMosaicoPhotoModal;
 
   function makeLabelTexture(text) {
     const c = document.createElement('canvas');
