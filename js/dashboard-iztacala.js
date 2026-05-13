@@ -1209,12 +1209,126 @@ window.IztacalaMap = (function() {
     }
   }
 
+  // ---- Cache global de modelos GLB de árboles para no recargarlos por cada árbol ----
+  const TREE_MODELS_CACHE = {};
+  // Mapeo especie/tipo → archivo GLB. Si el archivo no existe, se usa el modelo procedural.
+  // Pon los GLB en /data/trees/ — recomendado: descargar pack CC0 de Quaternius.
+  function _pickTreeModelPath(treeData) {
+    // Un solo modelo para TODOS los árboles. La salud se distingue por el
+    // tinte de color de la copa + anillo en el suelo. El detalle por especie
+    // se ve en el modal de detalle del árbol, no en el mapa.
+    return 'data/trees/tree_model';
+  }
+
+  function _getTreeModel(stem) {
+    if (TREE_MODELS_CACHE[stem]) return TREE_MODELS_CACHE[stem];
+    // Intenta cargar .glb primero, luego .gltf. Ambas funcionan con GLTFLoader.
+    TREE_MODELS_CACHE[stem] = new Promise((resolve) => {
+      if (typeof THREE.GLTFLoader === 'undefined') return resolve(null);
+      const loader = new THREE.GLTFLoader();
+      const tryLoad = (path, onFail) => {
+        loader.load(path,
+          (gltf) => resolve(gltf.scene),
+          undefined,
+          (err) => onFail()
+        );
+      };
+      // Probar .glb → .gltf → null
+      tryLoad(stem + '.glb', () => {
+        tryLoad(stem + '.gltf', () => {
+          console.warn(`No se cargó modelo ${stem} (.glb ni .gltf) — usando procedural`);
+          resolve(null);
+        });
+      });
+    });
+    return TREE_MODELS_CACHE[stem];
+  }
+
   function addTree(treeData) {
     const { x, y } = latlonToModelXY(treeData.location_lat, treeData.location_lng);
     // Escala visual EXAGERADA porque el campus es de 800x500m y un árbol real
     // de 5m sería un puntito desde la cámara. Los datos reales no cambian.
     const realHeight = (treeData.initial_height_cm || 400) / 100;
     const heightM = Math.max(8, Math.min(realHeight * 2.5, 28));
+
+    // Intentar cargar modelo GLB. Si existe, usarlo. Si no, fallback procedural.
+    const modelPath = _pickTreeModelPath(treeData);
+    _getTreeModel(modelPath).then(template => {
+      if (template) {
+        _addTreeFromModel(treeData, x, y, heightM, template);
+      } else {
+        _addTreeProcedural(treeData, x, y, heightM);
+      }
+    });
+  }
+
+  // Coloca un clon del modelo GLB en la posición del árbol
+  function _addTreeFromModel(treeData, x, y, heightM, template) {
+    const tree = template.clone(true);
+
+    // Calcular bounding box del template para normalizar la escala
+    const box = new THREE.Box3().setFromObject(tree);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const modelHeight = size.y || 1;
+    const scale = heightM / modelHeight;
+    tree.scale.setScalar(scale);
+
+    // Posicionar el árbol con la base al suelo
+    tree.position.set(x, 0, -y);
+
+    // Pintar la copa del color de salud (busca el mesh con material de hojas)
+    const crownColor = colorForHealth(treeData.health_score);
+    tree.traverse(o => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+        // Si el material tiene tinte verde, tintarlo con crownColor
+        if (o.material && o.material.color) {
+          const c = o.material.color;
+          // Detectar si es follaje (más verde que rojo)
+          if (c.g > c.r && c.g > c.b * 0.7) {
+            o.material = o.material.clone();
+            o.material.color.setHex(crownColor);
+          }
+        }
+      }
+    });
+
+    // Anillo + disco del color de salud (siempre visibles desde arriba)
+    const group = new THREE.Group();
+    group.add(tree);
+    _addHealthMarker(group, x, y, heightM, crownColor);
+
+    group.userData = { type: 'tree', data: treeData };
+    scene.add(group);
+    const pickable = [];
+    group.traverse(o => { if (o.isMesh) pickable.push(o); });
+    treeMeshes.push({ group, crown: pickable[0], trunk: pickable[0], pickable, data: treeData });
+  }
+
+  function _addHealthMarker(group, x, y, heightM, crownColor) {
+    const ringInnerR = heightM * 0.30;
+    const ringOuterR = heightM * 0.50;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(ringInnerR, ringOuterR, 24),
+      new THREE.MeshBasicMaterial({ color: crownColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.25, -y);
+    group.add(ring);
+
+    const dot = new THREE.Mesh(
+      new THREE.CircleGeometry(heightM * 0.15, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+    );
+    dot.rotation.x = -Math.PI / 2;
+    dot.position.set(x, 0.27, -y);
+    group.add(dot);
+  }
+
+  // Versión procedural (fallback si no hay modelo GLB cargado)
+  function _addTreeProcedural(treeData, x, y, heightM) {
 
     // Determinar variante por especie/tipo del árbol (deterministic por id)
     const variantIdx = Math.abs(parseInt(String(treeData.id).replace(/[^\d]/g, '').slice(-4)) || 0) % 3;
@@ -1330,38 +1444,7 @@ window.IztacalaMap = (function() {
       });
     }
 
-    // ---- Anillo en el suelo (marcador visible desde arriba, grande para
-    // que se vea desde la cámara aérea del campus) ----
-    const ringInnerR = heightM * 0.30;
-    const ringOuterR = heightM * 0.50;
-    const ringGeom = new THREE.RingGeometry(ringInnerR, ringOuterR, 24);
-    const ring = new THREE.Mesh(
-      ringGeom,
-      new THREE.MeshBasicMaterial({
-        color: crownColor,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.85,
-      })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.25, -y);
-    group.add(ring);
-
-    // ---- Disco central blanco con borde para máxima visibilidad ----
-    const dotGeom = new THREE.CircleGeometry(heightM * 0.15, 16);
-    const dot = new THREE.Mesh(
-      dotGeom,
-      new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.9,
-      })
-    );
-    dot.rotation.x = -Math.PI / 2;
-    dot.position.set(x, 0.27, -y);
-    group.add(dot);
+    _addHealthMarker(group, x, y, heightM, crownColor);
 
     group.userData = { type: 'tree', data: treeData };
     scene.add(group);
