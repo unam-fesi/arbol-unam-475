@@ -1167,6 +1167,24 @@
                                     <canvas id="chart-campus" style="max-height: 300px;"></canvas>
                                 </div>
 
+                                <!-- ===== Panel: Generar contenido para redes ===== -->
+                                <div style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+                                        <h4 style="margin:0;"><i class="fas fa-share-alt"></i> Generar contenido para redes sociales</h4>
+                                        <span style="background:rgba(46,125,50,0.12);color:#1b5e20;padding:3px 10px;border-radius:14px;font-size:0.72rem;font-weight:600;">NUEVO</span>
+                                    </div>
+                                    <p class="text-muted text-small" style="margin:0 0 1rem;">Genera imágenes 1080×1080 (cuadrado) y 1080×1920 (stories) listas para publicar en Instagram y Facebook. Descarga, copia el caption y sube manualmente — la publicación 100% automática vía API de Meta requiere configuración adicional (siguiente fase).</p>
+                                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;">
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('tree-of-month')">🌟 Árbol del mes</button>
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('monthly-recap')">📊 Resumen del mes</button>
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('species-card')">📚 Especie destacada</button>
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('milestone')">🎉 Hito alcanzado</button>
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('before-after')">📈 Antes / Ahora</button>
+                                        <button class="btn btn-primary" onclick="generateAndDownloadPost('co2-impact')">🌍 Impacto CO₂</button>
+                                    </div>
+                                    <div id="post-preview" style="display:none;"></div>
+                                </div>
+
                                 <div id="dashboard-assignments" style="background: white; padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow); margin-top: 2rem;">
                                     <!-- Filled by JS: recent assignments -->
                                 </div>
@@ -1277,6 +1295,12 @@
     <script src="js/pumai.js"></script>
     <script src="js/ar-height.js"></script>
     <script src="js/admin.js"></script>
+
+    <!-- Bloque 1 innovaciones: CO2, fichas botánicas, time-lapse, redes -->
+    <script src="js/co2.js"></script>
+    <script src="js/species-cards.js"></script>
+    <script src="js/timelapse.js"></script>
+    <script src="js/social-poster.js"></script>
 
     <!-- Forest FX (animaciones ambientales del tema) -->
     <script src="js/forest-fx.js"></script>

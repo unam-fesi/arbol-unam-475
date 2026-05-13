@@ -386,6 +386,11 @@ async function loadAdminTrees() {
       const row = document.createElement('tr');
       const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
       const hasLocation = tree.location_lat != null && tree.location_lng != null;
+      // CO₂ capturado por este árbol
+      const co2 = window.CO2Calculator?.calculateCO2Stored(tree) || 0;
+      const co2Tag = co2 > 0
+        ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
+        : '';
       row.innerHTML = `
         <td>${escapeHtml(tree.tree_code || '-')}</td>
         <td>${escapeHtml(tree.species || '-')}</td>
@@ -394,7 +399,7 @@ async function loadAdminTrees() {
           <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
           ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
         </td>
-        <td>${tree.health_score || 0}%</td>
+        <td>${tree.health_score || 0}%${co2Tag}</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
           <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
@@ -1915,6 +1920,144 @@ async function viewGardenVisitsAdmin(gardenId) {
 window.viewTreeMeasurementsAdmin = viewTreeMeasurementsAdmin;
 window.viewGardenVisitsAdmin = viewGardenVisitsAdmin;
 window.suggestGardenGoalsWithAI = suggestGardenGoalsWithAI;
+
+// ============================================================================
+// GENERADOR DE POSTS PARA REDES SOCIALES (Bloque 1 — innovación)
+// Genera imágenes 1080×1080 / 1080×1920 listas para descargar/compartir.
+// ============================================================================
+async function generateAndDownloadPost(type) {
+  if (!window.SocialPoster) {
+    showToast('Módulo de redes aún no carga, intenta de nuevo en 1 segundo', 'warning');
+    return;
+  }
+  const preview = document.getElementById('post-preview');
+  if (preview) {
+    preview.style.display = 'block';
+    preview.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#666;"><i class="fas fa-spinner fa-spin"></i> Generando contenido…</div>';
+  }
+
+  let canvas, caption, filename;
+  try {
+    if (type === 'tree-of-month') {
+      const { data: trees } = await sb.from('trees_catalog').select('*').order('health_score', { ascending: false }).limit(1);
+      if (!trees || !trees[0]) { showToast('No hay árboles registrados', 'warning'); return; }
+      canvas = await window.SocialPoster.generateTreeOfMonth(trees[0]);
+      caption = window.SocialPoster.suggestedCaption('tree-of-month', trees[0]);
+      filename = `arbol-mes-${trees[0].tree_code || trees[0].id}.png`;
+    }
+
+    else if (type === 'monthly-recap') {
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+      const { data: trees } = await sb.from('trees_catalog').select('*');
+      const { data: meas } = await sb.from('tree_measurements').select('id').gte('measurement_date', monthStart.toISOString());
+      const { count: usersCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
+      const co2Total = window.CO2Calculator?.totalCO2Stored(trees || []) || 0;
+      const data = {
+        trees: (trees || []).length,
+        measurements: (meas || []).length,
+        co2: Math.round(co2Total),
+        users: usersCount || 0,
+      };
+      canvas = window.SocialPoster.generateMonthlyRecap(data);
+      caption = window.SocialPoster.suggestedCaption('monthly-recap', data);
+      filename = `resumen-mes-${new Date().toISOString().slice(0,7)}.png`;
+    }
+
+    else if (type === 'species-card') {
+      const cards = window.SPECIES_CARDS || [];
+      if (!cards.length) { showToast('No hay fichas botánicas cargadas', 'warning'); return; }
+      const card = cards[Math.floor(Math.random() * cards.length)];
+      canvas = window.SocialPoster.generateSpeciesCard(card);
+      caption = window.SocialPoster.suggestedCaption('species-card', card);
+      filename = `especie-${card.common_name.replace(/\s+/g, '-').toLowerCase()}.png`;
+    }
+
+    else if (type === 'milestone') {
+      const { count: total } = await sb.from('tree_measurements').select('*', { count: 'exact', head: true });
+      const m = {
+        number: total || 0,
+        label: 'seguimientos completados',
+        subtitle: 'Gracias a la comunidad UNAM por su cuidado constante.',
+      };
+      canvas = window.SocialPoster.generateMilestone(m);
+      caption = window.SocialPoster.suggestedCaption('milestone', m);
+      filename = `hito-${total}-seguimientos.png`;
+    }
+
+    else if (type === 'before-after') {
+      const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').limit(30);
+      let chosen = null, firstM = null, lastM = null;
+      for (const t of (trees || [])) {
+        const { data: m } = await sb.from('tree_measurements')
+          .select('*').eq('tree_id', t.id).order('measurement_date');
+        if (m && m.length >= 2 && m[0].photo_url && m[m.length - 1].photo_url) {
+          chosen = t; firstM = m[0]; lastM = m[m.length - 1]; break;
+        }
+      }
+      if (!chosen) {
+        showToast('No hay árboles con suficientes fotos para comparar', 'warning');
+        if (preview) preview.style.display = 'none';
+        return;
+      }
+      canvas = await window.SocialPoster.generateBeforeAfter(chosen, firstM, lastM);
+      caption = window.SocialPoster.suggestedCaption('before-after', chosen);
+      filename = `evolucion-${chosen.tree_code || chosen.id}.png`;
+    }
+
+    else if (type === 'co2-impact') {
+      const { data: trees } = await sb.from('trees_catalog').select('*');
+      const total = window.CO2Calculator?.totalCO2Stored(trees || []) || 0;
+      canvas = window.SocialPoster.generateCO2Impact(total, (trees || []).length);
+      caption = window.SocialPoster.suggestedCaption('co2-impact', { co2: Math.round(total) });
+      filename = 'impacto-co2-campus.png';
+    }
+
+    if (!canvas || !preview) return;
+
+    // Insertar preview
+    preview.innerHTML = `
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-top:1rem;">
+        <div id="post-canvas-holder" style="flex:0 0 280px;"></div>
+        <div style="flex:1;min-width:240px;">
+          <h5 style="margin:0 0 0.5rem;color:#1b5e20;">Caption sugerido:</h5>
+          <textarea id="post-caption" style="width:100%;height:140px;padding:0.6rem;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;font-family:inherit;resize:vertical;">${caption}</textarea>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="post-btn-share">📤 Compartir</button>
+            <button class="btn btn-outline btn-sm" id="post-btn-download">⬇ Descargar imagen</button>
+            <button class="btn btn-outline btn-sm" id="post-btn-copy">📋 Copiar caption</button>
+          </div>
+          <p class="text-muted text-small" style="margin-top:0.6rem;">Descarga la imagen, copia el caption y súbelo a Instagram/Facebook manualmente.</p>
+        </div>
+      </div>
+    `;
+    canvas.style.maxWidth = '280px';
+    canvas.style.width = '100%';
+    canvas.style.borderRadius = '12px';
+    canvas.style.border = '1px solid #ddd';
+    document.getElementById('post-canvas-holder').appendChild(canvas);
+
+    document.getElementById('post-btn-share').onclick = () => {
+      const cap = document.getElementById('post-caption').value;
+      window.SocialPoster.canvasToShare(canvas, filename, cap);
+    };
+    document.getElementById('post-btn-download').onclick = () => {
+      window.SocialPoster.canvasToDownload(canvas, filename);
+    };
+    document.getElementById('post-btn-copy').onclick = async () => {
+      const cap = document.getElementById('post-caption').value;
+      try {
+        await navigator.clipboard.writeText(cap);
+        showToast('Caption copiado al portapapeles', 'success');
+      } catch (_) {
+        showToast('No se pudo copiar — selecciona y copia manualmente', 'warning');
+      }
+    };
+  } catch (e) {
+    console.error('generateAndDownloadPost error:', e);
+    if (preview) preview.innerHTML = `<div style="color:#c00;padding:1rem;">Error: ${e.message || e}</div>`;
+  }
+}
+window.generateAndDownloadPost = generateAndDownloadPost;
 window.suggestTreeGoalsWithAI = suggestTreeGoalsWithAI;
 window.getCurrentSeason = getCurrentSeason;
 window.deleteAdminTree = deleteAdminTree;

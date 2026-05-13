@@ -244,35 +244,12 @@
       zoneGroups[i] = g;
     });
 
-    // Buscar última medición de cada árbol
-    const treeIds = (trees || []).map(t => t.id);
-    let lastMeasByTree = {};
-    if (treeIds.length > 0 && typeof sb !== 'undefined') {
-      try {
-        const { data: meas } = await sb
-          .from('tree_measurements')
-          .select('tree_id, photo_url, measurement_date')
-          .in('tree_id', treeIds)
-          .order('measurement_date', { ascending: false });
-        (meas || []).forEach(m => {
-          if (!lastMeasByTree[m.tree_id] && m.photo_url) {
-            lastMeasByTree[m.tree_id] = m;
-          }
-        });
-      } catch (e) { console.warn('mosaico last meas error:', e); }
-    }
-
-    // Agrupar árboles por zona y crear carretes
-    const loader = new THREE.TextureLoader();
-    loader.crossOrigin = 'anonymous';
-
+    // ---- Paso 1: Crear PLACEHOLDERS para TODOS los árboles primero ----
+    // (así si las fotos tardan o fallan, igual se ve algo en pantalla)
     for (let zIdx = 0; zIdx < ZONES.length; zIdx++) {
       const zone = ZONES[zIdx];
       const zg = zoneGroups[zIdx];
       const treesInZone = (trees || []).filter(zone.filter);
-
-      // Distribuir en ESPIRAL VERTICAL: cada foto a una altura y ángulo
-      // (estilo carrete circular vertical)
       for (let i = 0; i < treesInZone.length; i++) {
         const tree = treesInZone[i];
         const angle = (i / Math.max(treesInZone.length, 6)) * Math.PI * 2;
@@ -281,45 +258,72 @@
         const px = Math.cos(angle) * r;
         const pz = Math.sin(angle) * r;
 
-        // Resolver la URL de la foto (última medición o foto del árbol)
-        let photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
-        if (photoUrl && !photoUrl.startsWith('http')) {
-          try {
-            const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
-            photoUrl = data?.signedUrl || null;
-          } catch (_) { photoUrl = null; }
-        }
-
-        // Crear plano inicial con placeholder
         const plane = makePlaceholderPlane(tree, zone.color);
         plane.position.set(px, y, pz);
-        plane.userData = { tree, zoneIdx: zIdx, angle, r, y };
+        plane.userData = { tree, zoneIdx: zIdx, angle, r, y, isPlaceholder: true };
         zg.add(plane);
         photoPlanes.push(plane);
-
-        // Si hay foto, cargar la textura encima
-        if (photoUrl) {
-          loader.load(photoUrl,
-            (tex) => {
-              const photoMat = new THREE.MeshBasicMaterial({
-                map: tex, transparent: true, side: THREE.DoubleSide
-              });
-              const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), photoMat);
-              photoPlane.position.set(px, y, pz);
-              photoPlane.userData = { tree, zoneIdx: zIdx, angle, r, y };
-              zg.add(photoPlane);
-              photoPlanes.push(photoPlane);
-              // Quitar el placeholder
-              zg.remove(plane);
-              const idx = photoPlanes.indexOf(plane);
-              if (idx > -1) photoPlanes.splice(idx, 1);
-            },
-            undefined,
-            () => {/* falla → se queda el placeholder */}
-          );
-        }
       }
     }
+
+    // ---- Paso 2: Cargar fotos en paralelo (sin bloquear render) ----
+    (async () => {
+      try {
+        const treeIds = (trees || []).map(t => t.id);
+        let lastMeasByTree = {};
+        if (treeIds.length > 0 && typeof sb !== 'undefined') {
+          const { data: meas } = await sb
+            .from('tree_measurements')
+            .select('tree_id, photo_url, measurement_date')
+            .in('tree_id', treeIds)
+            .order('measurement_date', { ascending: false });
+          (meas || []).forEach(m => {
+            if (!lastMeasByTree[m.tree_id] && m.photo_url) {
+              lastMeasByTree[m.tree_id] = m;
+            }
+          });
+        }
+
+        const loader = new THREE.TextureLoader();
+        loader.crossOrigin = 'anonymous';
+
+        // Para cada placeholder, intentar cargar la foto real
+        const placeholders = photoPlanes.filter(p => p.userData.isPlaceholder).slice();
+        for (const placeholder of placeholders) {
+          const tree = placeholder.userData.tree;
+          let photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
+          if (!photoUrl) continue;
+
+          if (!/^https?:\/\//.test(photoUrl)) {
+            try {
+              const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
+              photoUrl = data?.signedUrl;
+            } catch (_) { photoUrl = null; }
+          }
+          if (!photoUrl) continue;
+
+          // Cargar textura
+          loader.load(photoUrl,
+            (tex) => {
+              const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+              const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), mat);
+              photoPlane.position.copy(placeholder.position);
+              photoPlane.userData = { ...placeholder.userData, isPlaceholder: false };
+              // Buscar el grupo padre y reemplazar
+              const parent = placeholder.parent;
+              if (parent) {
+                parent.add(photoPlane);
+                parent.remove(placeholder);
+              }
+              const idx = photoPlanes.indexOf(placeholder);
+              if (idx > -1) photoPlanes.splice(idx, 1, photoPlane);
+            },
+            undefined,
+            (err) => console.warn('Foto no cargó:', tree.tree_code, err)
+          );
+        }
+      } catch (e) { console.warn('Mosaico photos async error:', e); }
+    })();
 
     // ---- DRAG MANUAL — el usuario rota los 3 carretes con el mouse ----
     // No usamos OrbitControls porque queremos un drag horizontal directo
