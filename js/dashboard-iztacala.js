@@ -1442,7 +1442,7 @@ window.IztacalaMap = (function() {
         layer.blobs.forEach(b => {
           const sub = new THREE.Mesh(
             new THREE.SphereGeometry(heightM * b.r, 6, 5),
-            new THREE.MeshLambertMaterial({ color: b.c, flatShading: true })
+            new THREE.MeshPhongMaterial({ color: b.c, flatShading: true, shininess: 5 })
           );
           sub.position.set(
             x + heightM * b.dx,
@@ -1487,13 +1487,12 @@ window.IztacalaMap = (function() {
     group.userData = { type: 'tree', data: treeData };
     scene.add(group);
 
-    // Para raycaster necesitamos referencia al trunk y al "main crown"
-    // Usamos el primer mesh hijo que no sea ring/branch como referencia
+    // Para raycaster — todos los meshes del árbol procedural son pickeables
     const pickable = [];
     group.traverse(o => {
-      if (o.isMesh && o !== ring) pickable.push(o);
+      if (o.isMesh) pickable.push(o);
     });
-    treeMeshes.push({ group, crown: pickable[1] || pickable[0], trunk, ring, pickable, data: treeData });
+    treeMeshes.push({ group, crown: pickable[1] || pickable[0], trunk, pickable, data: treeData });
   }
 
   // Helper: aclarar/oscurecer un color hex
