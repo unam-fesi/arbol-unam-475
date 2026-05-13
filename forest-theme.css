@@ -50,18 +50,54 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ============================================================================
+   Background animado — transición suave de colores
+   Paleta extendida: verde forest + crema + durazno + lila + rosa claro
+   La animación es muy lenta (45s) y los gradientes son sutiles para no
+   distraer del contenido. prefers-reduced-motion la deshabilita.
+   ============================================================================ */
+@keyframes ambientShift {
+  0% {
+    background-position: 0% 0%, 100% 100%, 50% 50%, 30% 70%, 70% 30%;
+  }
+  25% {
+    background-position: 30% 20%, 70% 80%, 40% 60%, 50% 40%, 60% 60%;
+  }
+  50% {
+    background-position: 50% 50%, 50% 50%, 60% 40%, 80% 20%, 20% 80%;
+  }
+  75% {
+    background-position: 70% 30%, 30% 70%, 40% 60%, 20% 80%, 80% 20%;
+  }
+  100% {
+    background-position: 0% 0%, 100% 100%, 50% 50%, 30% 70%, 70% 30%;
+  }
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px; line-height: 1.6;
   color: var(--text-dark);
-  background: var(--bg-cream);
+  background-color: var(--bg-cream);
   background-image:
-    radial-gradient(at 15% 12%, rgba(74,124,42,0.10) 0px, transparent 50%),
-    radial-gradient(at 85% 88%, rgba(212,165,116,0.16) 0px, transparent 55%),
-    radial-gradient(at 75% 22%, rgba(149,184,108,0.08) 0px, transparent 60%);
+    radial-gradient(circle at var(--p1, 15% 12%), rgba(74,124,42,0.12) 0px, transparent 45%),
+    radial-gradient(circle at var(--p2, 85% 88%), rgba(212,165,116,0.18) 0px, transparent 50%),
+    /* Durazno suave */
+    radial-gradient(circle at var(--p3, 50% 50%), rgba(255,196,158,0.10) 0px, transparent 55%),
+    /* Lila suave */
+    radial-gradient(circle at var(--p4, 30% 70%), rgba(195,160,210,0.09) 0px, transparent 50%),
+    /* Rosa claro */
+    radial-gradient(circle at var(--p5, 70% 30%), rgba(245,200,210,0.08) 0px, transparent 50%);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  animation: ambientShift 45s ease-in-out infinite;
   min-height: 100vh; overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Respetar usuarios con preferencia de reducción de movimiento */
+@media (prefers-reduced-motion: reduce) {
+  body { animation: none; }
 }
 
 h1, h2, h3, .navbar-brand-main, .login-logo-text {

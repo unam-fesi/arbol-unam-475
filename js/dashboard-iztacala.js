@@ -1210,51 +1210,157 @@ window.IztacalaMap = (function() {
 
   function addTree(treeData) {
     const { x, y } = latlonToModelXY(treeData.location_lat, treeData.location_lng);
-    const heightM = Math.max(1.5, Math.min((treeData.initial_height_cm || 250) / 100, 12));
+    const heightM = Math.max(2.5, Math.min((treeData.initial_height_cm || 400) / 100, 14));
 
-    // Tronco (cilindro)
+    // Determinar variante por especie/tipo del árbol (deterministic por id)
+    const variantIdx = Math.abs(parseInt(String(treeData.id).replace(/[^\d]/g, '').slice(-4)) || 0) % 3;
+    const isConifer = treeData.tree_type === 'endemico' && /pino|cedro|cipres|abeto|pinus|cupressus/i.test(treeData.species || '');
+
+    const crownColor = colorForHealth(treeData.health_score);
+    const darkCrown = _shadeColor(crownColor, -0.20);
+    const lightCrown = _shadeColor(crownColor, 0.18);
+
+    const group = new THREE.Group();
+
+    // ---- TRONCO con leve cono (más grueso abajo) ----
+    const trunkH = heightM * 0.40;
     const trunkGeom = new THREE.CylinderGeometry(
-      heightM * 0.08, heightM * 0.1, heightM * 0.55, 8
+      heightM * 0.06,  // top
+      heightM * 0.10,  // bottom (más ancho)
+      trunkH,
+      8
     );
     const trunk = new THREE.Mesh(
       trunkGeom,
-      new THREE.MeshLambertMaterial({ color: 0x6d4c2a })
+      new THREE.MeshLambertMaterial({ color: 0x6d4a2a })
     );
-    trunk.position.set(x, heightM * 0.275, -y);
+    trunk.position.set(x, trunkH / 2, -y);
     trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    group.add(trunk);
 
-    // Copa (esfera con color por salud)
-    const crownColor = colorForHealth(treeData.health_score);
-    const crownGeom = new THREE.SphereGeometry(heightM * 0.42, 10, 8);
-    const crown = new THREE.Mesh(
-      crownGeom,
-      new THREE.MeshLambertMaterial({ color: crownColor })
-    );
-    crown.position.set(x, heightM * 0.78, -y);
-    crown.castShadow = true;
+    // ---- COPA — diferente según tipo ----
+    if (isConifer) {
+      // CONÍFERA: 3-4 conos apilados (estilo pino navideño low-poly)
+      const numCones = 4;
+      const coneStart = trunkH * 0.85;
+      const coneSpan = heightM * 0.85;
+      for (let i = 0; i < numCones; i++) {
+        const t = i / (numCones - 1);
+        const radius = heightM * (0.55 - t * 0.30);
+        const coneH = heightM * 0.32;
+        const coneY = coneStart + t * (coneSpan - coneH);
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(radius, coneH, 8),
+          new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? crownColor : darkCrown })
+        );
+        cone.position.set(x, coneY + coneH / 2, -y);
+        cone.castShadow = true;
+        group.add(cone);
+      }
+    } else {
+      // CADUCIFOLIO / GENÉRICO: 5-7 esferas dispersas formando copa irregular
+      const crownCenter = trunkH + heightM * 0.25;
+      const crownRadius = heightM * 0.45;
 
-    // Marcador inferior (anillo en el suelo del color de salud)
-    const ringGeom = new THREE.RingGeometry(0.6, 1.0, 16);
+      // Esfera principal central
+      const main = new THREE.Mesh(
+        new THREE.SphereGeometry(crownRadius, 10, 8),
+        new THREE.MeshLambertMaterial({ color: crownColor })
+      );
+      main.position.set(x, crownCenter, -y);
+      main.castShadow = true;
+      group.add(main);
+
+      // 5 esferas satélite con offset pseudo-random pero determinista
+      const seeds = [
+        { dx:  0.35, dy:  0.22, dz:  0.10, r: 0.65, color: lightCrown },
+        { dx: -0.30, dy:  0.18, dz: -0.15, r: 0.60, color: crownColor },
+        { dx:  0.12, dy:  0.35, dz: -0.32, r: 0.55, color: lightCrown },
+        { dx: -0.18, dy: -0.10, dz:  0.30, r: 0.70, color: darkCrown },
+        { dx:  0.05, dy: -0.18, dz: -0.10, r: 0.62, color: darkCrown },
+      ];
+      seeds.forEach(s => {
+        const sub = new THREE.Mesh(
+          new THREE.SphereGeometry(crownRadius * s.r, 8, 6),
+          new THREE.MeshLambertMaterial({ color: s.color })
+        );
+        sub.position.set(
+          x + crownRadius * s.dx,
+          crownCenter + crownRadius * s.dy,
+          -y + crownRadius * s.dz
+        );
+        sub.castShadow = true;
+        group.add(sub);
+      });
+
+      // Pequeñas ramas marrones visibles entre el follaje (low-poly cilindros)
+      const branchData = [
+        { x: 0.18, y: -0.10, z: 0.12, len: 0.55, tilt: 0.35 },
+        { x: -0.20, y: 0.05, z: -0.08, len: 0.48, tilt: -0.4 },
+      ];
+      branchData.forEach(b => {
+        const branchGeom = new THREE.CylinderGeometry(
+          heightM * 0.018,
+          heightM * 0.025,
+          heightM * 0.30 * b.len,
+          5
+        );
+        const branch = new THREE.Mesh(
+          branchGeom,
+          new THREE.MeshLambertMaterial({ color: 0x5a3f25 })
+        );
+        branch.position.set(
+          x + crownRadius * b.x,
+          crownCenter + crownRadius * b.y - heightM * 0.05,
+          -y + crownRadius * b.z
+        );
+        branch.rotation.z = b.tilt;
+        branch.castShadow = true;
+        group.add(branch);
+      });
+    }
+
+    // ---- Anillo en el suelo (marcador visible desde arriba) ----
+    const ringGeom = new THREE.RingGeometry(0.8, 1.3, 18);
     const ring = new THREE.Mesh(
       ringGeom,
       new THREE.MeshBasicMaterial({
         color: crownColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.75,
       })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.15, -y);
-
-    const group = new THREE.Group();
-    group.add(trunk);
-    group.add(crown);
+    ring.position.set(x, 0.18, -y);
     group.add(ring);
-    group.userData = { type: 'tree', data: treeData };
 
+    group.userData = { type: 'tree', data: treeData };
     scene.add(group);
-    treeMeshes.push({ group, crown, trunk, ring, data: treeData });
+
+    // Para raycaster necesitamos referencia al trunk y al "main crown"
+    // Usamos el primer mesh hijo que no sea ring/branch como referencia
+    const pickable = [];
+    group.traverse(o => {
+      if (o.isMesh && o !== ring) pickable.push(o);
+    });
+    treeMeshes.push({ group, crown: pickable[1] || pickable[0], trunk, ring, pickable, data: treeData });
+  }
+
+  // Helper: aclarar/oscurecer un color hex
+  function _shadeColor(hex, amount) {
+    const c = new THREE.Color(hex);
+    if (amount > 0) {
+      c.r += (1 - c.r) * amount;
+      c.g += (1 - c.g) * amount;
+      c.b += (1 - c.b) * amount;
+    } else {
+      c.r *= (1 + amount);
+      c.g *= (1 + amount);
+      c.b *= (1 + amount);
+    }
+    return c.getHex();
   }
 
   // ============================================================================
@@ -1289,8 +1395,8 @@ window.IztacalaMap = (function() {
     mouse.set(ndc.x, ndc.y);
     raycaster.setFromCamera(mouse, camera);
 
-    // Primero árboles (capa que está encima)
-    const treeObjs = treeMeshes.flatMap(t => [t.crown, t.trunk]);
+    // Primero árboles (capa que está encima) — usamos TODAS las partes del árbol
+    const treeObjs = treeMeshes.flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
     let hit = raycaster.intersectObjects(treeObjs, false)[0];
     if (hit) {
       // Subir al group
@@ -1321,7 +1427,7 @@ window.IztacalaMap = (function() {
     mouse.set(ndc.x, ndc.y);
     raycaster.setFromCamera(mouse, camera);
 
-    const treeObjs = treeMeshes.flatMap(t => [t.crown, t.trunk]);
+    const treeObjs = treeMeshes.flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
     const allObjs = [...treeObjs, ...buildingMeshes];
     const hit = raycaster.intersectObjects(allObjs, false)[0];
 

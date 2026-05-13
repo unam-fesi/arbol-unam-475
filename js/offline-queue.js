@@ -59,7 +59,6 @@
       try {
         const { error } = await sb.from('tree_measurements').insert([item.payload]);
         if (error) { failed++; continue; }
-        // If first measurement included planting location, also push to catalog
         if (item.plantingUpdate) {
           await sb.from('trees_catalog').update(item.plantingUpdate).eq('id', item.payload.tree_id);
         }
@@ -70,7 +69,6 @@
     return { synced, failed, remaining: items.length - synced };
   }
 
-  // Auto-sync when back online
   window.addEventListener('online', () => {
     syncPending().then((r) => {
       if (r?.synced && typeof showToast === 'function') {
@@ -79,6 +77,5 @@
     });
   });
 
-  // Public API
   window.OfflineQueue = { enqueue, listQueue, removeFromQueue, syncPending };
 })();

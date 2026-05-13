@@ -37,6 +37,9 @@ function showSection(sectionId) {
     }
   });
 
+  // Persistir sección activa para que al regresar a la app no resetee a Mi Árbol
+  try { localStorage.setItem('lastActiveSection', sectionId); } catch (_) {}
+
   // Show selected section
   const section = document.getElementById(sectionId);
   if (section) {
