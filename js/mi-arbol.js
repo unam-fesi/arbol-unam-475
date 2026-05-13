@@ -429,12 +429,43 @@ async function loadMyTree(forceReload, specificTreeId) {
         <!-- Calendar of care (#11) -->
         <div class="tree-card" style="margin-top:1rem;"><div id="care-calendar-container">Cargando calendario...</div></div>
 
+        <!-- Ficha didáctica de la especie (#18) -->
+        ${(function(){
+          const card = window.findSpeciesCard?.(tree.species, tree.common_name);
+          return card ? '<div style="margin-top:1rem;"><h4 style="margin-bottom:1rem;color:#1b5e20;"><i class="fas fa-book"></i> Acerca de tu árbol</h4>' + window.renderSpeciesCard(card) + '</div>' : '';
+        })()}
+
+        <!-- Impacto ambiental de CO₂ (#13) -->
+        ${(function(){
+          if (!window.CO2Calculator) return '';
+          const co2 = window.CO2Calculator.calculateCO2Stored(tree);
+          const co2Annual = window.CO2Calculator.calculateCO2AnnualCapture(tree);
+          if (co2 <= 0) return '';
+          const equiv = window.CO2Calculator.getEquivalences(co2);
+          return `
+            <div class="card" style="padding:1.2rem;margin-top:1rem;background:linear-gradient(135deg,rgba(46,125,50,0.10),rgba(25,118,210,0.08));border-left:4px solid #2E7D32;">
+              <h4 style="margin:0 0 0.5rem;color:#1b5e20;"><i class="fas fa-globe-americas"></i> Tu impacto ambiental</h4>
+              <p style="color:#444;margin:0 0 1rem;line-height:1.5;">Este árbol ha capturado aproximadamente <strong style="color:#2E7D32;font-size:1.2rem;">${window.CO2Calculator.formatCO2(co2)}</strong> de CO₂ y captura ~<strong>${window.CO2Calculator.formatCO2(co2Annual)}/año</strong>.</p>
+              <p style="font-size:0.78rem;color:#666;margin:0 0 0.6rem;">Equivalente a:</p>
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+                ${equiv.slice(0,3).map(e => `<span style="background:rgba(46,125,50,0.12);color:#1b5e20;padding:0.4rem 0.8rem;border-radius:20px;font-size:0.82rem;"><strong>${e.icon} ${e.value.toLocaleString()}</strong> ${e.label}</span>`).join('')}
+              </div>
+            </div>`;
+        })()}
+
         <div class="tree-card" style="margin-top:1rem;"><h4 style="margin-bottom:1rem;">Ubicación</h4><div id="treeMapContainer" style="height:300px;border-radius:8px;overflow:hidden;"></div></div>
       </div>
 
       <!-- TAB: Seguimiento -->
       <div id="tab-seguimiento" class="mi-arbol-tab-content" style="display:none;">
-        <h3 style="margin-bottom:1.5rem;"><i class="fas fa-chart-line"></i> Historial de Seguimiento</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.5rem;">
+          <h3 style="margin:0;"><i class="fas fa-chart-line"></i> Historial de Seguimiento</h3>
+          ${meas.length >= 2 ? `
+            <button onclick="openTreeTimelapse(${tree.id})" style="background:#1a4480;color:#fff;border:none;padding:0.55rem 1rem;border-radius:10px;cursor:pointer;font-weight:600;font-size:0.85rem;box-shadow:0 2px 8px rgba(26,68,128,0.3);">
+              <i class="fas fa-film"></i> Time-lapse
+            </button>
+          ` : ''}
+        </div>
         ${meas.length >= 2 ? `
           <div class="card" style="padding:1rem;margin-bottom:1rem;">
             <h4 style="margin-bottom:0.5rem;"><i class="fas fa-chart-area"></i> Evolución temporal</h4>
