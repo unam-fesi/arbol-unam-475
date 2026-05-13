@@ -42,21 +42,27 @@ window.CO2Calculator = (function() {
   }
 
   // Calcula CO₂ TOTAL almacenado en este árbol AHORA (kg)
+  // Si faltan datos, usa defaults razonables para árbol joven urbano del Valle
+  // de México (altura ~2.5m, DAP ~5cm) y siempre retorna un valor estimado.
   function calculateCO2Stored(tree) {
     if (!tree) return 0;
-    // Usar últimas mediciones si están disponibles, si no las initiales
+    // Altura: medición → inicial → default 2.5 m
+    const heightCm = tree._lastMeasurement?.height_cm
+                  || tree.initial_height_cm
+                  || 250;
+    const H = heightCm / 100;
+    // DAP: medición → inicial → estimado por altura
     const D = tree._lastMeasurement?.trunk_diameter_cm
             || tree.initial_trunk_diameter_cm
-            || estimateTrunkFromHeight(tree.initial_height_cm);
-    const H = (tree._lastMeasurement?.height_cm || tree.initial_height_cm || 200) / 100; // a metros
+            || estimateTrunkFromHeight(heightCm);
 
-    if (!D || D < 1 || !H || H < 0.5) return 0;
+    if (!D || D < 0.5 || !H || H < 0.3) return 0.5; // mínimo razonable
 
     const rho = densityFor(tree.species);
-    const biomass = 0.0673 * Math.pow(rho * D * D * H, 0.976); // kg
+    const biomass = 0.0673 * Math.pow(rho * D * D * H, 0.976);
     const carbon = 0.47 * biomass;
     const co2 = 3.67 * carbon;
-    return co2;
+    return Math.max(co2, 0.5);
   }
 
   // Estimación: árboles capturan ~3% de su biomasa anual en crecimiento

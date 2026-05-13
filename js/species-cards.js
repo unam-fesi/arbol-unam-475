@@ -197,16 +197,39 @@ window.SPECIES_CARDS = [
   },
 ];
 
-// Busca la tarjeta más relevante para una especie/nombre común
+// Busca la tarjeta más relevante para una especie/nombre común.
+// Si no matchea ninguna conocida, devuelve una ficha GENÉRICA con datos
+// del propio árbol — así SIEMPRE se muestra algo útil al usuario.
 window.findSpeciesCard = function(speciesText, commonName) {
   const text = ((speciesText || '') + ' ' + (commonName || '')).toLowerCase();
-  if (!text.trim()) return null;
-  for (const card of window.SPECIES_CARDS) {
-    for (const key of card.keys) {
-      if (text.includes(key)) return card;
+  if (text.trim()) {
+    for (const card of window.SPECIES_CARDS) {
+      for (const key of card.keys) {
+        if (text.includes(key)) return card;
+      }
     }
   }
-  return null;
+  // Fallback: ficha genérica si la especie no está catalogada
+  return {
+    common_name: commonName || speciesText || 'Árbol del campus',
+    scientific: speciesText || 'Especie no catalogada',
+    icon: '🌳',
+    family: 'Por catalogar',
+    origin: 'México / Valle de México',
+    longevity: 'Variable',
+    max_height: 'Variable',
+    growth_rate: 'Variable',
+    leaf_type: '—',
+    description: 'Este árbol forma parte del Proyecto Árbol UNAM 475. Aún no tenemos su ficha botánica detallada en el catálogo. Si conoces datos sobre su especie, comparte con tu especialista — ayudarás a enriquecer la base de conocimiento del proyecto.',
+    care_tips: 'Cuidados generales para árboles urbanos: riego profundo 1-2 veces por semana en verano (especialmente los primeros 2 años), poda solo de ramas dañadas, evitar daños en raíces y corteza.',
+    fun_facts: [
+      'Un árbol urbano adulto puede capturar entre 10 y 50 kg de CO₂ por año, según su especie y edad.',
+      'Cada árbol que cuidas ayuda a reducir hasta 5 °C la temperatura del aire alrededor de él.',
+      'Los árboles urbanos filtran partículas finas del aire y reducen el ruido de la ciudad.',
+    ],
+    ecosystem: 'Los árboles del campus aportan hábitat para aves, polinizadores e insectos benéficos, además de regular el microclima del entorno académico.',
+    _isGeneric: true,
+  };
 };
 
 // Renderiza HTML de la tarjeta para mostrar en el portal
