@@ -162,7 +162,13 @@ function showLoginScreen() {
 function showMainApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
-  showSection('section-mi-arbol');
+  // Restaurar última sección activa (no resetear a Mi Árbol al regresar a la app)
+  let savedSection = 'section-mi-arbol';
+  try {
+    const ss = localStorage.getItem('lastActiveSection');
+    if (ss && document.getElementById(ss)) savedSection = ss;
+  } catch (_) {}
+  showSection(savedSection);
   updateUserDisplay();
   // Sync any offline-queued measurements
   if (window.OfflineQueue && navigator.onLine) {

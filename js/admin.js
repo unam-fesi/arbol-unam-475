@@ -397,6 +397,7 @@ async function loadAdminTrees() {
         <td>${tree.health_score || 0}%</td>
         <td>
           <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
+          <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
           <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
           <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
         </td>
@@ -810,8 +811,9 @@ async function loadAdminGardens() {
         <td>${escapeHtml(g.campus || '-')}</td>
         <td>${g.location_lat != null ? g.location_lat + ', ' + g.location_lng : '<span class="text-muted">—</span>'}</td>
         <td>
-          <button class="btn btn-sm btn-secondary" onclick="editAdminGarden('${g.id}')">Editar</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminGarden('${g.id}')">Eliminar</button>
+          <button class="btn btn-sm btn-secondary" onclick="editAdminGarden('${g.id}')" title="Editar">✏️ Editar</button>
+          <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewGardenVisitsAdmin('${g.id}')" title="Ver seguimientos">📋 Seguimientos</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteAdminGarden('${g.id}')" title="Eliminar">🗑️</button>
         </td>
       `;
       tbody.appendChild(row);
@@ -1730,6 +1732,152 @@ window.editAdminUser = editAdminUser;
 window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
+// ============================================================================
+// VER SEGUIMIENTOS DE UN ÁRBOL (modal admin)
+// ============================================================================
+async function viewTreeMeasurementsAdmin(treeId) {
+  try {
+    const { data: tree } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').eq('id', treeId).single();
+    if (!tree) { showToast('Árbol no encontrado', 'error'); return; }
+
+    const { data: meas } = await sb.from('tree_measurements')
+      .select('id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score, photo_url, observations, user_id')
+      .eq('tree_id', treeId)
+      .order('measurement_date', { ascending: false });
+
+    // Cargar nombres de usuarios
+    const userIds = [...new Set((meas || []).map(m => m.user_id).filter(Boolean))];
+    let userMap = {};
+    if (userIds.length) {
+      const { data: users } = await sb.from('user_profiles').select('id, full_name').in('id', userIds);
+      (users || []).forEach(u => { userMap[u.id] = u.full_name; });
+    }
+
+    let rowsHtml;
+    if (!meas || meas.length === 0) {
+      rowsHtml = '<div style="padding:2rem;text-align:center;color:#888;">Este árbol aún no tiene seguimientos.</div>';
+    } else {
+      rowsHtml = meas.map((m, i) => {
+        const dt = new Date(m.measurement_date);
+        const dateStr = dt.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = dt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const score = m.health_score;
+        const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+        const userName = userMap[m.user_id] || 'Usuario';
+
+        // Limpiar observaciones de tags [RUBROS], [PLANTACION]
+        let cleanObs = (m.observations || '').replace(/\[RUBROS\]\s*\{[^}]*\}/g, '').replace(/\[PLANTACION\]\s*\{[^}]*\}/g, '').trim();
+        if (cleanObs.length > 120) cleanObs = cleanObs.substring(0, 120) + '…';
+
+        return `
+          <div style="display:flex;gap:0.9rem;padding:0.9rem;border-bottom:1px solid #f0f0f0;align-items:flex-start;${i === 0 ? 'background:rgba(46,125,50,0.04);' : ''}">
+            ${m.photo_url ? `<img src="${escapeHtml(m.photo_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>'}
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                <strong style="color:#1b5e20;">${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
+                ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${score}/100</span>` : ''}
+              </div>
+              <div style="font-size:0.78rem;color:#666;margin-top:2px;">por ${escapeHtml(userName)}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem;font-size:0.72rem;color:#444;">
+                ${m.height_cm != null ? `<span style="background:rgba(0,0,0,0.06);padding:2px 8px;border-radius:6px;">📏 ${m.height_cm} cm</span>` : ''}
+                ${m.trunk_diameter_cm != null ? `<span style="background:rgba(0,0,0,0.06);padding:2px 8px;border-radius:6px;">🪵 ${m.trunk_diameter_cm} cm</span>` : ''}
+                ${m.crown_diameter_cm != null ? `<span style="background:rgba(0,0,0,0.06);padding:2px 8px;border-radius:6px;">🌿 ${m.crown_diameter_cm} cm</span>` : ''}
+              </div>
+              ${cleanObs ? `<p class="text-small" style="margin:0.5rem 0 0;color:#555;font-size:0.78rem;line-height:1.4;"><i class="fas fa-sticky-note"></i> ${escapeHtml(cleanObs)}</p>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    showModal(`Seguimientos: ${escapeHtml(tree.common_name || tree.tree_code)}`, `
+      <div style="margin-bottom:0.7rem;color:#666;font-size:0.85rem;">
+        <strong>${escapeHtml(tree.tree_code)}</strong> · <em>${escapeHtml(tree.species || '')}</em> · ${(meas || []).length} seguimiento${(meas || []).length !== 1 ? 's' : ''}
+      </div>
+      <div style="max-height:60vh;overflow-y:auto;border:1px solid #eee;border-radius:10px;">
+        ${rowsHtml}
+      </div>
+    `);
+  } catch (err) {
+    showToast('Error cargando seguimientos: ' + err.message, 'error');
+  }
+}
+
+// ============================================================================
+// VER VISITAS DE UN JARDÍN (modal admin)
+// ============================================================================
+async function viewGardenVisitsAdmin(gardenId) {
+  try {
+    const { data: garden } = await sb.from('gardens').select('id, name, campus').eq('id', gardenId).single();
+    if (!garden) { showToast('Jardín no encontrado', 'error'); return; }
+
+    const { data: visits } = await sb.from('garden_visits')
+      .select('id, visit_date, visit_type, photo_url, health_score, activities, observations, user_id')
+      .eq('garden_id', gardenId)
+      .order('visit_date', { ascending: false });
+
+    const userIds = [...new Set((visits || []).map(v => v.user_id).filter(Boolean))];
+    let userMap = {};
+    if (userIds.length) {
+      const { data: users } = await sb.from('user_profiles').select('id, full_name').in('id', userIds);
+      (users || []).forEach(u => { userMap[u.id] = u.full_name; });
+    }
+
+    const activitiesDict = {
+      riego: '💧 Riego', limpieza: '🧹 Limpieza', poda: '✂️ Poda',
+      fertilizacion: '🌱 Fertilización', control_plagas: '🪲 Plagas',
+      control_maleza: '🌾 Maleza', siembra_reposicion: '🪴 Siembra',
+      mantillo_hojarasca: '🍂 Mantillo', aireacion: '🪛 Aireación',
+      inspeccion: '🔍 Inspección', mantenimiento_estructural: '🔧 Estructural',
+      cuidado_polinizadores: '🐝 Polinizadores', otro: '📌 Otro',
+    };
+
+    let rowsHtml;
+    if (!visits || visits.length === 0) {
+      rowsHtml = '<div style="padding:2rem;text-align:center;color:#888;">Este jardín aún no tiene visitas registradas.</div>';
+    } else {
+      rowsHtml = visits.map((v, i) => {
+        const dt = new Date(v.visit_date);
+        const dateStr = dt.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = dt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const score = v.health_score;
+        const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
+        const userName = userMap[v.user_id] || 'Usuario';
+
+        const acts = (v.activities || []).map(a => activitiesDict[a] || a).join(' · ');
+        const obsTrunc = (v.observations || '').trim().substring(0, 120);
+        const obs = obsTrunc + ((v.observations || '').length > 120 ? '…' : '');
+
+        return `
+          <div style="display:flex;gap:0.9rem;padding:0.9rem;border-bottom:1px solid #f0f0f0;align-items:flex-start;${i === 0 ? 'background:rgba(26,68,128,0.04);' : ''}">
+            ${v.photo_url ? `<img src="${escapeHtml(v.photo_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;" onerror="this.style.display='none'">` : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>'}
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                <strong style="color:#0d2d5c;">${v.visit_type === 'primer_registro' ? '🌟 Primer registro' : 'Visita'} — ${dateStr} <span style="color:#999;font-size:0.78rem;font-weight:normal;">· ${timeStr}</span></strong>
+                ${score != null ? `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:0.72rem;font-weight:600;">${score}/100</span>` : ''}
+              </div>
+              <div style="font-size:0.78rem;color:#666;margin-top:2px;">por ${escapeHtml(userName)}</div>
+              ${acts ? `<div style="margin-top:0.5rem;font-size:0.75rem;color:#444;">${escapeHtml(acts)}</div>` : ''}
+              ${obs ? `<p class="text-small" style="margin:0.5rem 0 0;color:#555;font-size:0.78rem;line-height:1.4;"><i class="fas fa-sticky-note"></i> ${escapeHtml(obs)}</p>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    showModal(`Seguimientos: ${escapeHtml(garden.name)}`, `
+      <div style="margin-bottom:0.7rem;color:#666;font-size:0.85rem;">
+        Campus <strong>${escapeHtml(garden.campus || '—')}</strong> · ${(visits || []).length} visita${(visits || []).length !== 1 ? 's' : ''}
+      </div>
+      <div style="max-height:60vh;overflow-y:auto;border:1px solid #eee;border-radius:10px;">
+        ${rowsHtml}
+      </div>
+    `);
+  } catch (err) {
+    showToast('Error cargando visitas: ' + err.message, 'error');
+  }
+}
+
+window.viewTreeMeasurementsAdmin = viewTreeMeasurementsAdmin;
+window.viewGardenVisitsAdmin = viewGardenVisitsAdmin;
 window.suggestGardenGoalsWithAI = suggestGardenGoalsWithAI;
 window.suggestTreeGoalsWithAI = suggestTreeGoalsWithAI;
 window.getCurrentSeason = getCurrentSeason;

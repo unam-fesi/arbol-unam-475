@@ -391,10 +391,11 @@ function _arCapture(e) {
 
   if (arM.step === 0) {
     // ---- BASE ----
-    // Tolerancia mínima: el ángulo debe ser al menos ligeramente abajo del
-    // horizonte (de lo contrario tan(β) es 0 y la distancia explota).
-    if (ang > -0.5) {
-      _arFlash('Inclina hacia abajo a la base del árbol', '#FFA726');
+    // Solo rechazamos si está perfectamente horizontal (tan(β)=0 → distancia
+    // infinita). Cualquier otra inclinación se permite — incluso pruebas
+    // indoor con ángulos suaves.
+    if (Math.abs(ang) < 0.3) {
+      _arFlash('Inclina un poquito el celular', '#FFA726');
       return;
     }
     arM.baseBeta = arM.curBeta;
@@ -432,8 +433,9 @@ function _arCapture(e) {
 
   } else if (arM.step === 1) {
     // ---- TOP ----
-    if (ang < 0.5) {
-      _arFlash('Inclina hacia arriba a la cima del árbol', '#FFA726');
+    // Solo rechazamos si los dos ángulos son IGUALES (no hay triángulo).
+    if (Math.abs(arM.curBeta - arM.baseBeta) < 0.5) {
+      _arFlash('Cambia el ángulo apuntando a la cima', '#FFA726');
       return;
     }
     arM.topBeta = arM.curBeta;
