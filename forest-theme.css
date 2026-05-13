@@ -51,10 +51,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ============================================================================
-   Background animado — transición visible de colores
-   Paleta extendida: verde forest + crema + durazno + lila + rosa
-   La animación dura 30s y los blobs son grandes y bien visibles.
-   prefers-reduced-motion la deshabilita.
+   Background animado — transiciones intensas de color
+   Paleta extendida: verde forest + crema + durazno + lila + rosa + menta
+   Animación rápida (18s) con MUCHOS keyframes para movimiento dinámico.
+   Opacidad alta (0.45-0.60) para que los colores se vean fuertes.
    ============================================================================ */
 @keyframes ambientShift {
   0%, 100% {
@@ -64,38 +64,61 @@
       50% 50%,
       20% 80%,
       80% 20%;
+    background-size: 170% 170%, 200% 200%, 220% 220%, 180% 180%, 200% 200%;
   }
-  20% {
+  14% {
     background-position:
-      40% 20%,
-      60% 80%,
-      30% 70%,
-      60% 30%,
-      30% 70%;
+      30% 15%,
+      75% 90%,
+      40% 60%,
+      55% 35%,
+      35% 65%;
+    background-size: 200% 200%, 170% 170%, 200% 200%, 220% 220%, 180% 180%;
   }
-  40% {
+  28% {
     background-position:
-      80% 40%,
-      20% 60%,
+      55% 35%,
+      45% 65%,
+      20% 75%,
+      85% 50%,
+      15% 85%;
+    background-size: 180% 180%, 230% 230%, 170% 170%, 200% 200%, 220% 220%;
+  }
+  42% {
+    background-position:
+      75% 55%,
+      25% 45%,
       70% 30%,
-      90% 50%,
-      10% 90%;
+      40% 70%,
+      60% 30%;
+    background-size: 220% 220%, 190% 190%, 240% 240%, 170% 170%, 200% 200%;
   }
-  60% {
+  57% {
     background-position:
-      60% 80%,
-      40% 20%,
-      20% 80%,
-      30% 70%,
-      70% 30%;
+      45% 75%,
+      55% 25%,
+      85% 45%,
+      25% 60%,
+      75% 40%;
+    background-size: 190% 190%, 210% 210%, 180% 180%, 250% 250%, 170% 170%;
   }
-  80% {
+  71% {
     background-position:
-      20% 60%,
-      80% 40%,
-      80% 20%,
-      50% 50%,
-      50% 50%;
+      15% 60%,
+      80% 35%,
+      30% 80%,
+      70% 25%,
+      45% 75%;
+    background-size: 230% 230%, 180% 180%, 200% 200%, 190% 190%, 230% 230%;
+  }
+  85% {
+    background-position:
+      35% 25%,
+      65% 75%,
+      55% 50%,
+      45% 55%,
+      55% 45%;
+    background-size: 200% 200%, 220% 220%, 190% 190%, 200% 200%, 210% 210%;
   }
 }
 
@@ -105,19 +128,19 @@ body {
   color: var(--text-dark);
   background-color: #fbf7ee;
   background-image:
-    /* Verde forest */
-    radial-gradient(circle at 15% 12%, rgba(74,124,42,0.30) 0px, transparent 45%),
-    /* Durazno */
-    radial-gradient(circle at 85% 88%, rgba(255,180,140,0.30) 0px, transparent 50%),
-    /* Lila */
-    radial-gradient(circle at 50% 50%, rgba(195,160,220,0.28) 0px, transparent 55%),
-    /* Rosa claro */
-    radial-gradient(circle at 20% 80%, rgba(245,180,200,0.28) 0px, transparent 55%),
-    /* Verde menta extra */
-    radial-gradient(circle at 80% 20%, rgba(140,200,170,0.25) 0px, transparent 50%);
+    /* Verde forest — saturación subida */
+    radial-gradient(circle at 15% 12%, rgba(74,124,42,0.55) 0px, transparent 50%),
+    /* Durazno cálido */
+    radial-gradient(circle at 85% 88%, rgba(255,165,120,0.50) 0px, transparent 55%),
+    /* Lila vibrante */
+    radial-gradient(circle at 50% 50%, rgba(190,145,225,0.48) 0px, transparent 55%),
+    /* Rosa coral */
+    radial-gradient(circle at 20% 80%, rgba(250,165,190,0.48) 0px, transparent 55%),
+    /* Verde menta */
+    radial-gradient(circle at 80% 20%, rgba(120,210,170,0.45) 0px, transparent 50%);
   background-attachment: fixed;
   background-size: 180% 180%;
-  animation: ambientShift 30s ease-in-out infinite;
+  animation: ambientShift 18s ease-in-out infinite;
   min-height: 100vh; overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
