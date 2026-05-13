@@ -1226,13 +1226,13 @@ window.IztacalaMap = (function() {
 
     const group = new THREE.Group();
 
-    // ---- TRONCO con leve cono (más grueso abajo) ----
-    const trunkH = heightM * 0.40;
+    // ---- TRONCO LARGO Y VISIBLE (60% de la altura total, no 40%) ----
+    const trunkH = heightM * 0.55;
     const trunkGeom = new THREE.CylinderGeometry(
-      heightM * 0.06,  // top
-      heightM * 0.10,  // bottom (más ancho)
+      heightM * 0.05,
+      heightM * 0.08,
       trunkH,
-      8
+      6
     );
     const trunk = new THREE.Mesh(
       trunkGeom,
@@ -1243,19 +1243,18 @@ window.IztacalaMap = (function() {
     trunk.receiveShadow = true;
     group.add(trunk);
 
-    // ---- COPA — diferente según tipo ----
+    // ---- COPA ----
     if (isConifer) {
-      // CONÍFERA: 3-4 conos apilados (estilo pino navideño low-poly)
-      const numCones = 4;
-      const coneStart = trunkH * 0.85;
-      const coneSpan = heightM * 0.85;
+      // CONÍFERA: 4 conos apilados — pino navideño puntiagudo
+      const numCones = 5;
+      const coneStart = trunkH * 0.75;
       for (let i = 0; i < numCones; i++) {
         const t = i / (numCones - 1);
-        const radius = heightM * (0.55 - t * 0.30);
-        const coneH = heightM * 0.32;
-        const coneY = coneStart + t * (coneSpan - coneH);
+        const radius = heightM * (0.40 - t * 0.30);
+        const coneH = heightM * 0.18;
+        const coneY = coneStart + i * (coneH * 0.65);
         const cone = new THREE.Mesh(
-          new THREE.ConeGeometry(radius, coneH, 8),
+          new THREE.ConeGeometry(radius, coneH, 6),
           new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? crownColor : darkCrown })
         );
         cone.position.set(x, coneY + coneH / 2, -y);
@@ -1263,61 +1262,67 @@ window.IztacalaMap = (function() {
         group.add(cone);
       }
     } else {
-      // CADUCIFOLIO / GENÉRICO: 5-7 esferas dispersas formando copa irregular
-      const crownCenter = trunkH + heightM * 0.25;
-      const crownRadius = heightM * 0.45;
+      // CADUCIFOLIO: copa esponjada con BLOBS DISTRIBUIDOS EN ALTURA
+      // (no apilamos esferas en el mismo nivel — las separamos verticalmente
+      //  y horizontalmente para que se vea estructura, no una masa uniforme)
+      const baseCrown = trunkH * 0.95;
 
-      // Esfera principal central
-      const main = new THREE.Mesh(
-        new THREE.SphereGeometry(crownRadius, 10, 8),
-        new THREE.MeshLambertMaterial({ color: crownColor })
-      );
-      main.position.set(x, crownCenter, -y);
-      main.castShadow = true;
-      group.add(main);
-
-      // 5 esferas satélite con offset pseudo-random pero determinista
-      const seeds = [
-        { dx:  0.35, dy:  0.22, dz:  0.10, r: 0.65, color: lightCrown },
-        { dx: -0.30, dy:  0.18, dz: -0.15, r: 0.60, color: crownColor },
-        { dx:  0.12, dy:  0.35, dz: -0.32, r: 0.55, color: lightCrown },
-        { dx: -0.18, dy: -0.10, dz:  0.30, r: 0.70, color: darkCrown },
-        { dx:  0.05, dy: -0.18, dz: -0.10, r: 0.62, color: darkCrown },
+      // 3 niveles de follaje (bajo, medio, alto) — cada uno con sus esferas
+      const layers = [
+        { y: baseCrown,            blobs: [
+          { dx:  0.00, dz:  0.00, r: 0.32, c: crownColor },
+          { dx:  0.40, dz:  0.10, r: 0.26, c: lightCrown },
+          { dx: -0.35, dz:  0.05, r: 0.28, c: darkCrown },
+          { dx:  0.05, dz: -0.42, r: 0.27, c: crownColor },
+        ]},
+        { y: baseCrown + heightM * 0.18, blobs: [
+          { dx:  0.18, dz:  0.20, r: 0.30, c: lightCrown },
+          { dx: -0.20, dz: -0.18, r: 0.32, c: crownColor },
+          { dx:  0.32, dz: -0.10, r: 0.22, c: darkCrown },
+        ]},
+        { y: baseCrown + heightM * 0.32, blobs: [
+          { dx:  0.05, dz:  0.05, r: 0.28, c: lightCrown },
+          { dx: -0.10, dz: -0.05, r: 0.20, c: crownColor },
+        ]},
       ];
-      seeds.forEach(s => {
-        const sub = new THREE.Mesh(
-          new THREE.SphereGeometry(crownRadius * s.r, 8, 6),
-          new THREE.MeshLambertMaterial({ color: s.color })
-        );
-        sub.position.set(
-          x + crownRadius * s.dx,
-          crownCenter + crownRadius * s.dy,
-          -y + crownRadius * s.dz
-        );
-        sub.castShadow = true;
-        group.add(sub);
+
+      layers.forEach(layer => {
+        layer.blobs.forEach(b => {
+          const sub = new THREE.Mesh(
+            new THREE.SphereGeometry(heightM * b.r, 6, 5),
+            new THREE.MeshLambertMaterial({ color: b.c, flatShading: true })
+          );
+          sub.position.set(
+            x + heightM * b.dx,
+            layer.y,
+            -y + heightM * b.dz
+          );
+          sub.castShadow = true;
+          group.add(sub);
+        });
       });
 
-      // Pequeñas ramas marrones visibles entre el follaje (low-poly cilindros)
+      // Ramas visibles saliendo del tronco antes de la copa
       const branchData = [
-        { x: 0.18, y: -0.10, z: 0.12, len: 0.55, tilt: 0.35 },
-        { x: -0.20, y: 0.05, z: -0.08, len: 0.48, tilt: -0.4 },
+        { startY: trunkH * 0.70, dx:  0.20, dz:  0.05, tilt:  0.6, len: 0.35 },
+        { startY: trunkH * 0.80, dx: -0.18, dz:  0.10, tilt: -0.65, len: 0.30 },
+        { startY: trunkH * 0.85, dx:  0.05, dz: -0.18, tilt:  0.5, len: 0.32 },
       ];
       branchData.forEach(b => {
         const branchGeom = new THREE.CylinderGeometry(
-          heightM * 0.018,
-          heightM * 0.025,
-          heightM * 0.30 * b.len,
-          5
+          heightM * 0.012,
+          heightM * 0.020,
+          heightM * b.len,
+          4
         );
         const branch = new THREE.Mesh(
           branchGeom,
           new THREE.MeshLambertMaterial({ color: 0x5a3f25 })
         );
         branch.position.set(
-          x + crownRadius * b.x,
-          crownCenter + crownRadius * b.y - heightM * 0.05,
-          -y + crownRadius * b.z
+          x + heightM * b.dx * 0.5,
+          b.startY + heightM * b.len * 0.4,
+          -y + heightM * b.dz * 0.5
         );
         branch.rotation.z = b.tilt;
         branch.castShadow = true;
