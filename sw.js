@@ -4,7 +4,7 @@
 // ⚠ IMPORTANTE: cuando agregues nuevos archivos JS o cambies HTML,
 // SUBE EL NÚMERO DE VERSIÓN (v1 → v2 → v3 ...) para forzar invalidación
 // del cache en los navegadores de los usuarios.
-const CACHE_NAME = 'arbol-unam-v14';
+const CACHE_NAME = 'arbol-unam-v16';
 const APP_SHELL = [
   './',
   './index.html',
@@ -65,7 +65,14 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
+      .catch(() => caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        // CRÍTICO: solo devolver index.html como fallback si era request de HTML.
+        // Para imágenes, JSON, GLB, JS, etc. devolver error real (Response 404)
+        // para NO confundir al parser/loader con el contenido HTML.
+        if (isHtml) return caches.match('./index.html');
+        return new Response('Offline and not cached', { status: 503, statusText: 'Offline' });
+      }))
   );
 });
 
