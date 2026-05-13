@@ -1201,6 +1201,7 @@ window.IztacalaMap = (function() {
       const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
       valid.forEach(addTree);
 
+      console.log(`🌳 Iztacala: ${valid.length} árboles con coordenadas plotteados (de ${(trees || []).length} totales en BD)`);
       updateTreeCountHUD(valid.length, (trees || []).length);
     } catch (e) {
       console.error('loadTrees error:', e);
