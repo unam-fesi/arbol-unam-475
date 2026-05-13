@@ -429,6 +429,9 @@ async function loadMyTree(forceReload, specificTreeId) {
         <!-- Calendar of care (#11) -->
         <div class="tree-card" style="margin-top:1rem;"><div id="care-calendar-container">Cargando calendario...</div></div>
 
+        <!-- Bitácora mensual + anual generada por PUM-AI (#1) -->
+        <div id="bitacora-container" data-tree-id="${tree.id}" style="margin-top:1rem;"></div>
+
         <!-- Ficha didáctica de la especie (#18) -->
         ${(function(){
           const card = window.findSpeciesCard?.(tree.species, tree.common_name);
@@ -590,6 +593,8 @@ async function loadMyTree(forceReload, specificTreeId) {
       if (typeof renderHealthTimeline === 'function') renderHealthTimeline(meas);
       if (typeof renderUserBadges === 'function') renderUserBadges();
       if (typeof renderCareCalendar === 'function' && tree.species) renderCareCalendar(tree.species);
+      // Bitácora mensual y anual con PUM-AI (carga async para no bloquear)
+      _loadBitacoraTree(tree.id);
     }, 200);
 
     // Bind rubric change events to recalculate
@@ -1511,6 +1516,43 @@ function openCitizenReport(treeId, treeCode, commonName) {
 }
 
 window.renderHealthTimeline = renderHealthTimeline;
+
+// ============================================================================
+// Cargar bitácora mensual + anual del árbol (PUM-AI, bajo demanda con cache)
+// ============================================================================
+async function _loadBitacoraTree(treeId) {
+  const container = document.getElementById('bitacora-container');
+  if (!container || !window.Bitacora) return;
+
+  container.innerHTML = `
+    <div class="card" style="padding:1rem;text-align:center;color:#888;background:rgba(26,68,128,0.05);">
+      <i class="fas fa-robot"></i> PUM-AI está preparando tu bitácora del mes…
+    </div>`;
+
+  try {
+    // 1) Bitácora mensual (del mes anterior)
+    const monthly = await window.Bitacora.getOrGenerateTreeMonthly(treeId);
+
+    // 2) Bitácora anual — solo si estamos en enero/febrero del año actual o
+    //    si ya cerró el año actual (mostrar la del año anterior).
+    const now = new Date();
+    let annual = null;
+    if (now.getMonth() <= 1 || now.getMonth() === 11) {
+      // En enero/febrero o diciembre, mostrar el wrap del año cerrado
+      annual = await window.Bitacora.getOrGenerateTreeAnnual(treeId);
+    }
+
+    let html = '';
+    if (annual) html += window.Bitacora.renderBitacoraCard(annual, 'annual');
+    if (monthly) html += window.Bitacora.renderBitacoraCard(monthly, 'monthly');
+
+    container.innerHTML = html || '';
+  } catch (e) {
+    console.error('Bitácora tree error:', e);
+    container.innerHTML = '';
+  }
+}
+window._loadBitacoraTree = _loadBitacoraTree;
 window.renderUserBadges = renderUserBadges;
 window.renderCareCalendar = renderCareCalendar;
 window.openCitizenReport = openCitizenReport;

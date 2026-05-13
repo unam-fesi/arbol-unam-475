@@ -313,7 +313,10 @@ async function renderGardenView(gardenId) {
       <button class="btn btn-outline btn-sm garden-tab" data-tab="g-metas" onclick="switchGardenTab('g-metas')"><i class="fas fa-bullseye"></i> Metas</button>
     </div>
 
-    <div id="g-info" class="garden-tab-content active">${_renderGardenInfo(garden, aggStats)}</div>
+    <div id="g-info" class="garden-tab-content active">
+      <div id="g-bitacora-container" data-garden-id="${garden.id}"></div>
+      ${_renderGardenInfo(garden, aggStats)}
+    </div>
     <div id="g-seguimiento" class="garden-tab-content" style="display:none;">${_renderGardenSeguimiento(treesInGarden, gardenVisits)}</div>
     <div id="g-registro" class="garden-tab-content" style="display:none;">${_renderGardenRegistro(garden, treesInGarden, gardenVisits)}</div>
     <div id="g-metas" class="garden-tab-content" style="display:none;">${_renderGardenMetas(garden, treesInGarden, aggStats)}</div>
@@ -323,6 +326,9 @@ async function renderGardenView(gardenId) {
 
   // Cache visitas para chart on-demand
   _lastGardenVisits = gardenVisits;
+
+  // Cargar bitácora mensual + anual del jardín (PUM-AI, bajo demanda con cache)
+  _loadBitacoraGarden(garden.id);
 
   // Inicializar mapa + chart si el tab seguimiento se vuelve activo
   setTimeout(() => {
@@ -1699,5 +1705,35 @@ window.closeGardenVisitForm = closeGardenVisitForm;
 window.saveGardenVisit = saveGardenVisit;
 window._updateGardenVisitTotal = _updateGardenVisitTotal;
 window.analyzeGardenPhotoWithAI = analyzeGardenPhotoWithAI;
+
+// ============================================================================
+// Bitácora del jardín — mensual + anual con PUM-AI
+// ============================================================================
+async function _loadBitacoraGarden(gardenId) {
+  const container = document.getElementById('g-bitacora-container');
+  if (!container || !window.Bitacora) return;
+
+  container.innerHTML = `
+    <div class="card" style="padding:1rem;text-align:center;color:#888;background:rgba(26,68,128,0.05);margin-bottom:1rem;">
+      <i class="fas fa-robot"></i> PUM-AI está preparando la bitácora del jardín…
+    </div>`;
+
+  try {
+    const monthly = await window.Bitacora.getOrGenerateGardenMonthly(gardenId);
+    const now = new Date();
+    let annual = null;
+    if (now.getMonth() <= 1 || now.getMonth() === 11) {
+      annual = await window.Bitacora.getOrGenerateGardenAnnual(gardenId);
+    }
+    let html = '';
+    if (annual) html += window.Bitacora.renderBitacoraCard(annual, 'annual');
+    if (monthly) html += window.Bitacora.renderBitacoraCard(monthly, 'monthly');
+    container.innerHTML = html || '';
+  } catch (e) {
+    console.error('Bitácora garden error:', e);
+    container.innerHTML = '';
+  }
+}
+window._loadBitacoraGarden = _loadBitacoraGarden;
 window.showGardenVisitDetail = showGardenVisitDetail;
 window.closeGardenVisitDetail = closeGardenVisitDetail;
