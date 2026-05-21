@@ -183,25 +183,35 @@
     return { group, pickMesh };
   }
 
-  // Construye el bosque entero con N árboles
+  // Construye el bosque entero con TODOS los árboles (no muestreo, no descarte)
+  // así la proporción de colores (semáforo) refleja la realidad del campus.
+  // Si hay <30 árboles, agregamos slots vacíos para que el bosque no se vea ralo.
   function buildForest(trees, modelTemplate) {
     const forest = new THREE.Group();
     pickableMeshes = [];
 
-    const totalSlots = 50;
-    const sorted = (trees || []).slice().sort((a, b) => (b.health_score || 0) - (a.health_score || 0));
-    const total = sorted.length;
-    const scaled = total > totalSlots;
+    // Mezclar el orden para que los colores se distribuyan visualmente
+    // (sin ordenar por salud → no sesga la percepción)
+    const all = (trees || []).slice();
+    // Shuffle determinístico por id para consistencia entre renders
+    all.sort((a, b) => {
+      const ha = (String(a.id).charCodeAt(0) + (a.tree_code || '').length) || 0;
+      const hb = (String(b.id).charCodeAt(0) + (b.tree_code || '').length) || 0;
+      return ha - hb;
+    });
 
-    const radius = 5.5;
+    const totalReal = all.length;
+    const minSlots = 30; // mínimo para que el bosque se vea poblado
+    const totalSlots = Math.max(minSlots, totalReal);
+
+    // Radio crece con el número de árboles para no apretarlos
+    const radius = Math.max(5.5, Math.sqrt(totalSlots) * 0.85);
     const innerRadius = 0.5;
 
     for (let i = 0; i < totalSlots; i++) {
-      let assignedTree = null;
-      if (!scaled) assignedTree = sorted[i] || null;
-      else assignedTree = sorted[Math.floor(i * total / totalSlots)] || null;
+      const assignedTree = i < totalReal ? all[i] : null;
 
-      const t = i / totalSlots;
+      const t = (i + 0.5) / totalSlots;
       const r = innerRadius + Math.sqrt(t) * (radius - innerRadius);
       const theta = i * 2.399;
       const x = Math.cos(theta) * r;
