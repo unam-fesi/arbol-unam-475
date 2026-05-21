@@ -119,36 +119,62 @@
       attribution: '&copy; OpenStreetMap', maxZoom: 19
     }).addTo(heatmapInstance);
 
-    // Capa de intensidad: círculos translúcidos cuyo color y radio dependen de salud
-    withCoord.forEach(t => {
-      const color = colorByHealthHex(t.health_score);
-      // Círculo grande para "calor" (diámetro fijo 50m)
+    // Color semáforo unificado (mismo umbral que Bosque 3D / Iztacala 3D)
+    //   ≥70 Sano (#4CAF50) · 40-69 Atención (#FFA726) · <40 Crítico (#EF5350)
+    const semaforoColor = (score) => {
+      if (score == null) return '#9e9e9e';
+      if (score >= 70) return '#4CAF50';
+      if (score >= 40) return '#FFA726';
+      return '#EF5350';
+    };
+    // Prioridad de pintado: críticos (1) arriba, atención (2), sanos (3) abajo.
+    // Así los rojos/amarillos NO quedan tapados por los verdes al encimarse.
+    const priority = (score) => {
+      if (score == null) return 4;
+      if (score < 40) return 1;
+      if (score < 70) return 2;
+      return 3;
+    };
+    const sortedTrees = withCoord.slice().sort(
+      (a, b) => priority(b.health_score) - priority(a.health_score)
+    );
+
+    // Capa de intensidad: círculos más pequeños y translúcidos para no taparse
+    sortedTrees.forEach(t => {
+      const color = semaforoColor(t.health_score);
+      const isCritical = (t.health_score != null && t.health_score < 70);
+      // Halo de "calor" pequeño y translúcido
       L.circle([t.location_lat, t.location_lng], {
-        radius: 35,
+        radius: 15,
         color: color, fillColor: color,
-        fillOpacity: 0.45, weight: 0
+        fillOpacity: isCritical ? 0.35 : 0.22,
+        weight: 0
       }).addTo(heatmapInstance);
-      // Círculo pequeño central
-      L.circleMarker([t.location_lat, t.location_lng], {
-        radius: 6, color: 'white', weight: 2,
-        fillColor: color, fillOpacity: 1
+      // Círculo central (más prominente para críticos y atención)
+      const centerMarker = L.circleMarker([t.location_lat, t.location_lng], {
+        radius: isCritical ? 7 : 5,
+        color: 'white',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1
       }).addTo(heatmapInstance).bindTooltip(
         `${escapeHtml(t.common_name || t.species || 'Árbol')} — ${t.health_score || 0}%`,
         { direction: 'top' }
       );
+      // Críticos siempre arriba en el orden Z del SVG
+      if (isCritical) centerMarker.bringToFront();
     });
 
-    // Leyenda
+    // Leyenda — colores actualizados para semáforo unificado
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function() {
       const div = L.DomUtil.create('div', 'heatmap-legend');
       div.style.cssText = 'background:white;padding:8px 12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-family:Inter,sans-serif;font-size:0.78rem;';
       div.innerHTML = `
         <strong style="display:block;margin-bottom:4px;">Salud</strong>
-        <div style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#4a7c2a;border-radius:50%;"></span> Sano (≥80)</div>
-        <div style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#95b86c;border-radius:50%;"></span> Bueno (60-79)</div>
-        <div style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#d49b3a;border-radius:50%;"></span> Atención (40-59)</div>
-        <div style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#b54f3a;border-radius:50%;"></span> Crítico (&lt;40)</div>
+        <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#4CAF50;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Sano (≥70)</div>
+        <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#FFA726;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Atención (40-69)</div>
+        <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#EF5350;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Crítico (&lt;40)</div>
       `;
       return div;
     };
