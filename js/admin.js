@@ -373,46 +373,157 @@ async function editAdminUser(userId) {
 }
 
 // ---- TREES ----
+// Cache global de árboles cargados — se usa para filtrado client-side
+let _adminTreesCache = [];
+
 async function loadAdminTrees() {
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
   try {
     const { data, error } = await sb.from('trees_catalog').select('*').order('tree_code');
     if (error) throw error;
-    const tbody = document.getElementById('trees-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    (data || []).forEach(tree => {
-      const row = document.createElement('tr');
-      const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
-      const hasLocation = tree.location_lat != null && tree.location_lng != null;
-      // CO₂ capturado por este árbol
-      const co2 = window.CO2Calculator?.calculateCO2Stored(tree) || 0;
-      const co2Tag = co2 > 0
-        ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
-        : '';
-      row.innerHTML = `
-        <td>${escapeHtml(tree.tree_code || '-')}</td>
-        <td>${escapeHtml(tree.species || '-')}</td>
-        <td>${escapeHtml(tree.campus || '-')}</td>
-        <td>
-          <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
-          ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
-        </td>
-        <td>${tree.health_score || 0}%${co2Tag}</td>
-        <td>
-          <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
-          <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
-          <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    _adminTreesCache = data || [];
+    _setupAdminTreesFilters();
+    _renderAdminTreesRows(_adminTreesCache);
   } catch (err) {
     showToast('Error cargando árboles: ' + err.message, 'error');
   }
 }
+
+// Inyecta los inputs de filtro en el thead (una sola vez)
+function _setupAdminTreesFilters() {
+  const tbody = document.getElementById('trees-table-body');
+  if (!tbody) return;
+  const table = tbody.closest('table');
+  if (!table) return;
+  const thead = table.querySelector('thead');
+  if (!thead || thead.dataset.filtersReady === '1') return;
+
+  // Inputs de filtro embebidos como segunda fila del header
+  // (placeholder = nombre de columna, gris claro; al teclear desaparece)
+  const allCampus = [...new Set(_adminTreesCache.map(t => t.campus).filter(Boolean))].sort();
+  const allStatus = [...new Set(_adminTreesCache.map(t => t.status).filter(Boolean))].sort();
+  const campusOpts = allCampus.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const statusOpts = allStatus.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(TREE_STATUS_LABELS[s] || s)}</option>`).join('');
+
+  const filterRow = document.createElement('tr');
+  filterRow.className = 'admin-trees-filter-row';
+  filterRow.innerHTML = `
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;">
+      <input type="text" id="ft-code" placeholder="Código…"
+        oninput="_filterAdminTrees()"
+        style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;">
+    </th>
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;">
+      <input type="text" id="ft-species" placeholder="Especie…"
+        oninput="_filterAdminTrees()"
+        style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;">
+    </th>
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;">
+      <select id="ft-campus" onchange="_filterAdminTrees()"
+        style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;color:${''};">
+        <option value="">Todos campus</option>
+        ${campusOpts}
+      </select>
+    </th>
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;">
+      <select id="ft-status" onchange="_filterAdminTrees()"
+        style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;">
+        <option value="">Todos estados</option>
+        ${statusOpts}
+      </select>
+    </th>
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;">
+      <input type="number" id="ft-health-min" min="0" max="100" placeholder="≥ %"
+        oninput="_filterAdminTrees()"
+        style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;">
+    </th>
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;text-align:right;">
+      <button type="button" onclick="_clearAdminTreesFilters()"
+        style="background:transparent;color:#666;border:1px solid #ddd;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.78rem;cursor:pointer;"
+        title="Limpiar filtros">↺</button>
+    </th>
+  `;
+  thead.appendChild(filterRow);
+  thead.dataset.filtersReady = '1';
+}
+
+function _filterAdminTrees() {
+  const code = (document.getElementById('ft-code')?.value || '').toLowerCase().trim();
+  const species = (document.getElementById('ft-species')?.value || '').toLowerCase().trim();
+  const campus = (document.getElementById('ft-campus')?.value || '').trim();
+  const status = (document.getElementById('ft-status')?.value || '').trim();
+  const healthMin = parseInt(document.getElementById('ft-health-min')?.value);
+
+  const filtered = _adminTreesCache.filter(t => {
+    if (code && !(t.tree_code || '').toLowerCase().includes(code)) return false;
+    if (species) {
+      const text = ((t.species || '') + ' ' + (t.common_name || '')).toLowerCase();
+      if (!text.includes(species)) return false;
+    }
+    if (campus && t.campus !== campus) return false;
+    if (status && t.status !== status) return false;
+    if (!isNaN(healthMin) && (t.health_score || 0) < healthMin) return false;
+    return true;
+  });
+
+  _renderAdminTreesRows(filtered);
+
+  // Contador en consola para debug y feedback visual
+  const tbody = document.getElementById('trees-table-body');
+  if (tbody && filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:#888;">
+      Sin árboles que coincidan con los filtros. <a href="#" onclick="_clearAdminTreesFilters();return false;" style="color:#2E7D32;">Limpiar filtros</a>
+    </td></tr>`;
+  }
+}
+
+function _clearAdminTreesFilters() {
+  ['ft-code', 'ft-species', 'ft-health-min'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ['ft-campus', 'ft-status'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  _renderAdminTreesRows(_adminTreesCache);
+}
+
+function _renderAdminTreesRows(trees) {
+  const tbody = document.getElementById('trees-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  trees.forEach(tree => {
+    const row = document.createElement('tr');
+    const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
+    const hasLocation = tree.location_lat != null && tree.location_lng != null;
+    const co2 = window.CO2Calculator?.calculateCO2Stored(tree) || 0;
+    const co2Tag = co2 > 0
+      ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
+      : '';
+    row.innerHTML = `
+      <td>${escapeHtml(tree.tree_code || '-')}</td>
+      <td>${escapeHtml(tree.species || '-')}</td>
+      <td>${escapeHtml(tree.campus || '-')}</td>
+      <td>
+        <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
+        ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
+      </td>
+      <td>${tree.health_score || 0}%${co2Tag}</td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
+        <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
+        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+window._filterAdminTrees = _filterAdminTrees;
+window._clearAdminTreesFilters = _clearAdminTreesFilters;
 
 // Valid CHECK constraint values (must match BD)
 const TREE_STATUS_VALUES = ['nuevo','activo','enfermo','en_tratamiento','seco','retirado'];

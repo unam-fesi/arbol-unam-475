@@ -16,13 +16,28 @@
   let resizeHandler = null;
   let lastHovered = null;
 
+  // Cache del modelo GLB de árbol — se carga una sola vez y se clona N veces
+  let _treeModelPromise = null;
+  function getTreeModel() {
+    if (_treeModelPromise) return _treeModelPromise;
+    _treeModelPromise = new Promise((resolve) => {
+      if (typeof THREE.GLTFLoader === 'undefined') return resolve(null);
+      const loader = new THREE.GLTFLoader();
+      loader.load('data/trees/tree_model.glb',
+        (gltf) => resolve(gltf.scene),
+        undefined,
+        () => { console.warn('Bosque 3D: no se cargó tree_model.glb, usando árbol procedural'); resolve(null); }
+      );
+    });
+    return _treeModelPromise;
+  }
+
+  // Color del semáforo de salud — usado en el anillo de la base
   function colorByHealth(score) {
-    if (score == null) return 0xc5b5a0;
-    if (score >= 80) return 0x4a7c2a;
-    if (score >= 60) return 0x95b86c;
-    if (score >= 40) return 0xd49b3a;
-    if (score >= 0)  return 0xb54f3a;
-    return 0xc5b5a0;
+    if (score == null) return 0x9e9e9e; // gris (sin dato)
+    if (score >= 70) return 0x4CAF50;   // verde
+    if (score >= 40) return 0xFFA726;   // ámbar
+    return 0xEF5350;                    // rojo
   }
 
   function createSkyTexture() {
@@ -39,91 +54,137 @@
     return new THREE.CanvasTexture(c);
   }
 
-  // Construye UN árbol low-poly estilizado.
-  // height factor (0-1) basado en altura real → escala vertical.
-  function buildSingleTree(treeData) {
+  // Construye UN árbol clonando el modelo GLB compartido.
+  // El semáforo de salud se muestra como ANILLO + DISCO en la base del árbol
+  // (mismo enfoque que en FES Iztacala 3D). Si el GLB no cargó, fallback al
+  // árbol procedural simple.
+  function buildSingleTree(treeData, modelTemplate) {
     const group = new THREE.Group();
-
-    // Determinar atributos visuales del árbol
     const score = treeData ? (treeData.health_score || 0) : null;
     const isEmpty = !treeData;
-    const canopyColor = isEmpty ? 0xc5b5a0 : colorByHealth(score);
-    const trunkColor = 0x6b4f2a;
-    // Escalar altura: árboles bajos = 0.6, altos = 1.4 (basado en initial_height_cm)
+    const healthColor = isEmpty ? 0x9e9e9e : colorByHealth(score);
+
+    // Escalar altura
     let heightScale = 1.0;
     if (treeData && treeData.initial_height_cm) {
       const h = treeData.initial_height_cm;
-      heightScale = 0.6 + Math.min(1.0, h / 600) * 0.8;  // 0.6 a 1.4
+      heightScale = 0.6 + Math.min(1.0, h / 600) * 0.8;
+    }
+    const targetHeight = 1.5 * heightScale; // altura visual ~1.5m por árbol
+
+    // ---- ÁRBOL (clonado del GLB, o procedural si no hay) ----
+    let canopyMeshes = []; // para hover-highlight
+    if (modelTemplate) {
+      const tree = modelTemplate.clone(true);
+      // Normalizar escala al targetHeight
+      const box = new THREE.Box3().setFromObject(tree);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const modelHeight = size.y || 1;
+      const scale = targetHeight / modelHeight;
+      tree.scale.setScalar(scale);
+      tree.position.y = 0;
+
+      // Casar sombras y juntar materiales para identificar canopy
+      tree.traverse(o => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+          // Detectar follaje (más verde que rojo/azul) para canopy hover
+          if (o.material && o.material.color) {
+            const c = o.material.color;
+            if (c.g > c.r && c.g > c.b * 0.7) {
+              o.material = o.material.clone();
+              canopyMeshes.push(o);
+            }
+          }
+        }
+      });
+
+      // Si está vacío (slot sin árbol), opacar
+      if (isEmpty) {
+        tree.traverse(o => {
+          if (o.isMesh && o.material) {
+            o.material = o.material.clone();
+            o.material.transparent = true;
+            o.material.opacity = 0.35;
+          }
+        });
+      }
+      group.add(tree);
+    } else {
+      // Fallback procedural simple
+      const trunkH = 0.7 * heightScale;
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.10, 0.16, trunkH, 7),
+        new THREE.MeshStandardMaterial({ color: 0x6b4f2a, roughness: 0.95, flatShading: true })
+      );
+      trunk.position.y = trunkH / 2;
+      trunk.castShadow = true;
+      group.add(trunk);
+      const canopyMat = new THREE.MeshStandardMaterial({
+        color: 0x4a7c2a, roughness: 0.7, flatShading: true,
+        transparent: isEmpty, opacity: isEmpty ? 0.45 : 1.0
+      });
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45 * heightScale, 0), canopyMat);
+      blob.position.y = trunkH + 0.3 * heightScale;
+      blob.castShadow = true;
+      group.add(blob);
+      canopyMeshes.push(blob);
     }
 
-    // Tronco: cilindro corto cónico
-    const trunkH = 0.7 * heightScale;
-    const trunkGeo = new THREE.CylinderGeometry(0.10, 0.16, trunkH, 7);
-    const trunkMat = new THREE.MeshStandardMaterial({
-      color: trunkColor, roughness: 0.95, flatShading: true
-    });
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.y = trunkH / 2;
-    trunk.castShadow = true;
-    trunk.receiveShadow = true;
-    group.add(trunk);
+    // ---- SEMÁFORO DE SALUD: disco + anillo en la base ----
+    // Solo si NO está vacío (los slots vacíos no muestran semáforo)
+    if (!isEmpty) {
+      // Disco relleno con opacidad
+      const baseR = 0.55 * heightScale;
+      const base = new THREE.Mesh(
+        new THREE.CircleGeometry(baseR, 24),
+        new THREE.MeshBasicMaterial({ color: healthColor, side: THREE.DoubleSide, transparent: true, opacity: 0.55 })
+      );
+      base.rotation.x = -Math.PI / 2;
+      base.position.y = 0.012;
+      group.add(base);
 
-    // Canopy: 2-3 esferas/icosaedros apilados (look low-poly Ghibli)
-    const canopyMat = new THREE.MeshStandardMaterial({
-      color: canopyColor,
-      roughness: 0.7,
-      flatShading: true,
-      emissive: isEmpty ? 0x000000 : canopyColor,
-      emissiveIntensity: isEmpty ? 0 : 0.15,
-      transparent: isEmpty, opacity: isEmpty ? 0.45 : 1.0
-    });
+      // Anillo de borde más oscuro
+      const dark = new THREE.Color(healthColor).multiplyScalar(0.6).getHex();
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(baseR * 0.90, baseR * 1.05, 28),
+        new THREE.MeshBasicMaterial({ color: dark, side: THREE.DoubleSide, transparent: true, opacity: 0.95 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.014;
+      group.add(ring);
+    } else {
+      // Slot vacío — disco muy tenue gris
+      const empty = new THREE.Mesh(
+        new THREE.CircleGeometry(0.40, 16),
+        new THREE.MeshBasicMaterial({ color: 0xc5b5a0, transparent: true, opacity: 0.18 })
+      );
+      empty.rotation.x = -Math.PI / 2;
+      empty.position.y = 0.01;
+      group.add(empty);
+    }
 
-    const blob1 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45 * heightScale, 0), canopyMat);
-    blob1.position.y = trunkH + 0.30 * heightScale;
-    blob1.castShadow = true;
-    blob1.userData = { isTree: true, tree: treeData, isEmpty };
-    group.add(blob1);
-
-    const blob2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38 * heightScale, 0), canopyMat);
-    blob2.position.set(0.20 * heightScale, trunkH + 0.55 * heightScale, -0.10 * heightScale);
-    blob2.castShadow = true;
-    blob2.userData = { isTree: true, tree: treeData, isEmpty };
-    group.add(blob2);
-
-    const blob3 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34 * heightScale, 0), canopyMat);
-    blob3.position.set(-0.18 * heightScale, trunkH + 0.45 * heightScale, 0.15 * heightScale);
-    blob3.castShadow = true;
-    blob3.userData = { isTree: true, tree: treeData, isEmpty };
-    group.add(blob3);
-
-    // Pickable mesh = un sphere wrapper invisible más grande para click más fácil
-    const pickGeo = new THREE.SphereGeometry(0.6 * heightScale, 6, 6);
-    const pickMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-    const pickMesh = new THREE.Mesh(pickGeo, pickMat);
-    pickMesh.position.y = trunkH + 0.4 * heightScale;
+    // ---- Pick mesh invisible (esfera) para clicks más fáciles ----
+    const pickMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.65 * heightScale, 6, 6),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    pickMesh.position.y = targetHeight * 0.55;
     pickMesh.userData = {
       isTree: true, tree: treeData, isEmpty,
-      blobs: [blob1, blob2, blob3], canopyMat,
+      canopyMeshes,
       wobblePhase: Math.random() * Math.PI * 2,
-      baseY: pickMesh.position.y
+      baseY: pickMesh.position.y,
     };
     group.add(pickMesh);
-
-    // Sombra disco bajo el árbol
-    const shadowGeo = new THREE.CircleGeometry(0.45 * heightScale, 12);
-    const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false
-    });
-    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.005;
-    group.add(shadow);
 
     return { group, pickMesh };
   }
 
   // Construye el bosque entero con N árboles
-  function buildForest(trees) {
+  function buildForest(trees, modelTemplate) {
     const forest = new THREE.Group();
     pickableMeshes = [];
 
@@ -132,7 +193,6 @@
     const total = sorted.length;
     const scaled = total > totalSlots;
 
-    // Distribución espiral de Fibonacci en círculo (look natural y ordenado)
     const radius = 5.5;
     const innerRadius = 0.5;
 
@@ -141,16 +201,14 @@
       if (!scaled) assignedTree = sorted[i] || null;
       else assignedTree = sorted[Math.floor(i * total / totalSlots)] || null;
 
-      // Distribución espiral
       const t = i / totalSlots;
       const r = innerRadius + Math.sqrt(t) * (radius - innerRadius);
-      const theta = i * 2.399;  // golden angle
+      const theta = i * 2.399;
       const x = Math.cos(theta) * r;
       const z = Math.sin(theta) * r;
 
-      const { group, pickMesh } = buildSingleTree(assignedTree);
+      const { group, pickMesh } = buildSingleTree(assignedTree, modelTemplate);
       group.position.set(x, 0, z);
-      // Pequeña rotación aleatoria
       group.rotation.y = Math.random() * Math.PI * 2;
       forest.add(group);
       pickableMeshes.push(pickMesh);
@@ -159,7 +217,7 @@
     return forest;
   }
 
-  function setupScene(container, trees) {
+  async function setupScene(container, trees) {
     const w = container.clientWidth;
     const h = Math.min(560, Math.max(380, Math.round(w * 0.65)));
 
@@ -228,8 +286,9 @@
     path.position.y = 0.01;
     scene.add(path);
 
-    // Bosque
-    const forest = buildForest(trees);
+    // Bosque (espera al GLB; si no carga, fallback a procedural)
+    const modelTemplate = await getTreeModel();
+    const forest = buildForest(trees, modelTemplate);
     scene.add(forest);
 
     // Controls
@@ -287,13 +346,20 @@
     const tooltip = document.getElementById('dashboard-tree-tooltip');
     const hit = pickTree(e.clientX, e.clientY);
 
-    // Reset previous highlight
+    // Reset previous highlight (canopy meshes)
     if (lastHovered && lastHovered !== (hit && hit.object)) {
-      lastHovered.userData.blobs.forEach(b => b.material.emissiveIntensity = 0.15);
+      (lastHovered.userData.canopyMeshes || []).forEach(b => {
+        if (b.material) b.material.emissiveIntensity = 0;
+      });
     }
     if (hit) {
       const pick = hit.object;
-      pick.userData.blobs.forEach(b => b.material.emissiveIntensity = 0.5);
+      (pick.userData.canopyMeshes || []).forEach(b => {
+        if (b.material) {
+          b.material.emissive = new THREE.Color(0xffffff);
+          b.material.emissiveIntensity = 0.4;
+        }
+      });
       lastHovered = pick;
       const t = pick.userData.tree;
       if (tooltip && t) {
@@ -310,7 +376,9 @@
       if (controls) controls.autoRotate = false;
     } else {
       if (lastHovered) {
-        lastHovered.userData.blobs.forEach(b => b.material.emissiveIntensity = 0.15);
+        (lastHovered.userData.canopyMeshes || []).forEach(b => {
+          if (b.material) b.material.emissiveIntensity = 0;
+        });
         lastHovered = null;
       }
       if (tooltip) tooltip.style.display = 'none';
@@ -373,7 +441,7 @@
     lastHovered = null;
   }
 
-  function init(containerSelector, trees) {
+  async function init(containerSelector, trees) {
     if (!window.THREE) {
       console.warn('Three.js no cargado');
       return false;
@@ -383,7 +451,9 @@
     if (!container) return false;
 
     destroy();
-    setupScene(container, trees || []);
+    // Mostrar loading mientras carga el GLB
+    container.innerHTML = '<div style="padding:3rem;text-align:center;color:#888;"><i class="fas fa-spinner fa-spin"></i> Plantando bosque…</div>';
+    await setupScene(container, trees || []);
     animate();
     return true;
   }
