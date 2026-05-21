@@ -105,19 +105,48 @@
     if (heatmapInstance) { heatmapInstance.remove(); heatmapInstance = null; }
     el.innerHTML = '';
 
-    const withCoord = (trees || []).filter(t => t.location_lat && t.location_lng);
+    // Aplicar clamp al polígono del campus para no pintar árboles en la calle.
+    // Si IztacalaCampus no está disponible (script no cargado), comportamiento
+    // legacy = usar coords originales.
+    const clampFn = (window.IztacalaCampus && window.IztacalaCampus.clampToCampus)
+      ? window.IztacalaCampus.clampToCampus
+      : null;
+    const withCoord = (trees || [])
+      .filter(t => t.location_lat && t.location_lng)
+      .map(t => {
+        if (!clampFn) return { ...t, _lat: t.location_lat, _lng: t.location_lng, _clamped: false };
+        const c = clampFn(t.location_lat, t.location_lng);
+        return { ...t, _lat: c.lat, _lng: c.lng, _clamped: c.clamped, _clampDistM: c.distanceM };
+      });
+
     if (withCoord.length === 0) {
       el.innerHTML = '<div class="vis-loading">Sin árboles georreferenciados aún.</div>';
       return true;
     }
 
-    const avgLat = withCoord.reduce((s,t) => s + t.location_lat, 0) / withCoord.length;
-    const avgLng = withCoord.reduce((s,t) => s + t.location_lng, 0) / withCoord.length;
+    const avgLat = withCoord.reduce((s,t) => s + t._lat, 0) / withCoord.length;
+    const avgLng = withCoord.reduce((s,t) => s + t._lng, 0) / withCoord.length;
 
     heatmapInstance = L.map(el, { zoomControl: true }).setView([avgLat, avgLng], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap', maxZoom: 19
     }).addTo(heatmapInstance);
+
+    // Polígono del campus en overlay para que el usuario vea los límites.
+    if (window.IztacalaCampus && window.IztacalaCampus.polygon) {
+      console.log('[Heatmap v26] Pintando polígono del campus FES Iztacala con', window.IztacalaCampus.polygon.length, 'vértices');
+      L.polygon(window.IztacalaCampus.polygon, {
+        color: '#1b5e20',
+        weight: 3,
+        opacity: 1,
+        fillColor: '#1b5e20',
+        fillOpacity: 0.08,
+        dashArray: '8 5',
+        interactive: false
+      }).addTo(heatmapInstance);
+    } else {
+      console.warn('[Heatmap v26] IztacalaCampus no está cargado — clamp/polígono deshabilitados');
+    }
 
     // Color semáforo unificado (mismo umbral que Bosque 3D / Iztacala 3D)
     //   ≥70 Sano (#4CAF50) · 40-69 Atención (#FFA726) · <40 Crítico (#EF5350)
@@ -143,27 +172,42 @@
     sortedTrees.forEach(t => {
       const color = semaforoColor(t.health_score);
       const isCritical = (t.health_score != null && t.health_score < 70);
+      const pos = [t._lat, t._lng];
       // Halo de "calor" pequeño y translúcido
-      L.circle([t.location_lat, t.location_lng], {
+      L.circle(pos, {
         radius: 15,
         color: color, fillColor: color,
         fillOpacity: isCritical ? 0.35 : 0.22,
         weight: 0
       }).addTo(heatmapInstance);
-      // Círculo central (más prominente para críticos y atención)
-      const centerMarker = L.circleMarker([t.location_lat, t.location_lng], {
+      // Indicador discreto cuando el árbol fue snappeado desde fuera del campus
+      const wasClamped = t._clamped && t._clampDistM > 5;
+      if (wasClamped) {
+        L.circleMarker(pos, {
+          radius: 9, color: '#FFB300', weight: 1.5,
+          dashArray: '3 3', fill: false, opacity: 0.9
+        }).addTo(heatmapInstance);
+      }
+      // Círculo central
+      const tooltipExtra = wasClamped
+        ? `<br><span style="color:#b26500;font-size:0.72rem;">⚠ ubicación imprecisa (${Math.round(t._clampDistM)}m fuera)</span>`
+        : '';
+      const centerMarker = L.circleMarker(pos, {
         radius: isCritical ? 7 : 5,
         color: 'white',
         weight: 2,
         fillColor: color,
         fillOpacity: 1
       }).addTo(heatmapInstance).bindTooltip(
-        `${escapeHtml(t.common_name || t.species || 'Árbol')} — ${t.health_score || 0}%`,
+        `${escapeHtml(t.common_name || t.species || 'Árbol')} — ${t.health_score || 0}%${tooltipExtra}`,
         { direction: 'top' }
       );
       // Críticos siempre arriba en el orden Z del SVG
       if (isCritical) centerMarker.bringToFront();
     });
+
+    // Conteo de árboles snappeados al campus (para la leyenda)
+    const clampedCount = withCoord.filter(t => t._clamped && t._clampDistM > 5).length;
 
     // Leyenda — colores actualizados para semáforo unificado
     const legend = L.control({ position: 'bottomright' });
@@ -175,12 +219,18 @@
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#4CAF50;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Sano (≥70)</div>
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#FFA726;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Atención (40-69)</div>
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#EF5350;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Crítico (&lt;40)</div>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
+          <span style="display:inline-block;width:12px;height:12px;border:1.5px dashed #FFB300;border-radius:50%;"></span> Ubicación imprecisa${clampedCount > 0 ? ` (${clampedCount})` : ''}
+        </div>
+        <div style="margin-top:4px;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
+          <span style="display:inline-block;width:14px;height:0;border-top:2px dashed #2d5016;"></span> Límite del campus
+        </div>
       `;
       return div;
     };
     legend.addTo(heatmapInstance);
 
-    const bounds = L.latLngBounds(withCoord.map(t => [t.location_lat, t.location_lng]));
+    const bounds = L.latLngBounds(withCoord.map(t => [t._lat, t._lng]));
     if (withCoord.length > 1) heatmapInstance.fitBounds(bounds, { padding: [40, 40] });
     setTimeout(() => heatmapInstance.invalidateSize(), 200);
     return true;
