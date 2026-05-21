@@ -423,11 +423,19 @@
   }
 
   function animate() {
+    // Guard: si destroy() corrió, renderer/scene/camera son null. No queremos
+    // encolar el siguiente frame ni intentar renderizar (eso truena con
+    // "can't access property 'render' of null" en cada frame).
+    if (!renderer || !scene || !camera) {
+      animId = null;
+      return;
+    }
     animId = requestAnimationFrame(animate);
     if (controls) controls.update();
     // Wobble suave del bosque entero (efecto brisa)
     const t = Date.now() * 0.001;
     pickableMeshes.forEach((p, i) => {
+      if (!p || !p.parent) return;
       const phase = p.userData.wobblePhase;
       p.parent.rotation.z = Math.sin(t + phase) * 0.015;
     });
