@@ -9,24 +9,27 @@
 (function () {
   'use strict';
 
-  // Polígono [lat, lng] siguiendo el contorno del campus en sentido CCW.
-  // Generoso ~20m hacia fuera para no clamp-ear árboles legítimos en la
-  // banqueta interna o cerca del borde.
+  // Polígono [lat, lng] siguiendo el contorno REAL del campus FES Iztacala
+  // (área amarilla de OSM con la etiqueta "Facultad de Estudios Superiores
+  // Iztacala"). Excluye calles perimetrales (Av. de los Barrios, San Carlos,
+  // Calle del Eucalipto) y el ferroviario al oriente.
   const POLY = [
-    [19.52790, -99.19140],
-    [19.52800, -99.18950],
-    [19.52800, -99.18760],
-    [19.52760, -99.18560],
-    [19.52680, -99.18420],
-    [19.52540, -99.18370],
-    [19.52400, -99.18410],
-    [19.52270, -99.18560],
-    [19.52210, -99.18720],
-    [19.52210, -99.18870],
-    [19.52270, -99.19010],
-    [19.52400, -99.19130],
-    [19.52550, -99.19210],
-    [19.52690, -99.19190]
+    [19.52765, -99.18900],  // NW (esquina con Av. de los Barrios)
+    [19.52770, -99.18790],  // N (cerca de Calle San Carlos)
+    [19.52755, -99.18680],  // N-NE
+    [19.52720, -99.18590],  // NE-top
+    [19.52650, -99.18550],  // NE (antes del ferroviario)
+    [19.52550, -99.18540],  // E
+    [19.52450, -99.18560],  // E-SE
+    [19.52360, -99.18620],  // SE
+    [19.52300, -99.18720],  // S-SE
+    [19.52290, -99.18810],  // S
+    [19.52310, -99.18890],  // S-SW
+    [19.52380, -99.18960],  // SW
+    [19.52480, -99.18990],  // W-SW
+    [19.52590, -99.18980],  // W (sobre Av. de los Barrios)
+    [19.52680, -99.18950],  // NW-down
+    [19.52730, -99.18920]   // NW-back
   ];
 
   // Centroide aproximado del campus (mismo que CENTER_LAT/LON en iztacala 3D)
