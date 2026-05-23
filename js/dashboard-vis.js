@@ -260,15 +260,17 @@
     el.innerHTML = '<div class="vis-loading" style="color:#1b3a5f;padding:2rem;text-align:center;font-weight:500;">Cargando anillos del bosque…</div>';
 
     const w = el.clientWidth || 800;
-    const h = 600;
+    const h = 640;
 
     const scene = new THREE.Scene();
     // ---- Fondo cielo con degradado vertical (canvas → CubeTexture-like) ----
     scene.background = _makeSkyBackground();
-    scene.fog = new THREE.Fog(0xcfe7ff, 50, 140);
+    scene.fog = new THREE.Fog(0xcfe7ff, 60, 180);
 
-    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 300);
-    camera.position.set(0, 4, 28);
+    // FOV más amplio (55°) y cámara más lejana para que entren los 3 anillos
+    // con holgura horizontal y vertical.
+    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 300);
+    camera.position.set(0, 3, 34);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -293,17 +295,17 @@
     // ---- 3 ZONAS apiladas VERTICALMENTE (cada una es un anillo horizontal) ----
     //   y = altura del anillo · radio escala según # de árboles en la zona
     const ZONES = [
-      { name: 'Sano',     color: 0x4CAF50, y:  9, filter: t => (t.health_score || 0) >= 70 },
-      { name: 'Atención', color: 0xFFA726, y:  0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xEF5350, y: -9, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
+      { name: 'Sano',     color: 0x4CAF50, y:  6.5, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Atención', color: 0xFFA726, y:  0,   filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
+      { name: 'Crítico',  color: 0xEF5350, y: -6.5, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
     // Pre-calcular el radio de cada anillo según cuántos árboles tiene
-    // (más árboles = anillo más grande para que no se encimen las fotos)
+    // (más árboles = anillo más grande para que no se encimen las fotos).
+    // Arco objetivo ~2.0 por foto y máximo 16 para ocupar más ancho horizontal.
     ZONES.forEach(zone => {
       const count = (trees || []).filter(zone.filter).length;
-      // Radio = lo necesario para que cada foto tenga ~1.6 unidades de arco
-      zone.radius = Math.max(5, Math.min(count * 1.6 / (2 * Math.PI), 11));
+      zone.radius = Math.max(6, Math.min(count * 2.0 / (2 * Math.PI), 16));
       zone.count = count;
     });
 
@@ -330,12 +332,17 @@
       halo.position.y = zone.y;
       scene.add(halo);
 
-      // Etiqueta de la zona — al lado izquierdo del anillo
-      const labelTex = makeLabelTexture(`${zone.name}  (${zone.count})`);
-      const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
+      // Etiqueta de la zona — sprite billboard flotando arriba a la izquierda
+      // del anillo, con diseño tipo "pill" del color de la zona.
+      const labelTex = _makeZoneLabel(zone.name, zone.count, zone.color);
+      const labelMat = new THREE.SpriteMaterial({
+        map: labelTex, transparent: true, depthTest: false, depthWrite: false
+      });
       const label = new THREE.Sprite(labelMat);
-      label.position.set(-(zone.radius + 3), zone.y + 1.3, 0);
-      label.scale.set(5.5, 1.4, 1);
+      // Lo colocamos arriba del anillo (no rotado por el grupo, fijo en el mundo)
+      label.position.set(-(zone.radius * 0.65), zone.y + 2.2, 0);
+      label.scale.set(4.5, 1.6, 1);
+      label.renderOrder = 999;  // siempre encima de las fotos
       scene.add(label);
     });
 
@@ -472,28 +479,51 @@
       } catch (e) { console.warn('Mosaico photos async error:', e); }
     })();
 
-    // ---- DRAG MANUAL — el usuario rota los 3 carretes con el mouse ----
-    // No usamos OrbitControls porque queremos un drag horizontal directo
-    // que rote las zonas alrededor de su eje Y individual.
+    // ---- DRAG MANUAL ----
+    // Horizontal: rota los 3 anillos sobre su eje Y
+    // Vertical:   tilta la cámara para enfocar arriba (Sano) o abajo (Crítico)
     let isDragging = false;
-    let lastX = 0;
-    let rotationSpeed = 0;
+    let lastX = 0, lastY = 0;
     const autoSpeed = 0.003;
+    // Estado de cámara: ángulo de pitch que vamos a interpolar
+    const CAM_RADIUS = 34;
+    let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
+    const PITCH_MIN = -0.55;  // ~31° hacia arriba
+    const PITCH_MAX =  0.55;  // ~31° hacia abajo
+
+    const _updateCamera = () => {
+      // Mantener cámara en órbita vertical de radio CAM_RADIUS alrededor del origen
+      camera.position.x = 0;
+      camera.position.y = -Math.sin(camPitch) * CAM_RADIUS + 3 * Math.cos(camPitch);
+      camera.position.z = Math.cos(camPitch) * CAM_RADIUS;
+      camera.lookAt(0, 0, 0);
+    };
+    _updateCamera();
 
     renderer.domElement.style.cursor = 'grab';
 
+    const _getPos = (e) => {
+      const t = (e.touches && e.touches[0]) || e;
+      return { x: t.clientX || 0, y: t.clientY || 0 };
+    };
+
     const onPointerDown = (e) => {
       isDragging = true;
-      lastX = (e.clientX != null) ? e.clientX : (e.touches && e.touches[0]?.clientX) || 0;
+      const p = _getPos(e);
+      lastX = p.x; lastY = p.y;
       renderer.domElement.style.cursor = 'grabbing';
     };
     const onPointerMove = (e) => {
       if (!isDragging) return;
-      const cx = (e.clientX != null) ? e.clientX : (e.touches && e.touches[0]?.clientX) || 0;
-      const dx = cx - lastX;
-      lastX = cx;
-      rotationSpeed = dx * 0.005;
+      const p = _getPos(e);
+      const dx = p.x - lastX;
+      const dy = p.y - lastY;
+      lastX = p.x; lastY = p.y;
+      // Horizontal → rotación de anillos
       Object.values(zoneGroups).forEach(zg => { zg.rotation.y += dx * 0.005; });
+      // Vertical → pitch de cámara (drag abajo = mira hacia abajo)
+      camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch + dy * 0.004));
+      _updateCamera();
     };
     const onPointerUp = () => {
       isDragging = false;
@@ -566,7 +596,7 @@
     // HUD overlay con hint de uso
     const hint = document.createElement('div');
     hint.style.cssText = 'position:absolute;bottom:0.5rem;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.85);color:#1b3a5f;padding:0.4rem 0.9rem;border-radius:18px;font-size:0.72rem;pointer-events:none;backdrop-filter:blur(6px);font-weight:500;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
-    hint.innerHTML = '🖱️ Arrastra para rotar los anillos · clic en una foto para ver detalle';
+    hint.innerHTML = '🖱️ Arrastra ↔ para rotar · ↕ para mirar arriba/abajo · clic en una foto para detalle';
     el.appendChild(hint);
 
     mosaicoState = {
@@ -661,6 +691,66 @@
     ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
+  }
+
+  // ---- Etiqueta de zona: "pill" del color del semáforo + count ----
+  function _makeZoneLabel(name, count, hexColor) {
+    const c = document.createElement('canvas');
+    c.width = 768; c.height = 256;
+    const ctx = c.getContext('2d');
+
+    const colorStr = '#' + hexColor.toString(16).padStart(6, '0');
+    const PAD = 24;
+    const W = c.width - PAD * 2;
+    const H = c.height - PAD * 2;
+
+    // Sombra suave
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 6;
+
+    // Pill blanco con borde de color
+    ctx.fillStyle = '#ffffff';
+    _roundRect(ctx, PAD, PAD, W, H, 80);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    // Banda lateral izquierda con color del semáforo
+    ctx.fillStyle = colorStr;
+    _roundRect(ctx, PAD, PAD, 70, H, 80);
+    ctx.fill();
+    // Tapa el lado derecho del pill para que solo quede de un lado
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(PAD + 50, PAD + 10, 25, H - 20);
+
+    // Punto del color (semáforo) dentro de la banda
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(PAD + 35, PAD + H / 2, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Texto del nombre
+    ctx.fillStyle = '#1b3a5f';
+    ctx.font = 'bold 78px -apple-system, "SF Pro Display", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, PAD + 110, PAD + H / 2 - 6);
+
+    // Conteo en pill chiquito al final
+    const countText = String(count);
+    ctx.font = '600 56px -apple-system, sans-serif';
+    const countW = ctx.measureText(countText).width;
+    const badgeW = countW + 50;
+    const badgeX = c.width - PAD - badgeW - 20;
+    const badgeY = PAD + H / 2 - 36;
+    ctx.fillStyle = colorStr;
+    _roundRect(ctx, badgeX, badgeY, badgeW, 72, 36);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(countText, badgeX + badgeW / 2, badgeY + 36 + 2);
+
+    return new THREE.CanvasTexture(c);
   }
 
   // ---- Fondo cielo (degradado vertical) renderizado en canvas ----
