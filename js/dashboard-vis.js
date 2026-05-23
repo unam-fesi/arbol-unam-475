@@ -596,10 +596,36 @@
           c.position.y = c.userData.baseY + Math.sin(t * 1.2 + i * 0.7) * 0.5;
         });
       }
-      // Billboard — las fotos miran a la cámara
+      // Billboard + COVER FLOW:
+      // Cuando hay muchas fotos por anillo (e.g. 249 en Sano), todas
+      // quedan apretujadas en el frente. Para no ver un puré:
+      //   • La(s) foto(s) al frente del aro (más cerca de cámara): escala 1.5
+      //   • Las laterales: bajan a ~0.6
+      //   • Las del back (lejos de cámara): casi desaparecen (escala 0.15)
+      // Como el grupo del anillo rota, el "frente" cambia: el usuario ve
+      // diferentes fotos grandes según cómo gire el aro.
       photoPlanes.forEach(p => {
         p.getWorldPosition(_v0);
         p.lookAt(camera.position);
+        // Vector horizontal desde origen (eje del anillo) hacia la foto
+        const dx = _v0.x, dz = _v0.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 0.01) return;
+        // cosAngle = +1 cuando la foto está directamente entre el origen
+        // y la cámara (frente); -1 cuando está en el lado opuesto (back).
+        // Como la cámara está en (cx, cy, cz) con cx≈0, simplemente
+        // comparamos dz contra distancia: dz/dist = cos del ángulo
+        // entre el vector foto y el vector cámara en XZ.
+        const camDirZ = camera.position.z;
+        const cosFront = (camDirZ > 0 ? dz : -dz) / dist;
+        // t en [0,1]: 0 = back, 1 = front
+        const t = (cosFront + 1) / 2;
+        // Curva ease-in: el back se hunde rápido y el front gana
+        const eased = t * t * (3 - 2 * t);  // smoothstep
+        const scale = 0.15 + (1.5 - 0.15) * eased;
+        p.scale.setScalar(scale);
+        // RenderOrder ascendente con t — los del frente se dibujan al final
+        p.renderOrder = Math.round(t * 1000);
       });
       renderer.render(scene, camera);
     }
