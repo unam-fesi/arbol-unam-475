@@ -138,22 +138,6 @@
       attribution: '&copy; OpenStreetMap', maxZoom: 19
     }).addTo(heatmapInstance);
 
-    // Polígono del campus en overlay para que el usuario vea los límites.
-    if (window.IztacalaCampus && window.IztacalaCampus.polygon) {
-      console.log('[Heatmap v26] Pintando polígono del campus FES Iztacala con', window.IztacalaCampus.polygon.length, 'vértices');
-      L.polygon(window.IztacalaCampus.polygon, {
-        color: '#1b5e20',
-        weight: 3,
-        opacity: 1,
-        fillColor: '#1b5e20',
-        fillOpacity: 0.08,
-        dashArray: '8 5',
-        interactive: false
-      }).addTo(heatmapInstance);
-    } else {
-      console.warn('[Heatmap v26] IztacalaCampus no está cargado — clamp/polígono deshabilitados');
-    }
-
     // Color semáforo unificado (mismo umbral que Bosque 3D / Iztacala 3D)
     //   ≥70 Sano (#4CAF50) · 40-69 Atención (#FFA726) · <40 Crítico (#EF5350)
     const semaforoColor = (score) => {
@@ -227,9 +211,6 @@
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#EF5350;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Crítico (&lt;40)</div>
         <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
           <span style="display:inline-block;width:12px;height:12px;border:1.5px dashed #FFB300;border-radius:50%;"></span> Coord fuera del campus${clampedCount > 0 ? ` (${clampedCount})` : ''}
-        </div>
-        <div style="margin-top:4px;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
-          <span style="display:inline-block;width:14px;height:0;border-top:2px dashed #2d5016;"></span> Límite del campus
         </div>
       `;
       return div;
