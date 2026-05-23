@@ -362,6 +362,9 @@
     });
 
     // ---- Placeholders: cada foto se posiciona en el anillo de su zona ----
+    // TODAS a la MISMA altura zone.y (sin jitter vertical). El jitter previo
+    // hacía que con muchas fotos pareciera lluvia caótica de tarjetas
+    // saltando arriba/abajo, especialmente combinado con cover flow.
     for (let zIdx = 0; zIdx < ZONES.length; zIdx++) {
       const zone = ZONES[zIdx];
       const zg = zoneGroups[zIdx];
@@ -372,12 +375,10 @@
         const r = zone.radius;
         const px = Math.cos(angle) * r;
         const pz = Math.sin(angle) * r;
-        // Pequeño jitter vertical para que no queden todas perfectamente alineadas
-        const yOffset = (Math.sin(i * 1.7) * 0.4);
 
         const plane = makePlaceholderPlane(tree, zone.color);
-        plane.position.set(px, yOffset, pz);
-        plane.userData = { tree, zoneIdx: zIdx, angle, r, y: yOffset, isPlaceholder: true };
+        plane.position.set(px, 0, pz);  // y=0 dentro del grupo (que ya está en zone.y)
+        plane.userData = { tree, zoneIdx: zIdx, angle, r, y: 0, isPlaceholder: true };
         zg.add(plane);
         photoPlanes.push(plane);
       }
@@ -863,35 +864,51 @@
   }
 
   function makePlaceholderPlane(tree, color) {
+    // Placeholder MINIMALISTA tipo "moneda" — un círculo del color del
+    // semáforo con el código del árbol al centro. Mucho menos invasivo
+    // que las tarjetas con emoji + "80%" que ocupaban toda la atención.
     const c = document.createElement('canvas');
     c.width = 256; c.height = 256;
     const ctx = c.getContext('2d');
-    // Marco color zona
-    ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
-    ctx.fillRect(0, 0, 256, 256);
-    ctx.fillStyle = 'rgba(255,253,247,0.95)';
-    ctx.fillRect(8, 8, 240, 240);
-    // Emoji
-    ctx.font = '90px serif';
+
+    const hex = '#' + color.toString(16).padStart(6, '0');
+
+    // Disco semi-transparente (el aire alrededor queda transparente —
+    // necesitamos transparent en este material, pero como es un placeholder
+    // efímero que se reemplaza con la foto real, no afecta perf general).
+    const gradient = ctx.createRadialGradient(128, 128, 30, 128, 128, 120);
+    gradient.addColorStop(0, hex + 'd0');   // centro más opaco
+    gradient.addColorStop(0.7, hex + '80');
+    gradient.addColorStop(1, hex + '00');   // borde transparente
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(128, 128, 120, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Borde sutil
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(128, 128, 95, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Código del árbol — texto compacto
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🌳', 128, 110);
-    // Code
-    ctx.font = 'bold 16px -apple-system, sans-serif';
-    ctx.fillStyle = '#2d2418';
-    ctx.fillText(tree.tree_code || '-', 128, 165);
-    // Common name
-    ctx.font = '12px -apple-system, sans-serif';
-    ctx.fillStyle = '#6a5d4d';
-    ctx.fillText((tree.common_name || tree.species || '').slice(0, 22), 128, 190);
-    // Salud
-    ctx.font = 'bold 26px -apple-system, sans-serif';
-    ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
-    ctx.fillText((tree.health_score || 0) + '%', 128, 230);
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    const code = (tree.tree_code || '-').slice(0, 12);
+    ctx.fillText(code, 128, 128);
+
     const tex = new THREE.CanvasTexture(c);
-    const planeGeo = new THREE.PlaneGeometry(1.4, 1.4);
-    // Sin transparent — el canvas es opaco. Evita z-ordering errático
-    // mientras los placeholders rotan en el anillo.
-    const planeMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+    const planeGeo = new THREE.PlaneGeometry(1.0, 1.0);  // más chico que las fotos (2x2)
+    const planeMat = new THREE.MeshBasicMaterial({
+      map: tex, side: THREE.DoubleSide,
+      transparent: true,  // necesario para que el círculo no tenga fondo cuadrado
+      alphaTest: 0.05
+    });
     return new THREE.Mesh(planeGeo, planeMat);
   }
 
