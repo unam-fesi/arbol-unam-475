@@ -298,6 +298,13 @@
 
     // Bosque (espera al GLB; si no carga, fallback a procedural)
     const modelTemplate = await getTreeModel();
+    // Race-condition guard: si el usuario cambió de tab durante el await del
+    // GLB (~500ms), destroy() ya corrió y scene es null. En ese caso, salimos
+    // limpios sin tirar excepción ni dejar objetos a medias.
+    if (!scene) {
+      console.warn('Bosque 3D: setupScene abortado (cambio de tab durante carga del GLB)');
+      return;
+    }
     const forest = buildForest(trees, modelTemplate);
     scene.add(forest);
 
