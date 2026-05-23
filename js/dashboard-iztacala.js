@@ -1214,9 +1214,12 @@ window.IztacalaMap = (function() {
   // Mapeo especie/tipo → archivo GLB. Si el archivo no existe, se usa el modelo procedural.
   // Pon los GLB en /data/trees/ — recomendado: descargar pack CC0 de Quaternius.
   function _pickTreeModelPath(treeData) {
-    // Un solo modelo para TODOS los árboles. La salud se distingue por el
-    // tinte de color de la copa + anillo en el suelo. El detalle por especie
-    // se ve en el modal de detalle del árbol, no en el mapa.
+    // Usa el módulo compartido TreeModels que matchea por código/nombre.
+    // Devuelve un STEM (sin extensión) porque _getTreeModel le agrega .glb/.gltf.
+    if (window.TreeModels) {
+      const full = window.TreeModels.pickTreeGLBPath(treeData);
+      return full.replace(/\.glb$/i, '');  // quitar extensión para el _getTreeModel legacy
+    }
     return 'data/trees/tree_model';
   }
 
@@ -1296,19 +1299,13 @@ window.IztacalaMap = (function() {
     // Posicionar el árbol con la base al suelo
     tree.position.set(x, 0, -y);
 
-    // Tintar follaje con color de salud (busca meshes verdosos)
+    // Color del semáforo SOLO va en el anillo de la base (ver _addHealthMarker).
+    // El follaje conserva su color natural del GLB (cada especie tiene su tinte).
     const crownColor = colorForHealth(treeData.health_score);
     tree.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
         o.receiveShadow = true;
-        if (o.material && o.material.color) {
-          const c = o.material.color;
-          if (c.g > c.r && c.g > c.b * 0.7) {
-            o.material = o.material.clone();
-            o.material.color.setHex(crownColor);
-          }
-        }
       }
     });
 

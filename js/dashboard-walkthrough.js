@@ -163,17 +163,22 @@
       console.log('🏛️  Campus GLB cargado');
     }).catch((e) => console.warn('iztacala_campus.glb no cargó:', e?.message || e));
 
-    _loadGLB('data/trees/tree_model.glb').then(async (gltf) => {
-      treeTemplate = gltf ? gltf.scene : null;
-      console.log('🌳 Modelo de árbol cargado');
-      // Una vez tenemos el template, plotear los árboles
+    // Pre-cargar TODOS los modelos GLB de las especies para que vayan
+    // calentando el cache antes de que se rendericen los árboles.
+    // Luego fetch + plot. Cada _addTree obtiene su modelo específico.
+    (async () => {
+      if (window.TreeModels) {
+        // No esperar el preload — empezamos a plotear apenas tengamos data.
+        window.TreeModels.preloadAll();
+      }
       const trees = await _fetchTrees();
       if (!scene) return;
       const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
+      // _addTree es async pero las llamamos en paralelo (cada una espera su modelo)
       valid.forEach(tree => _addTree(tree));
       _setHUDInfo(valid.length, (trees || []).length);
       console.log(`🌲 ${valid.length} árboles plotteados en el walkthrough`);
-    }).catch((e) => console.warn('tree_model.glb no cargó:', e?.message || e));
+    })();
 
     return true;
   }
@@ -202,39 +207,29 @@
   }
 
   // ---- Añadir un árbol al mundo -------------------------------------------
-  function _addTree(treeData) {
+  async function _addTree(treeData) {
     const { x, y } = latlonToModelXY(treeData.location_lat, treeData.location_lng);
     const group = new THREE.Group();
-    // En Three.js usamos -y como Z para que "norte real" = -Z (la cámara
-    // mira -Z por defecto). Así caminar adelante es ir norte.
     group.position.set(x, 0, -y);
 
     const healthColorHex = colorForHealth(treeData.health_score);
 
-    // Modelo del árbol (clon del template GLB)
-    if (treeTemplate) {
-      const tree = treeTemplate.clone(true);
-      // TINTAR el follaje con el color de salud. Busca meshes verdosos
-      // (la copa) y los re-materializa con el color del semáforo. Así un
-      // árbol "Atención" se ve AMARILLO desde lejos, no solo en su anillo.
-      tree.traverse((node) => {
-        if (!node.isMesh || !node.material) return;
-        // Detectar si el material parece "follaje" (verdoso/marrón)
-        // En vez de heurísticas frágiles, simplemente sustituimos todas
-        // las copas: el modelo de árbol no tiene materiales múltiples
-        // críticos para nosotros aquí.
-        const matName = (node.material.name || '').toLowerCase();
-        const isTrunk = /trunk|wood|bark|tronco/.test(matName);
-        if (!isTrunk) {
-          // Clonar el material para no afectar otros árboles (template compartido)
-          const newMat = node.material.clone();
-          newMat.color = new THREE.Color(healthColorHex);
-          if (newMat.emissive) newMat.emissive = new THREE.Color(healthColorHex);
-          if ('emissiveIntensity' in newMat) newMat.emissiveIntensity = 0.15;
-          node.material = newMat;
-        }
-      });
-      // Normalizar altura ~TREE_HEIGHT_M metros
+    // Resolver el modelo específico de la especie usando el módulo compartido.
+    // TreeModels matchea por keywords en tree_code/common_name/species y
+    // cae al genérico tree_model.glb si no encuentra coincidencia.
+    let template = null;
+    if (window.TreeModels) {
+      template = await window.TreeModels.getModelForTree(treeData);
+    } else {
+      template = treeTemplate;  // fallback al template legacy
+    }
+    if (!scene) return;  // guard: el dashboard puede haber sido destruido durante el await
+
+    if (template) {
+      const tree = template.clone(true);
+      // Los materiales del GLB se MANTIENEN tal cual (cada especie tiene su
+      // color natural). El color del semáforo solo se ve en el anillo de la
+      // base, no en el follaje.
       const box = new THREE.Box3().setFromObject(tree);
       const size = box.getSize(new THREE.Vector3());
       const scale = TREE_HEIGHT_M / Math.max(size.y, 0.01);

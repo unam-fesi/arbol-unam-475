@@ -4,7 +4,7 @@
 // ⚠ IMPORTANTE: cuando agregues nuevos archivos JS o cambies HTML,
 // SUBE EL NÚMERO DE VERSIÓN (v1 → v2 → v3 ...) para forzar invalidación
 // del cache en los navegadores de los usuarios.
-const CACHE_NAME = 'arbol-unam-v58';
+const CACHE_NAME = 'arbol-unam-v59';
 const APP_SHELL = [
   './',
   './index.html',
@@ -19,6 +19,7 @@ const APP_SHELL = [
   './js/ar-height.js',
   './js/admin.js',
   './js/offline-queue.js',
+  './js/tree-models.js',
   './js/dashboard-tree-3d.js',
   './js/campus-bounds.js',
   './js/dashboard-vis.js',

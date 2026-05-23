@@ -16,20 +16,21 @@
   let resizeHandler = null;
   let lastHovered = null;
 
-  // Cache del modelo GLB de árbol — se carga una sola vez y se clona N veces
-  let _treeModelPromise = null;
-  function getTreeModel() {
-    if (_treeModelPromise) return _treeModelPromise;
-    _treeModelPromise = new Promise((resolve) => {
+  // Modelos de árbol: ahora usamos el módulo compartido TreeModels que
+  // matchea cada árbol con su GLB específico (manzano, fresno, jacaranda,
+  // etc.) por keywords en tree_code/common_name/species. Se cae al genérico
+  // tree_model.glb si la especie no tiene modelo dedicado.
+  function getTreeModelFor(treeData) {
+    if (window.TreeModels) return window.TreeModels.getModelForTree(treeData);
+    // Fallback legacy si TreeModels no cargó
+    return new Promise((resolve) => {
       if (typeof THREE.GLTFLoader === 'undefined') return resolve(null);
       const loader = new THREE.GLTFLoader();
       loader.load('data/trees/tree_model.glb',
-        (gltf) => resolve(gltf.scene),
-        undefined,
-        () => { console.warn('Bosque 3D: no se cargó tree_model.glb, usando árbol procedural'); resolve(null); }
+        (gltf) => resolve(gltf.scene), undefined,
+        () => resolve(null)
       );
     });
-    return _treeModelPromise;
   }
 
   // Color del semáforo de salud — usado en el anillo de la base
@@ -183,17 +184,14 @@
     return { group, pickMesh };
   }
 
-  // Construye el bosque entero con TODOS los árboles (no muestreo, no descarte)
-  // así la proporción de colores (semáforo) refleja la realidad del campus.
-  // Si hay <30 árboles, agregamos slots vacíos para que el bosque no se vea ralo.
-  function buildForest(trees, modelTemplate) {
+  // Construye el bosque entero con TODOS los árboles (no muestreo, no descarte).
+  // Cada árbol usa el GLB de SU ESPECIE (matchea por código/nombre vía TreeModels).
+  // Se cargan los modelos en paralelo antes de instanciar.
+  async function buildForest(trees) {
     const forest = new THREE.Group();
     pickableMeshes = [];
 
-    // Mezclar el orden para que los colores se distribuyan visualmente
-    // (sin ordenar por salud → no sesga la percepción)
     const all = (trees || []).slice();
-    // Shuffle determinístico por id para consistencia entre renders
     all.sort((a, b) => {
       const ha = (String(a.id).charCodeAt(0) + (a.tree_code || '').length) || 0;
       const hb = (String(b.id).charCodeAt(0) + (b.tree_code || '').length) || 0;
@@ -201,15 +199,30 @@
     });
 
     const totalReal = all.length;
-    const minSlots = 30; // mínimo para que el bosque se vea poblado
+    const minSlots = 30;
     const totalSlots = Math.max(minSlots, totalReal);
-
-    // Radio crece con el número de árboles para no apretarlos
     const radius = Math.max(5.5, Math.sqrt(totalSlots) * 0.85);
     const innerRadius = 0.5;
 
+    // Resolver los templates de TODOS los slots en paralelo. Para slots
+    // vacíos (i >= totalReal), usamos el genérico. TreeModels cachea, así
+    // que slots con la misma especie comparten la misma promesa.
+    const templatePromises = [];
+    for (let i = 0; i < totalSlots; i++) {
+      const tree = i < totalReal ? all[i] : null;
+      if (tree && window.TreeModels) {
+        templatePromises.push(window.TreeModels.getModelForTree(tree));
+      } else if (window.TreeModels) {
+        templatePromises.push(window.TreeModels.getTreeModel(window.TreeModels.GENERIC_GLB));
+      } else {
+        templatePromises.push(getTreeModelFor(tree));
+      }
+    }
+    const templates = await Promise.all(templatePromises);
+
     for (let i = 0; i < totalSlots; i++) {
       const assignedTree = i < totalReal ? all[i] : null;
+      const template = templates[i];
 
       const t = (i + 0.5) / totalSlots;
       const r = innerRadius + Math.sqrt(t) * (radius - innerRadius);
@@ -217,7 +230,7 @@
       const x = Math.cos(theta) * r;
       const z = Math.sin(theta) * r;
 
-      const { group, pickMesh } = buildSingleTree(assignedTree, modelTemplate);
+      const { group, pickMesh } = buildSingleTree(assignedTree, template);
       group.position.set(x, 0, z);
       group.rotation.y = Math.random() * Math.PI * 2;
       forest.add(group);
@@ -296,16 +309,18 @@
     path.position.y = 0.01;
     scene.add(path);
 
-    // Bosque (espera al GLB; si no carga, fallback a procedural)
-    const modelTemplate = await getTreeModel();
-    // Race-condition guard: si el usuario cambió de tab durante el await del
-    // GLB (~500ms), destroy() ya corrió y scene es null. En ese caso, salimos
-    // limpios sin tirar excepción ni dejar objetos a medias.
+    // Bosque: cada árbol obtiene su GLB de especie. Pre-cargamos todos los
+    // modelos en paralelo para que el bosque aparezca de golpe (no en oleadas).
+    if (window.TreeModels) {
+      try { await window.TreeModels.preloadAll(); } catch (_) {}
+    }
+    // Race-condition guard
     if (!scene) {
-      console.warn('Bosque 3D: setupScene abortado (cambio de tab durante carga del GLB)');
+      console.warn('Bosque 3D: setupScene abortado (cambio de tab durante carga)');
       return;
     }
-    const forest = buildForest(trees, modelTemplate);
+    const forest = await buildForest(trees);
+    if (!scene) return;
     scene.add(forest);
 
     // Controls
