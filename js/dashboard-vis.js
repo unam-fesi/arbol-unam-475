@@ -309,28 +309,33 @@
       zone.count = count;
     });
 
-    // ---- ANILLOS-base (torus) para cada zona, marcan el "carrusel" ----
+    // ---- PEDESTAL-spotlight para cada zona ----
+    // Antes el anillo (torus) estaba a la misma altura que las fotos y las
+    // cruzaba como una línea horizontal molesta. Ahora el anillo va DEBAJO
+    // de las fotos (zone.y - 1.4) funcionando como un "halo de spotlight"
+    // del que parecen flotar las imágenes. Se ve más limpio y no las tapa.
+    const RING_OFFSET_Y = -1.4;
     ZONES.forEach(zone => {
-      // Anillo principal (torus delgado y luminoso)
-      const ringGeo = new THREE.TorusGeometry(zone.radius, 0.08, 12, 64);
+      // Disco translúcido del color del semáforo (el "spotlight")
+      const discGeo = new THREE.CircleGeometry(zone.radius + 0.6, 64);
+      const discMat = new THREE.MeshBasicMaterial({
+        color: zone.color, transparent: true, opacity: 0.1, side: THREE.DoubleSide
+      });
+      const disc = new THREE.Mesh(discGeo, discMat);
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = zone.y + RING_OFFSET_Y + 0.02;
+      scene.add(disc);
+
+      // Anillo delgado y luminoso en el perímetro del disco
+      const ringGeo = new THREE.TorusGeometry(zone.radius, 0.06, 10, 80);
       const ringMat = new THREE.MeshStandardMaterial({
-        color: zone.color, emissive: zone.color, emissiveIntensity: 0.5,
-        roughness: 0.5, metalness: 0.3
+        color: zone.color, emissive: zone.color, emissiveIntensity: 0.6,
+        roughness: 0.4, metalness: 0.3
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = Math.PI / 2;  // horizontal
-      ring.position.y = zone.y;
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = zone.y + RING_OFFSET_Y;
       scene.add(ring);
-
-      // Aro de halo translúcido (le da volumen al anillo)
-      const haloGeo = new THREE.TorusGeometry(zone.radius, 0.5, 8, 64);
-      const haloMat = new THREE.MeshBasicMaterial({
-        color: zone.color, transparent: true, opacity: 0.12
-      });
-      const halo = new THREE.Mesh(haloGeo, haloMat);
-      halo.rotation.x = Math.PI / 2;
-      halo.position.y = zone.y;
-      scene.add(halo);
 
       // Etiqueta de la zona — sprite billboard flotando arriba a la izquierda
       // del anillo, con diseño tipo "pill" del color de la zona.
@@ -484,7 +489,7 @@
     // Vertical:   tilta la cámara para enfocar arriba (Sano) o abajo (Crítico)
     let isDragging = false;
     let lastX = 0, lastY = 0;
-    const autoSpeed = 0.003;
+    const autoSpeed = 0.0012;  // 2.5x más lento — la rotación se siente más suave
     // Estado de cámara: ángulo de pitch que vamos a interpolar
     const CAM_RADIUS = 22;  // debe coincidir con camera.position.z inicial
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
@@ -569,18 +574,20 @@
 
     function animate() {
       animId = requestAnimationFrame(animate);
-      // Cada anillo gira a velocidad ligeramente distinta para dar dinamismo
+      // Cada anillo gira a velocidad ligeramente distinta. Diferencial bajo
+      // (idx*0.15) para que el ojo no se confunda con tres velocidades muy
+      // distintas pero todavía note un poco de dinamismo.
       if (!isDragging) {
         Object.entries(zoneGroups).forEach(([idx, zg]) => {
-          zg.rotation.y += autoSpeed * (1 + Number(idx) * 0.3);
+          zg.rotation.y += autoSpeed * (1 + Number(idx) * 0.15);
         });
       }
-      // Mover las nubes lento para sensación de cielo vivo
+      // Nubes — movimiento más sutil aún
       if (clouds && clouds.length) {
-        const t = Date.now() * 0.00003;
+        const t = Date.now() * 0.00002;
         clouds.forEach((c, i) => {
-          c.position.x = c.userData.baseX + Math.sin(t + i) * 4;
-          c.position.y = c.userData.baseY + Math.sin(t * 1.3 + i * 0.7) * 0.8;
+          c.position.x = c.userData.baseX + Math.sin(t + i) * 3;
+          c.position.y = c.userData.baseY + Math.sin(t * 1.2 + i * 0.7) * 0.5;
         });
       }
       // Billboard — las fotos miran a la cámara
