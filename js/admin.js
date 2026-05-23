@@ -2,17 +2,60 @@
 // ADMIN - Dashboard, Users, Trees, Gardens, Groups, Notifications, Assignments
 // ============================================================================
 
-// ---- ROLE GUARD: block non-admin from admin panel ----
-function isAdminRole() {
-  return currentUserProfile && currentUserProfile.role === 'admin';
+// ============================================================================
+// ROLE HELPERS — admin / admin-campus / specialist / responsable / user
+// ============================================================================
+function _userRole() {
+  return (currentUserProfile && currentUserProfile.role) || 'user';
 }
+function _userCampus() {
+  return (currentUserProfile && currentUserProfile.campus) || 'Iztacala';
+}
+function isAdminRole()         { return _userRole() === 'admin'; }
+function isAdminCampusRole()   { return _userRole() === 'admin-campus'; }
+function isResponsableRole()   { return _userRole() === 'responsable'; }
+function isSpecialistRole()    { return _userRole() === 'specialist'; }
+// Cualquier "admin" (principal o de campus) puede entrar al panel admin.
+function canAccessAdminPanel() {
+  return isAdminRole() || isAdminCampusRole();
+}
+// Solo el admin PRINCIPAL puede gestionar jardines, configuración global y auditoría completa.
+function canManageGardens()    { return isAdminRole(); }
+function canManageGlobalConfig() { return isAdminRole(); }
+function canSeeAllAuditLogs()  { return isAdminRole(); }
+
+// Filtro de campus: el admin principal tiene su propio dropdown ("Todos" o uno específico).
+// admin-campus y responsable están FIJOS a su campus (no pueden cambiar).
+// `_globalCampusFilter` solo lo usa el admin principal.
+let _globalCampusFilter = ''; // '' = todos los campus
+function effectiveCampusFilter() {
+  if (isAdminRole()) return _globalCampusFilter || '';   // admin: respeta el dropdown
+  return _userCampus();                                   // todos los demás: su campus
+}
+window._userRole = _userRole;
+window._userCampus = _userCampus;
+window.isAdminRole = isAdminRole;
+window.isAdminCampusRole = isAdminCampusRole;
+window.isResponsableRole = isResponsableRole;
+window.canAccessAdminPanel = canAccessAdminPanel;
+window.effectiveCampusFilter = effectiveCampusFilter;
 
 // ---- TAB SWITCHING ----
+// Tabs restringidas para admin-campus:
+//   - 'gardens'  → solo admin principal (no admin-campus)
+//   - 'audit'    → solo admin principal
+const TABS_ADMIN_ONLY = new Set(['gardens', 'audit']);
+
 function switchAdminTab(tabName) {
-  // Double-check: only admin can use admin tabs
-  if (!isAdminRole()) {
+  // admin principal Y admin-campus pueden entrar al panel
+  if (!canAccessAdminPanel()) {
     showToast('Acceso denegado: solo administradores', 'error');
     showSection('section-mi-arbol');
+    return;
+  }
+  // Bloquear tabs que solo admin principal puede ver
+  if (TABS_ADMIN_ONLY.has(tabName) && !isAdminRole()) {
+    showToast('Esta sección solo está disponible para el admin principal', 'warning');
     return;
   }
   document.querySelectorAll('.tab-pane').forEach(el => {
@@ -39,16 +82,70 @@ function switchAdminTab(tabName) {
   });
 }
 
+// Aplicar restricciones UI según rol cuando se monta el panel admin
+function applyRoleBasedUIRestrictions() {
+  // Ocultar tabs prohibidas para admin-campus
+  if (isAdminCampusRole()) {
+    document.querySelectorAll('.admin-tab').forEach(t => {
+      if (TABS_ADMIN_ONLY.has(t.dataset.tab)) {
+        t.style.display = 'none';
+      }
+    });
+  }
+  // Mostrar/ocultar selector global de campus
+  const sel = document.getElementById('admin-campus-filter');
+  if (sel) {
+    sel.style.display = isAdminRole() ? 'flex' : 'none';
+  }
+  // Banner persistente para admin-campus mostrando su campus
+  const banner = document.getElementById('admin-campus-banner');
+  if (banner) {
+    if (isAdminCampusRole() || isResponsableRole()) {
+      banner.style.display = 'block';
+      banner.innerHTML = `<i class="fas fa-map-marker-alt"></i> Tu vista está limitada al campus <strong>${escapeHtml(_userCampus())}</strong>`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+}
+window.applyRoleBasedUIRestrictions = applyRoleBasedUIRestrictions;
+
+// Cambio del dropdown global de campus (solo admin principal)
+function onAdminCampusFilterChange(value) {
+  _globalCampusFilter = value || '';
+  // Re-cargar lo que esté visible actualmente
+  const activePane = document.querySelector('.tab-pane.active');
+  if (!activePane) return;
+  const id = activePane.id;
+  if (id === 'usersTab') loadAdminUsers();
+  else if (id === 'treesTab') loadAdminTrees();
+  else if (id === 'gardensTab') loadAdminGardens();
+  else if (id === 'groupsTab') loadAdminGroups();
+  else if (id === 'notificationsTab') loadAdminNotifications();
+  else if (id === 'assignmentsTab') loadAssignments();
+  else if (id === 'dashboardTab') loadAdminDashboard(true);
+  else if (id === 'reportsTab') loadCitizenReports();
+  else if (id === 'auditTab') loadAuditLog();
+}
+window.onAdminCampusFilterChange = onAdminCampusFilterChange;
+
 // ---- DASHBOARD ----
 let dashboardLoaded = false;
 
 async function loadAdminDashboard(forceReload) {
   if (dashboardLoaded && !forceReload) return;
   try {
-    const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
-    const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
-    const { count: assignCount } = await sb.from('tree_assignments').select('*', { count: 'exact', head: true });
-    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus, location_lat, location_lng, photo_url, initial_height_cm');
+    const campusFilter = effectiveCampusFilter();
+    const userQ = sb.from('user_profiles').select('*', { count: 'exact', head: true });
+    const treeQ = sb.from('trees_catalog').select('*', { count: 'exact', head: true });
+    const assignQ = sb.from('tree_assignments').select('*', { count: 'exact', head: true });
+    if (campusFilter) { userQ.eq('campus', campusFilter); treeQ.eq('campus', campusFilter); }
+    const { count: userCount } = await userQ;
+    const { count: treeCount } = await treeQ;
+    const { count: assignCount } = await assignQ;
+    let trQ = sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus, location_lat, location_lng, photo_url, initial_height_cm');
+    if (campusFilter) trQ = trQ.eq('campus', campusFilter);
+    const { data: trees } = await trQ;
     const treeList = trees || [];
     const avgHealth = treeList.length > 0
       ? Math.round(treeList.reduce((sum, t) => sum + (t.health_score || 0), 0) / treeList.length) : 0;
@@ -218,7 +315,10 @@ function loadAdminMap(treeList) {
 let _usersCache = [];
 async function loadAdminUsers() {
   try {
-    const { data, error } = await sb.from('user_profiles').select('*').order('full_name');
+    let q = sb.from('user_profiles').select('*').order('full_name');
+    const campusFilter = effectiveCampusFilter();
+    if (campusFilter) q = q.eq('campus', campusFilter);
+    const { data, error } = await q;
     if (error) throw error;
     _usersCache = data || [];
     _renderUsers(_usersCache);
@@ -338,12 +438,28 @@ async function saveAdminUser(e) {
   const numCuenta = document.getElementById('admin-user-num-cuenta')?.value.trim();
   const fechaNac = document.getElementById('admin-user-fecha-nacimiento')?.value;
   const estatus = document.getElementById('admin-user-estatus')?.value || 'alumno';
-  const role = document.getElementById('admin-user-role')?.value || 'user';
+  let role = document.getElementById('admin-user-role')?.value || 'user';
 
   if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
   if (!password || password.length < 6) { showToast('Contraseña de al menos 6 caracteres', 'error'); return; }
 
-  const campus = document.getElementById('admin-user-campus')?.value || 'Iztacala';
+  let campus = document.getElementById('admin-user-campus')?.value || 'Iztacala';
+
+  // RESTRICCIONES PARA ADMIN-CAMPUS:
+  //   • No puede crear admin principal ni admin-campus de otros campus
+  //   • Forzado: el campus del nuevo usuario = su campus
+  if (isAdminCampusRole()) {
+    if (role === 'admin') {
+      showToast('Solo el admin principal puede crear administradores principales', 'error');
+      return;
+    }
+    if (role === 'admin-campus' && campus !== _userCampus()) {
+      showToast('Solo puedes crear admin-campus de tu propio campus', 'error');
+      return;
+    }
+    // Forzar campus del nuevo usuario al campus del admin-campus
+    campus = _userCampus();
+  }
 
   // Specialist-only fields
   const specialty = document.getElementById('admin-user-specialty')?.value.trim() || null;
@@ -462,7 +578,10 @@ async function loadAdminTrees() {
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
   try {
-    const { data, error } = await sb.from('trees_catalog').select('*').order('tree_code');
+    let q = sb.from('trees_catalog').select('*').order('tree_code');
+    const campusFilter = effectiveCampusFilter();
+    if (campusFilter) q = q.eq('campus', campusFilter);
+    const { data, error } = await q;
     if (error) throw error;
     _adminTreesCache = data || [];
     _setupAdminTreesFilters();
@@ -671,6 +790,15 @@ async function saveAdminTree(e) {
   if (!TREE_STATUS_VALUES.includes(tree.status)) { showToast('Estado inválido', 'error'); return; }
   if (!TREE_TYPE_VALUES.includes(tree.tree_type)) { showToast('Tipo inválido', 'error'); return; }
   if (!TREE_SIZE_VALUES.includes(tree.size)) { showToast('Tamaño inválido', 'error'); return; }
+
+  // RESTRICCIÓN admin-campus: solo puede crear árboles de SU campus.
+  if (isAdminCampusRole() || isResponsableRole()) {
+    if (tree.campus && tree.campus !== _userCampus()) {
+      showToast(`Solo puedes crear árboles del campus ${_userCampus()}`, 'error');
+      return;
+    }
+    tree.campus = _userCampus();  // forzar
+  }
 
   try {
     // 1. Insertar árbol y obtener su id (necesario para el path de la foto,
@@ -1088,7 +1216,11 @@ let _gardensCache = [];
 async function loadAdminGardens() {
   populateSpecialistDropdown('admin-garden-specialist');
   try {
-    const { data, error } = await sb.from('gardens').select('*').order('name');
+    let q = sb.from('gardens').select('*').order('name');
+    // Jardines son solo de Iztacala (regla de negocio) — pero igual respetamos filtro
+    const campusFilter = effectiveCampusFilter();
+    if (campusFilter) q = q.eq('campus', campusFilter);
+    const { data, error } = await q;
     if (error) throw error;
     _gardensCache = data || [];
     _renderGardens(_gardensCache);
@@ -1786,15 +1918,16 @@ async function loadAssignments() {
       .order('assigned_at', { ascending: false });
     const assignedTreeIds = new Set((treeAssignmentsData || []).map(a => a.tree_id));
 
-    // Tree dropdown
+    // Tree dropdown — filtrado por campus para admin-campus/responsable
     const treeSelect = document.getElementById('assign-tree');
     if (treeSelect) {
       treeSelect.innerHTML = '<option value="">Selecciona árbol...</option>';
-      (trees || []).forEach(t => {
+      const campusFilter = effectiveCampusFilter();
+      (trees || []).filter(t => !campusFilter || t.campus === campusFilter).forEach(t => {
         const isAssigned = assignedTreeIds.has(t.id);
         const suffix = isAssigned ? ' (Ya asignado)' : '';
         const disabled = isAssigned ? 'disabled' : '';
-        treeSelect.innerHTML += `<option value="${t.id}" ${disabled}>${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)}${suffix}</option>`;
+        treeSelect.innerHTML += `<option value="${t.id}" ${disabled}>${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)} (${escapeHtml(t.campus || '?')})${suffix}</option>`;
       });
     }
 
@@ -2044,9 +2177,11 @@ function populateAssignTarget(typeSelectId, targetSelectId, users, groups) {
 
   const type = typeSelect.value;
   targetSelect.innerHTML = '<option value="">Selecciona...</option>';
+  // Filtrado por campus para admin-campus / responsable / cuando admin tiene filter global
+  const campusFilter = effectiveCampusFilter();
   if (type === 'user') {
-    (users || []).forEach(u => {
-      targetSelect.innerHTML += `<option value="${u.id}">👤 ${escapeHtml(u.full_name || 'Sin nombre')}</option>`;
+    (users || []).filter(u => !campusFilter || u.campus === campusFilter).forEach(u => {
+      targetSelect.innerHTML += `<option value="${u.id}">👤 ${escapeHtml(u.full_name || 'Sin nombre')} (${escapeHtml(u.campus || '?')})</option>`;
     });
   } else {
     (groups || []).forEach(g => {
@@ -3447,6 +3582,11 @@ function switchVisTab(which) {
     }
   });
 
+  // Visualizaciones 3D específicas a Iztacala (FES Iztacala 3D, Walkthrough) →
+  // si el campus efectivo NO es Iztacala/Todos, mostramos mensaje en lugar de cargar
+  const campusFilter = (typeof effectiveCampusFilter === 'function') ? effectiveCampusFilter() : '';
+  const isIzta = !campusFilter || campusFilter === 'Iztacala';
+
   // Inicializar la visualización activa
   setTimeout(() => {
     try {
@@ -3458,15 +3598,44 @@ function switchVisTab(which) {
         window.DashboardMosaico.init('#dashboard-mosaico-vis', trees);
       } else if (which === 'heatmap' && window.DashboardHeatmap) {
         window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
-      } else if (which === 'iztacala' && window.IztacalaMap) {
-        window.IztacalaMap.init('#dashboard-iztacala-vis');
-      } else if (which === 'walkthrough' && window.DashboardWalkthrough) {
-        window.DashboardWalkthrough.init('#dashboard-walkthrough-vis');
+      } else if (which === 'iztacala') {
+        if (isIzta && window.IztacalaMap) {
+          window.IztacalaMap.init('#dashboard-iztacala-vis');
+        } else {
+          _showCampusUnderConstruction('#dashboard-iztacala-vis', campusFilter);
+        }
+      } else if (which === 'walkthrough') {
+        if (isIzta && window.DashboardWalkthrough) {
+          window.DashboardWalkthrough.init('#dashboard-walkthrough-vis');
+        } else {
+          _showCampusUnderConstruction('#dashboard-walkthrough-vis', campusFilter);
+        }
       }
     } catch (e) {
       console.warn('Vis init failed:', which, e);
     }
   }, 50);
+}
+
+// Mensaje "Modelo 3D en construcción" para campus sin GLB todavía
+function _showCampusUnderConstruction(selector, campusName) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  el.innerHTML = `
+    <div style="height:100%;min-height:400px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-radius:12px;padding:2rem;">
+      <div style="text-align:center;max-width:520px;">
+        <div style="font-size:3rem;margin-bottom:1rem;">🏗️</div>
+        <h3 style="margin:0 0 0.6rem;color:#1b5e20;">Modelo 3D en construcción</h3>
+        <p style="color:#444;line-height:1.5;">
+          Aún no hay un modelo 3D del campus <strong>${escapeHtml(campusName || '?')}</strong>.<br>
+          Solo el campus <strong>FES Iztacala</strong> tiene modelo disponible por ahora.
+        </p>
+        <p style="color:#888;font-size:0.85rem;margin-top:1rem;">
+          Por mientras, usa el <strong>Heatmap campus</strong> o el <strong>Mapa 3D</strong>, que sí funcionan para cualquier campus.
+        </p>
+      </div>
+    </div>
+  `;
 }
 
 window.switchVisTab = switchVisTab;

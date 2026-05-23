@@ -285,7 +285,24 @@
 
                 <!-- ========== ADMIN SECTION ========== -->
                 <section id="section-admin" class="page-section">
-                    <h2 style="margin-bottom: 2rem;">Panel de Administración</h2>
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1.2rem;">
+                        <h2 style="margin:0;">Panel de Administración</h2>
+                        <!-- Selector global de campus — solo visible para admin principal -->
+                        <div id="admin-campus-filter" style="display:none;align-items:center;gap:0.5rem;background:rgba(46,125,50,0.08);padding:0.4rem 0.8rem;border-radius:10px;">
+                            <span style="font-size:0.85rem;color:#1b5e20;font-weight:600;">🗺️ Campus:</span>
+                            <select onchange="onAdminCampusFilterChange(this.value)" style="border:1px solid #c5e1c5;padding:0.3rem 0.6rem;border-radius:6px;background:white;font-size:0.85rem;">
+                                <option value="">Todos los campus</option>
+                                <option value="Iztacala">FES Iztacala</option>
+                                <option value="Acatlan">FES Acatlán</option>
+                                <option value="Aragon">FES Aragón</option>
+                                <option value="Cuautitlan">FES Cuautitlán</option>
+                                <option value="Zaragoza">FES Zaragoza</option>
+                                <option value="CU">CU</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Banner para admin-campus / responsable indicando su campus -->
+                    <div id="admin-campus-banner" style="display:none;background:#fff7e6;border:1px solid #ffd180;color:#7a5a2a;padding:0.6rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.88rem;"></div>
 
                     <div class="admin-panel">
                         <div class="admin-tabs">
@@ -350,9 +367,11 @@
                                             <div class="form-group">
                                                 <label for="admin-user-role">Rol</label>
                                                 <select id="admin-user-role" onchange="toggleSpecialistFields()">
-                                                    <option value="user">Usuario</option>
+                                                    <option value="user">Usuario (estudiante/maestro)</option>
+                                                    <option value="responsable">Responsable (pasante coordinador)</option>
                                                     <option value="specialist">Especialista</option>
-                                                    <option value="admin">Administrador</option>
+                                                    <option value="admin-campus">Admin de campus</option>
+                                                    <option value="admin">Administrador principal</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">

@@ -3,19 +3,18 @@
 // ============================================================================
 
 function showSection(sectionId) {
-  // Normaliza el rol: si viene null/undefined → 'user' (más seguro)
   const role = (currentUserProfile?.role || 'user').toLowerCase();
 
-  // SECURITY: block non-admin from admin section
+  // SECURITY: admin section accesible para admin (principal) y admin-campus
   if (sectionId === 'section-admin') {
-    if (role !== 'admin') {
-      showToast('Acceso denegado: solo administradores', 'error');
+    if (!['admin', 'admin-campus', 'responsable'].includes(role)) {
+      showToast('Acceso denegado', 'error');
       showSection('section-mi-arbol');
       return;
     }
   }
 
-  // SECURITY: block non-specialist/non-admin from specialist section
+  // SECURITY: specialist section
   if (sectionId === 'section-specialist') {
     if (!['specialist', 'admin'].includes(role)) {
       showToast('Acceso denegado: solo especialistas', 'error');
@@ -54,46 +53,48 @@ function showSection(sectionId) {
     }
     else if (sectionId === 'section-info') loadInfoSection();
     else if (sectionId === 'section-pumai') initPumAI();
-    else if (sectionId === 'section-admin') switchAdminTab('users');
+    else if (sectionId === 'section-admin') {
+      switchAdminTab('users');
+      // Aplicar restricciones de UI según el rol (oculta tabs prohibidas, etc.)
+      if (typeof applyRoleBasedUIRestrictions === 'function') {
+        setTimeout(applyRoleBasedUIRestrictions, 50);
+      }
+    }
     else if (sectionId === 'section-specialist') loadSpecialistTrees();
   }
 }
 
 function setupRoleBasedNav(role) {
-  // Normaliza: null/undefined → 'user', y lowercase
   const r = (role || 'user').toLowerCase();
   const isAdmin = r === 'admin';
+  const isAdminCampus = r === 'admin-campus';
+  const isResponsable = r === 'responsable';
   const isSpecialist = r === 'specialist';
+  // admin, admin-campus y responsable pueden ver el tab admin (con restricciones internas)
+  const canSeeAdmin = isAdmin || isAdminCampus || isResponsable;
 
   document.querySelectorAll('#navbarNav .nav-link[data-section]').forEach(link => {
     const section = link.dataset.section;
     let visible = true;
-
-    // Tabs administrativos: solo admin
-    if (section === 'section-admin' && !isAdmin) visible = false;
-    // Tab especialista: specialist o admin
+    if (section === 'section-admin' && !canSeeAdmin) visible = false;
     if (section === 'section-specialist' && !(isSpecialist || isAdmin)) visible = false;
-
     link.style.display = visible ? '' : 'none';
   });
 
-  // Defense in depth: borra el contenido de admin para no-admins
+  // Defense in depth: borra el contenido de admin para usuarios sin acceso
   const adminSection = document.getElementById('section-admin');
-  if (adminSection && !isAdmin) {
+  if (adminSection && !canSeeAdmin) {
     adminSection.style.display = 'none';
-    adminSection.innerHTML = ''; // limpia DOM (no se queda renderizado en background)
+    adminSection.innerHTML = '';
   }
 
-  // Defense in depth: oculta especialista
   const specialistSection = document.getElementById('section-specialist');
   if (specialistSection && !(isSpecialist || isAdmin)) {
     specialistSection.style.display = 'none';
   }
 
-  // Si el usuario está en una sección que no debería ver, lo redirige
-  // (caso: refrescó la página estando en /admin)
   const visible = document.querySelector('[id^="section-"]:not([style*="display:none"])');
-  if (visible && visible.id === 'section-admin' && !isAdmin) {
+  if (visible && visible.id === 'section-admin' && !canSeeAdmin) {
     showSection('section-mi-arbol');
   }
   if (visible && visible.id === 'section-specialist' && !(isSpecialist || isAdmin)) {
