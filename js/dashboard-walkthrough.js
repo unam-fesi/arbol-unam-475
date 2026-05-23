@@ -392,29 +392,53 @@
     return g;
   }
 
-  // Vector reusable para no crear objetos cada frame
-  const _fwd = new THREE.Vector3();
-
-  // Actualizar posición de la cámara según playerPos + yaw/pitch + cameraDistance
-  // CLAVE: el puma SIEMPRE queda centrado en la vista de la cámara. La
-  // cámara orbita ALREDEDOR del puma (no al revés).
+  // Actualizar la cámara según playerPos + yaw/pitch + cameraDistance.
+  //
+  // ESTILO ROBLOX:
+  //   • En 1ª persona la cámara coincide con la cabeza del puma
+  //   • En 3ª persona la cámara ORBITA alrededor del puma usando coordenadas
+  //     esféricas (yaw, elevation, distance). Mientras más zoom-out, más
+  //     ELEVACIÓN automática para dar vista panorámica del mapa.
+  //   • camera.lookAt() garantiza que el puma SIEMPRE queda centrado, sin
+  //     riesgo de errores de signo en la matemática manual.
+  const _target = new THREE.Vector3();
   function _updateCameraFromPlayer() {
     if (!camera || !playerPos) return;
-    // 1. Aplicar rotación (yaw + pitch) — esto define hacia dónde mira la cámara
-    camera.rotation.y = yaw;
-    camera.rotation.x = pitch;
+
     if (cameraDistance <= 0.05) {
-      // 1ª persona: cámara coincide con ojos del puma
+      // 1ª persona
       camera.position.copy(playerPos);
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
       return;
     }
-    // 3ª persona: cámara está DETRÁS del puma a lo largo de la dirección
-    // hacia donde mira. Usamos applyEuler para que el vector forward salga
-    // directo del sistema de rotación de Three.js (sin errores de signo).
-    _fwd.set(0, 0, -1).applyEuler(camera.rotation);
-    camera.position.copy(playerPos);
-    camera.position.addScaledVector(_fwd, -cameraDistance);
-    camera.position.y += 0.6;  // ligera elevación tipo "altura de hombro"
+
+    // 3ª persona — orbit Roblox-style
+    // Elevation base: a más zoom-out, más alto va la cámara (vista panorámica)
+    // Va de 0.15 rad (~9°) en zoom cercano a 0.55 rad (~32°) en zoom lejano.
+    const distFrac = (cameraDistance - CAM_DIST_MIN) / (CAM_DIST_MAX - CAM_DIST_MIN);
+    const baseElevation = 0.15 + distFrac * 0.40;
+    // El pitch del usuario suma sobre esa base (mouse arriba = más alto)
+    const elevation = Math.max(-0.1, Math.min(1.30, baseElevation - pitch));
+    const cosE = Math.cos(elevation);
+    const sinE = Math.sin(elevation);
+
+    // Posición de cámara en coords esféricas alrededor del puma
+    // yaw=0 → cámara DETRÁS del puma (a +Z relativa)
+    // yaw=π/2 → cámara al ESTE
+    const offX = Math.sin(yaw) * cosE * cameraDistance;
+    const offY = sinE * cameraDistance;
+    const offZ = Math.cos(yaw) * cosE * cameraDistance;
+
+    camera.position.set(
+      playerPos.x + offX,
+      playerPos.y + offY,
+      playerPos.z + offZ
+    );
+
+    // Apuntar al puma (a la altura del pecho — 1.2m sobre el suelo)
+    _target.set(playerPos.x, playerPos.y - EYE_HEIGHT + 1.2, playerPos.z);
+    camera.lookAt(_target);
   }
 
   // ---- HUD ---------------------------------------------------------------
@@ -480,8 +504,13 @@
     };
     const onMouseMove = (e) => {
       if (!isLocked) return;
-      yaw -= e.movementX * 0.002;
-      pitch -= e.movementY * 0.002;
+      // Clampear delta para evitar saltos enormes (trackpad de Mac manda
+      // valores grandes con pointer-lock). Y bajar sensibilidad 2.5x: de
+      // 0.002 a 0.0008 rad/pixel, para que un movimiento sutil sea sutil.
+      const dx = Math.max(-50, Math.min(50, e.movementX));
+      const dy = Math.max(-50, Math.min(50, e.movementY));
+      yaw -= dx * 0.0008;
+      pitch -= dy * 0.0008;
       pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
     };
     const onKeyDown = (e) => {
@@ -644,8 +673,8 @@
         const dy = t.clientY - touchState.lookStartY;
         touchState.lookStartX = t.clientX;
         touchState.lookStartY = t.clientY;
-        yaw -= dx * 0.005;
-        pitch -= dy * 0.005;
+        yaw -= dx * 0.003;
+        pitch -= dy * 0.003;
         pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
       }
     }, { passive: true });
@@ -717,6 +746,10 @@
   }
 
   // ---- Loop principal ----------------------------------------------------
+  // Vectores reusables (evita garbage collection cada frame)
+  const _camFwd = new THREE.Vector3();
+  const _camRight = new THREE.Vector3();
+
   function _startLoop() {
     let last = performance.now();
     let walkPhase = 0;  // para animar las patas del pumita
@@ -745,11 +778,19 @@
         isWalking = true;
         move.normalize();
         const speed = WALK_SPEED * (keys['ShiftLeft'] || keys['ShiftRight'] ? RUN_FACTOR : 1) * dt;
-        const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
-        const dx = move.x * cosY + move.z * sinY;
-        const dz = -move.x * sinY + move.z * cosY;
-        playerPos.x += dx * speed;
-        playerPos.z += dz * speed;
+        // Caminar en dirección a donde MIRA la cámara (Roblox-style).
+        // Sacamos el forward horizontal de la cámara y derivamos el right.
+        camera.getWorldDirection(_camFwd);
+        _camFwd.y = 0;
+        if (_camFwd.lengthSq() > 0.001) {
+          _camFwd.normalize();
+          // Right perpendicular (CCW desde arriba)
+          _camRight.set(_camFwd.z, 0, -_camFwd.x);
+          // Aplicar W/S (camFwd) y A/D (camRight)
+          // move.z negativo = W = adelante
+          playerPos.addScaledVector(_camFwd, -move.z * speed);
+          playerPos.addScaledVector(_camRight, move.x * speed);
+        }
       }
 
       // ---- Gravedad / salto del jugador ----
@@ -768,7 +809,16 @@
       // ---- Avatar (puma): sincronizar posición + rotación ----
       if (avatar) {
         avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
-        avatar.rotation.y = yaw;  // mira hacia donde apunta la cámara
+        // El puma SIEMPRE mira en la dirección horizontal hacia donde apunta
+        // la cámara. Así caminar W lo lleva hacia adelante (la dirección que
+        // ya está viendo). Mirar Roblox-style: cuerpo siempre alineado con
+        // la vista, no con el yaw que es solo el ángulo del orbit.
+        camera.getWorldDirection(_camFwd);
+        _camFwd.y = 0;
+        if (_camFwd.lengthSq() > 0.001) {
+          // atan2 con doble negativo para que el "head -Z default" mire al fwd
+          avatar.rotation.y = Math.atan2(-_camFwd.x, -_camFwd.z);
+        }
         // Mostrar/ocultar según vista 1ª/3ª persona
         avatar.visible = cameraDistance > 1.5;
         // Animar patas + cola al caminar
