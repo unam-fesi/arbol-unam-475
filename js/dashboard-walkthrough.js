@@ -765,54 +765,70 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     }, { passive: false });
     containerEl.appendChild(jumpBtn);
 
-    // Look pad = arrastrar en el área de la pantalla (no sobre el joystick/botones)
+    // Look pad — arrastrar en el área de la pantalla (no sobre el joystick/botones)
     const canvas = renderer.domElement;
+    // CSS para prevenir gestos del navegador (pinch-to-zoom de la página, etc.)
+    canvas.style.touchAction = 'none';
+    canvas.style.webkitTouchCallout = 'none';
+    canvas.style.userSelect = 'none';
+
     canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
       for (const t of e.changedTouches) {
-        // Ignorar si el touch toca el joystick o botones (ya tienen sus listeners)
         if (touchState.lookTouchId == null) {
           touchState.lookTouchId = t.identifier;
           touchState.lookStartX = t.clientX;
           touchState.lookStartY = t.clientY;
         }
       }
-      // Pinch zoom
       if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         touchState.pinchStartDist = Math.hypot(dx, dy);
         touchState.pinchStartCamDist = cameraDistance;
+        // Si era look con 1 dedo, cancelarlo al empezar pinch
+        touchState.lookTouchId = null;
       }
-    }, { passive: true });
+    }, { passive: false });
+
     canvas.addEventListener('touchmove', (e) => {
-      // Pinch
+      e.preventDefault();   // ← CLAVE: previene pinch-zoom del navegador
+      // Pinch (2 dedos) — zoom de la cámara
       if (e.touches.length === 2 && touchState.pinchStartDist > 0) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const d = Math.hypot(dx, dy);
+        // Dedos SEPARÁNDOSE = d > startDist → factor < 1 → zoom IN (menos distancia)
+        // Dedos JUNTÁNDOSE = d < startDist → factor > 1 → zoom OUT (más distancia)
+        // Eso es lo natural: spread = acercar (mismo que apps de fotos)
         const factor = touchState.pinchStartDist / d;
         cameraDistance = Math.max(CAM_DIST_MIN, Math.min(CAM_DIST_MAX,
           touchState.pinchStartCamDist * factor));
         return;
       }
-      // Look (1 dedo)
+      // Look (1 dedo) — Roblox/FPS style: drag right = camera looks right
       for (const t of e.changedTouches) {
         if (t.identifier !== touchState.lookTouchId) continue;
         const dx = t.clientX - touchState.lookStartX;
         const dy = t.clientY - touchState.lookStartY;
         touchState.lookStartX = t.clientX;
         touchState.lookStartY = t.clientY;
-        yaw -= dx * 0.003;
-        pitch -= dy * 0.003;
+        // SIGNOS INVERTIDOS respecto al desktop. En móvil/touch la convención
+        // típica es "drag world": drag right = cámara mira izquierda.
+        // Pero el usuario reportó que se siente al revés, así que usamos
+        // "drag camera": drag right = cámara mira derecha (mismo que joystick).
+        yaw += dx * 0.004;
+        pitch += dy * 0.004;
         pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
       }
-    }, { passive: true });
+    }, { passive: false });
+
     canvas.addEventListener('touchend', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier === touchState.lookTouchId) touchState.lookTouchId = null;
       }
       if (e.touches.length < 2) touchState.pinchStartDist = 0;
-    });
+    }, { passive: false });
 
     // Guardar refs para destroy
     touchState.uiEls = [stick, eBtn, jumpBtn];

@@ -877,7 +877,7 @@ async function editAdminTree(treeId) {
             📍 Mapa
           </button>
         </div>
-        <small style="color:#666;font-size:0.75rem;">Click en "📍 Mapa" para arrastrar un pin en el mapa real (estilo Uber)</small>
+        <small style="color:#666;font-size:0.75rem;">Click en "📍 Mapa" para arrastrar un pin en el mapa real</small>
       </div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Salud (0-100)</label><input type="number" id="edit-tree-health" value="${tree.health_score || 0}" min="0" max="100" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Estado</label>
@@ -2005,9 +2005,6 @@ function openLocationMapEditor(opts) {
         </div>
         <button id="tree-loc-close-x" style="background:transparent;border:none;font-size:1.4rem;cursor:pointer;color:#999;line-height:1;">&times;</button>
       </div>
-      <div style="padding:0.6rem 1rem;background:#fff7ec;border-bottom:1px solid #f0e0c0;font-size:0.8rem;color:#7a5a2a;">
-        💡 Arrastra el pin verde o haz click en el mapa para corregir la ubicación. Al guardar, los 3 mapas (Mapa 3D, Heatmap, FES Iztacala 3D) se actualizan automáticamente.
-      </div>
       <div id="tree-location-map" style="flex:1;min-height:460px;"></div>
       <div style="padding:0.8rem 1.3rem;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;background:#fafafa;flex-wrap:wrap;">
         <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.78rem;color:#444;">
@@ -2137,13 +2134,25 @@ async function _resolveStoragePhoto(photoUrl, bucket) {
 // ============================================================================
 async function viewTreeMeasurementsAdmin(treeId) {
   try {
-    const { data: tree } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').eq('id', treeId).single();
+    const { data: tree } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, photo_url').eq('id', treeId).single();
     if (!tree) { showToast('Árbol no encontrado', 'error'); return; }
 
     const { data: meas } = await sb.from('tree_measurements')
       .select('id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score, photo_url, observations, user_id')
       .eq('tree_id', treeId)
       .order('measurement_date', { ascending: false });
+
+    // Foto INICIAL: primero la del árbol (creada al alta), si no, la del seguimiento más antiguo
+    let initialPhotoSrc = null;
+    if (tree.photo_url) {
+      initialPhotoSrc = await _resolveStoragePhoto(tree.photo_url, 'tree-photos');
+    } else if (meas && meas.length > 0) {
+      // El más antiguo es el último del array (descending order)
+      const oldest = meas[meas.length - 1];
+      if (oldest.photo_url) {
+        initialPhotoSrc = await _resolveStoragePhoto(oldest.photo_url, 'tree-photos');
+      }
+    }
 
     // Cargar nombres de usuarios
     const userIds = [...new Set((meas || []).map(m => m.user_id).filter(Boolean))];
@@ -2204,9 +2213,24 @@ async function viewTreeMeasurementsAdmin(treeId) {
       }).join('');
     }
 
+    const initialThumb = initialPhotoSrc
+      ? `<div style="flex-shrink:0;text-align:center;">
+           <img src="${escapeHtml(initialPhotoSrc)}"
+                onclick="window.open('${escapeHtml(initialPhotoSrc)}','_blank')"
+                title="Foto inicial — click para ver completa"
+                style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:2px solid #4CAF50;box-shadow:0 2px 6px rgba(0,0,0,0.15);"
+                onerror="this.style.display='none'">
+           <div style="font-size:0.65rem;color:#888;margin-top:2px;">📸 Inicial</div>
+         </div>`
+      : '';
+
     showModal(`Seguimientos: ${escapeHtml(tree.common_name || tree.tree_code)}`, `
-      <div style="margin-bottom:0.7rem;color:#666;font-size:0.85rem;">
-        <strong>${escapeHtml(tree.tree_code)}</strong> · <em>${escapeHtml(tree.species || '')}</em> · ${(meas || []).length} seguimiento${(meas || []).length !== 1 ? 's' : ''}
+      <div style="margin-bottom:0.7rem;display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+        <div style="color:#666;font-size:0.85rem;flex:1;">
+          <strong>${escapeHtml(tree.tree_code)}</strong> · <em>${escapeHtml(tree.species || '')}</em><br>
+          ${(meas || []).length} seguimiento${(meas || []).length !== 1 ? 's' : ''}
+        </div>
+        ${initialThumb}
       </div>
       <div style="max-height:60vh;overflow-y:auto;border:1px solid #eee;border-radius:10px;">
         ${rowsHtml}
