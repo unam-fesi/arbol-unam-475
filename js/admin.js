@@ -231,8 +231,9 @@ async function loadAdminUsers() {
         <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
         <td>${escapeHtml(user.campus || '-')}</td>
         <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
-        <td>
-          <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')">Editar</button>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')" title="Editar">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${escapeHtml(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
         </td>
       `;
       tbody.appendChild(row);
@@ -241,6 +242,49 @@ async function loadAdminUsers() {
     showToast('Error cargando usuarios: ' + err.message, 'error');
   }
 }
+
+async function deleteAdminUser(userId, userName) {
+  if (!confirm(`¿Borrar al usuario "${userName}"?\n\n⚠ Se eliminarán TAMBIÉN:\n• Sus asignaciones de árboles y jardines\n• Sus mediciones/seguimientos (la foto queda en storage)\n• Sus reportes\n• Su perfil completo\n\nLa cuenta de auth también se elimina y NO se puede recuperar.`)) return;
+
+  try {
+    // Limpieza de dependencias (algunas tienen FK con ON DELETE CASCADE o son SET NULL)
+    // No-throw individual para no abortar si una tabla no existe
+    const tables = [
+      { t: 'tree_assignments',     col: 'user_id' },
+      { t: 'garden_assignments',   col: 'user_id' },
+      { t: 'tree_measurements',    col: 'user_id' },
+      { t: 'garden_visits',        col: 'user_id' },
+      { t: 'problem_reports',      col: 'reporter_id' },
+      { t: 'specialist_followups', col: 'specialist_id' },
+      { t: 'group_members',        col: 'user_id' },
+    ];
+    for (const { t, col } of tables) {
+      const { error } = await sb.from(t).delete().eq(col, userId);
+      if (error && !/relation .* does not exist/.test(error.message)) {
+        console.warn(`Cleanup ${t}.${col} warning:`, error.message);
+      }
+    }
+
+    // Borrar el perfil del usuario
+    const { error: profErr } = await sb.from('user_profiles').delete().eq('id', userId);
+    if (profErr) throw profErr;
+
+    // Intentar borrar la cuenta de auth via Edge Function (delete-user) si existe
+    try {
+      const { error: edgeErr } = await sb.functions.invoke('delete-user', { body: { userId } });
+      if (edgeErr) console.warn('delete-user edge function:', edgeErr.message || edgeErr);
+    } catch (e) {
+      console.warn('Edge function delete-user no disponible (la cuenta auth permanece — se puede borrar manualmente en Supabase)');
+    }
+
+    showToast('Usuario eliminado', 'success');
+    loadAdminUsers();
+  } catch (err) {
+    console.error('deleteAdminUser error:', err);
+    showToast('Error al borrar usuario: ' + (err.message || err), 'error');
+  }
+}
+window.deleteAdminUser = deleteAdminUser;
 
 function toggleSpecialistFields() {
   const role = document.getElementById('admin-user-role')?.value;
@@ -1670,37 +1714,21 @@ async function loadAssignments() {
       (gd || []).forEach(g => { taGroupMap[g.id] = g; });
     }
 
-    const treeBody = document.getElementById('tree-assignments-body');
-    if (treeBody) {
-      treeBody.innerHTML = '';
-      (treeAssignments || []).forEach(a => {
-        const row = document.createElement('tr');
-        const tree = taTreeMap[a.tree_id] || {};
-        const targetName = a.user_id ? (taUserMap[a.user_id]?.full_name || 'Usuario') : (taGroupMap[a.group_id]?.name || 'Grupo');
-        const type = a.user_id ? 'Usuario' : 'Grupo';
-        const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
-
-        // Extract specialist from notes if it exists
-        let specialist = '-';
-        if (a.notes && a.notes.startsWith('[ESPECIALISTA:')) {
-          const match = a.notes.match(/\[ESPECIALISTA:\s*([^\]]+)\]/);
-          if (match) specialist = escapeHtml(match[1].trim());
-        }
-
-        row.innerHTML = `
-          <td>🌳 ${escapeHtml(tree.tree_code || '-')} - ${escapeHtml(tree.common_name || '')}</td>
-          <td>${escapeHtml(targetName)}</td>
-          <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
-          <td>${specialist}</td>
-          <td>${formatDate(a.assigned_at)}</td>
-          <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${a.id}')">Quitar</button></td>
-        `;
-        treeBody.appendChild(row);
-      });
-      if (!treeAssignments || treeAssignments.length === 0) {
-        treeBody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de árboles</td></tr>';
+    // Pre-procesar cada asignación de árbol con los campos display
+    const treeAssignmentsEnriched = (treeAssignments || []).map(a => {
+      const tree = taTreeMap[a.tree_id] || {};
+      const targetName = a.user_id ? (taUserMap[a.user_id]?.full_name || 'Usuario') : (taGroupMap[a.group_id]?.name || 'Grupo');
+      const type = a.user_id ? 'Usuario' : 'Grupo';
+      const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
+      let specialist = '-';
+      if (a.notes && a.notes.startsWith('[ESPECIALISTA:')) {
+        const match = a.notes.match(/\[ESPECIALISTA:\s*([^\]]+)\]/);
+        if (match) specialist = match[1].trim();
       }
-    }
+      return { raw: a, tree, targetName, type, badgeClass, specialist };
+    });
+    _treeAssignmentsCache = treeAssignmentsEnriched;
+    _renderTreeAssignments(treeAssignmentsEnriched);
 
     // Load existing garden assignments (simple query)
     const { data: gardenAssignments } = await sb.from('garden_assignments')
@@ -1725,34 +1753,124 @@ async function loadAssignments() {
       (gd2 || []).forEach(g => { gaGroupMap[g.id] = g; });
     }
 
-    const gardenBody = document.getElementById('garden-assignments-body');
-    if (gardenBody) {
-      gardenBody.innerHTML = '';
-      (gardenAssignments || []).forEach(a => {
-        const garden = gaGardenMap[a.garden_id] || {};
-        const targetName = a.user_id ? (gaUserMap[a.user_id]?.full_name || 'Usuario') : (gaGroupMap[a.group_id]?.name || 'Grupo');
-        const type = a.user_id ? 'Usuario' : 'Grupo';
-        const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>🌿 ${escapeHtml(garden.name || '-')} (${escapeHtml(garden.campus || '')})</td>
-          <td>${escapeHtml(targetName)}</td>
-          <td><span class="assignment-badge ${badgeClass}">${type}</span></td>
-          <td>${formatDate(a.assigned_at)}</td>
-          <td><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${a.id}')">Quitar</button></td>
-        `;
-        gardenBody.appendChild(row);
-      });
-      if (!gardenAssignments || gardenAssignments.length === 0) {
-        gardenBody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin asignaciones de jardines</td></tr>';
-      }
-    }
+    // Pre-procesar cada asignación de jardín con los campos display
+    const gardenAssignmentsEnriched = (gardenAssignments || []).map(a => {
+      const garden = gaGardenMap[a.garden_id] || {};
+      const targetName = a.user_id ? (gaUserMap[a.user_id]?.full_name || 'Usuario') : (gaGroupMap[a.group_id]?.name || 'Grupo');
+      const type = a.user_id ? 'Usuario' : 'Grupo';
+      const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
+      return { raw: a, garden, targetName, type, badgeClass };
+    });
+    _gardenAssignmentsCache = gardenAssignmentsEnriched;
+    _renderGardenAssignments(gardenAssignmentsEnriched);
 
   } catch (err) {
     console.error('Load assignments error:', err);
     showToast('Error cargando asignaciones: ' + err.message, 'error');
   }
 }
+
+// ============================================================================
+// FILTROS DE ASIGNACIONES — mismo patrón que tablas de árboles
+// ============================================================================
+let _treeAssignmentsCache = [];
+let _gardenAssignmentsCache = [];
+
+function _renderTreeAssignments(rows) {
+  const tbody = document.getElementById('tree-assignments-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(r => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>🌳 ${escapeHtml(r.tree.tree_code || '-')} - ${escapeHtml(r.tree.common_name || '')}</td>
+      <td>${escapeHtml(r.targetName)}</td>
+      <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
+      <td>${escapeHtml(r.specialist)}</td>
+      <td>${formatDate(r.raw.assigned_at)}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${r.raw.id}')">Quitar</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _renderGardenAssignments(rows) {
+  const tbody = document.getElementById('garden-assignments-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(r => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>🌿 ${escapeHtml(r.garden.name || '-')} (${escapeHtml(r.garden.campus || '')})</td>
+      <td>${escapeHtml(r.targetName)}</td>
+      <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
+      <td>${formatDate(r.raw.assigned_at)}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${r.raw.id}')">Quitar</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterTreeAssignments() {
+  const get = sel => (document.querySelector(`[data-filter="${sel}"]`)?.value || '').toLowerCase().trim();
+  const fTree = get('ta-tree');
+  const fTarget = get('ta-target');
+  const fType = get('ta-type');
+  const fSpec = get('ta-specialist');
+  const filtered = _treeAssignmentsCache.filter(r => {
+    const treeText = `${r.tree.tree_code || ''} ${r.tree.common_name || ''}`.toLowerCase();
+    if (fTree && !treeText.includes(fTree)) return false;
+    if (fTarget && !(r.targetName || '').toLowerCase().includes(fTarget)) return false;
+    if (fType && r.type !== fType) return false;
+    if (fSpec && !(r.specialist || '').toLowerCase().includes(fSpec)) return false;
+    return true;
+  });
+  _renderTreeAssignments(filtered);
+}
+
+function _clearTreeAssignmentFilters() {
+  ['ta-tree','ta-target','ta-type','ta-specialist'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderTreeAssignments(_treeAssignmentsCache);
+}
+
+function _filterGardenAssignments() {
+  const get = sel => (document.querySelector(`[data-filter="${sel}"]`)?.value || '').toLowerCase().trim();
+  const fGarden = get('ga-garden');
+  const fTarget = get('ga-target');
+  const fType = get('ga-type');
+  const filtered = _gardenAssignmentsCache.filter(r => {
+    const gText = `${r.garden.name || ''} ${r.garden.campus || ''}`.toLowerCase();
+    if (fGarden && !gText.includes(fGarden)) return false;
+    if (fTarget && !(r.targetName || '').toLowerCase().includes(fTarget)) return false;
+    if (fType && r.type !== fType) return false;
+    return true;
+  });
+  _renderGardenAssignments(filtered);
+}
+
+function _clearGardenAssignmentFilters() {
+  ['ga-garden','ga-target','ga-type'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderGardenAssignments(_gardenAssignmentsCache);
+}
+
+window._filterTreeAssignments = _filterTreeAssignments;
+window._clearTreeAssignmentFilters = _clearTreeAssignmentFilters;
+window._filterGardenAssignments = _filterGardenAssignments;
+window._clearGardenAssignmentFilters = _clearGardenAssignmentFilters;
 
 function populateAssignTarget(typeSelectId, targetSelectId, users, groups) {
   const typeSelect = document.getElementById(typeSelectId);

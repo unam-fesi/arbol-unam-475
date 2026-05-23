@@ -1038,14 +1038,33 @@
         </form>
     </div>
 
-    <h4 style="margin-top:2rem;margin-bottom:1rem;">Asignaciones de Árboles</h4>
+    <h4 style="margin-top:2rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+        <span>Asignaciones de Árboles</span>
+        <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearTreeAssignmentFilters()">Limpiar filtros</button>
+    </h4>
     <table class="admin-table">
         <thead>
             <tr>
-                <th>Árbol</th>
-                <th>Asignado a</th>
-                <th>Tipo</th>
-                <th>Especialista</th>
+                <th>
+                    <div>Árbol</div>
+                    <input type="text" class="filter-input" data-filter="ta-tree" placeholder="🔍 código/nombre" oninput="_filterTreeAssignments()" autocomplete="off">
+                </th>
+                <th>
+                    <div>Asignado a</div>
+                    <input type="text" class="filter-input" data-filter="ta-target" placeholder="🔍 usuario/grupo" oninput="_filterTreeAssignments()" autocomplete="off">
+                </th>
+                <th>
+                    <div>Tipo</div>
+                    <select class="filter-input" data-filter="ta-type" onchange="_filterTreeAssignments()">
+                        <option value="">— Todos —</option>
+                        <option value="Usuario">Usuario</option>
+                        <option value="Grupo">Grupo</option>
+                    </select>
+                </th>
+                <th>
+                    <div>Especialista</div>
+                    <input type="text" class="filter-input" data-filter="ta-specialist" placeholder="🔍 especialista" oninput="_filterTreeAssignments()" autocomplete="off">
+                </th>
                 <th>Fecha</th>
                 <th>Acciones</th>
             </tr>
@@ -1054,13 +1073,29 @@
         </tbody>
     </table>
 
-    <h4 style="margin-top:2rem;margin-bottom:1rem;">Asignaciones de Jardines</h4>
+    <h4 style="margin-top:2rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+        <span>Asignaciones de Jardines</span>
+        <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearGardenAssignmentFilters()">Limpiar filtros</button>
+    </h4>
     <table class="admin-table">
         <thead>
             <tr>
-                <th>Jardín</th>
-                <th>Asignado a</th>
-                <th>Tipo</th>
+                <th>
+                    <div>Jardín</div>
+                    <input type="text" class="filter-input" data-filter="ga-garden" placeholder="🔍 nombre/campus" oninput="_filterGardenAssignments()" autocomplete="off">
+                </th>
+                <th>
+                    <div>Asignado a</div>
+                    <input type="text" class="filter-input" data-filter="ga-target" placeholder="🔍 usuario/grupo" oninput="_filterGardenAssignments()" autocomplete="off">
+                </th>
+                <th>
+                    <div>Tipo</div>
+                    <select class="filter-input" data-filter="ga-type" onchange="_filterGardenAssignments()">
+                        <option value="">— Todos —</option>
+                        <option value="Usuario">Usuario</option>
+                        <option value="Grupo">Grupo</option>
+                    </select>
+                </th>
                 <th>Fecha</th>
                 <th>Acciones</th>
             </tr>
