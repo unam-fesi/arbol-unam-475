@@ -465,7 +465,13 @@
           const tree = placeholder.userData.tree;
           loader.load(url,
             (tex) => {
-              const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+              // OPACO (sin transparent). Si dejamos transparent:true el
+              // renderer tiene que ordenar TODAS las fotos por profundidad
+              // cada frame, y con planos billboard rotando los ordena mal:
+              // resultaba en fotos que se "ven a través" o desaparecen.
+              const mat = new THREE.MeshBasicMaterial({
+                map: tex, side: THREE.DoubleSide
+              });
               const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), mat);
               photoPlane.position.copy(placeholder.position);
               photoPlane.userData = { ...placeholder.userData, isPlaceholder: false };
@@ -857,7 +863,9 @@
     ctx.fillText((tree.health_score || 0) + '%', 128, 230);
     const tex = new THREE.CanvasTexture(c);
     const planeGeo = new THREE.PlaneGeometry(1.4, 1.4);
-    const planeMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    // Sin transparent — el canvas es opaco. Evita z-ordering errático
+    // mientras los placeholders rotan en el anillo.
+    const planeMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
     return new THREE.Mesh(planeGeo, planeMat);
   }
 
