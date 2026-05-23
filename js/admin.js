@@ -607,14 +607,18 @@ async function saveAdminTree(e) {
     const photoFile = document.getElementById('admin-tree-photo')?.files?.[0];
     if (photoFile && inserted?.id) {
       try {
-        const ext = (photoFile.name.split('.').pop() || 'jpg').toLowerCase();
-        const fileName = `${inserted.id}/${Date.now()}.${ext}`;
+        // Comprimir a ~1200px JPEG 80% antes de subir. Una foto de celular
+        // típica baja de 3-5MB a 300-500KB sin pérdida visible.
+        const blob = (typeof compressImageFile === 'function')
+          ? await compressImageFile(photoFile, 1200, 0.8)
+          : photoFile;
+        const fileName = `${inserted.id}/${Date.now()}.jpg`;
         const { error: upErr } = await sb.storage
           .from('tree-photos')
-          .upload(fileName, photoFile, {
+          .upload(fileName, blob, {
             cacheControl: '3600',
             upsert: false,
-            contentType: photoFile.type || 'image/jpeg'
+            contentType: 'image/jpeg'
           });
         if (upErr) throw upErr;
         // Guardar el path (la URL firmada se genera al consultar)

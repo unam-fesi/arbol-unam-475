@@ -378,8 +378,18 @@
 
           if (!/^https?:\/\//.test(photoUrl)) {
             try {
-              const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
+              // Pedir THUMBNAIL de 400px en vez de la foto completa.
+              // Storage de Supabase hace resize/recompress server-side: una
+              // textura del mosaico baja de ~3MB a ~25KB. Si la transform no
+              // está habilitada en el plan free, cae al URL original.
+              const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600, {
+                transform: { width: 400, height: 400, resize: 'cover', quality: 70 }
+              });
               photoUrl = data?.signedUrl;
+              if (!photoUrl) {
+                const { data: full } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
+                photoUrl = full?.signedUrl;
+              }
             } catch (_) { photoUrl = null; }
           }
           if (!photoUrl) continue;

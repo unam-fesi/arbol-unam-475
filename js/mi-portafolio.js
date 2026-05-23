@@ -1367,12 +1367,15 @@ async function saveGardenVisit() {
     const visitId = (crypto.randomUUID && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `${gardenId}/${visitId}.${ext}`;
-    const { error: upErr } = await sb.storage.from('garden-photos').upload(path, file, {
+    // Comprimir foto antes de subir (3-5MB → 300-500KB sin pérdida visible)
+    const blob = (typeof compressImageFile === 'function')
+      ? await compressImageFile(file, 1200, 0.8)
+      : file;
+    const path = `${gardenId}/${visitId}.jpg`;
+    const { error: upErr } = await sb.storage.from('garden-photos').upload(path, blob, {
       cacheControl: '3600',
       upsert: false,
-      contentType: file.type || 'image/jpeg',
+      contentType: 'image/jpeg',
     });
     if (upErr) throw upErr;
 

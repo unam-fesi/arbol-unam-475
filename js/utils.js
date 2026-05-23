@@ -150,6 +150,72 @@ function compressImageForAI(base64DataUrl, maxWidth, maxHeight, quality) {
 }
 
 // ============================================================================
+// Comprimir File de imagen → Blob JPEG listo para upload a Supabase Storage.
+// Reutiliza compressImageForAI internamente (lee File → base64 → canvas → JPEG).
+// Uso:
+//   const blob = await compressImageFile(file, 1200, 0.8);  // ~300-500 KB típico
+//   await sb.storage.from('bucket').upload(path, blob, { contentType: 'image/jpeg' });
+// ============================================================================
+async function compressImageFile(file, maxDim, quality) {
+  if (!file) throw new Error('compressImageFile: file requerido');
+  maxDim = maxDim || 1200;
+  quality = (quality != null) ? quality : 0.8;
+
+  // Si ya es chica (<400KB) y razonable, no perder tiempo recomprimiéndola
+  if (file.size < 400 * 1024 && /jpe?g$/i.test(file.type)) {
+    return file;
+  }
+
+  // File → base64
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(file);
+  });
+
+  // base64 → comprimido base64
+  const compressedDataUrl = await compressImageForAI(dataUrl, maxDim, maxDim, quality);
+
+  // base64 → Blob
+  const base64 = compressedDataUrl.split(',')[1];
+  const byteString = atob(base64);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  return new Blob([ab], { type: 'image/jpeg' });
+}
+
+// ============================================================================
+// Generar URL firmada de una foto en tree-photos con TRANSFORMACIÓN de tamaño.
+// Supabase Storage hace el resize/recompress server-side y devuelve un PNG/JPEG
+// chico (típicamente 20-50 KB para un thumb de 400px), evitando descargar 3MB
+// solo para mostrarlo en una tile del mosaico o lista.
+//   await getThumbUrl('tree-photos', '424/123.jpg', 400)
+// Si la transformación no está disponible (free tier sin renderer), cae al
+// URL firmado completo.
+// ============================================================================
+async function getThumbUrl(bucket, path, size, quality) {
+  if (!path) return null;
+  if (typeof sb === 'undefined') return null;
+  size = size || 400;
+  quality = quality || 70;
+  // Si ya viene un URL completo, regresarlo tal cual
+  if (/^https?:\/\//i.test(path)) return path;
+  try {
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 3600, {
+      transform: { width: size, height: size, resize: 'cover', quality }
+    });
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch (_) { /* fallback below */ }
+  // Fallback: URL firmada sin transformación
+  try {
+    const { data } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+    return data?.signedUrl || null;
+  } catch (_) { return null; }
+}
+
+// ============================================================================
 // Mobile responsive helper — auto-asigna data-label a celdas de tablas
 // para que el CSS responsive las muestre como tarjetas en móvil.
 // ============================================================================

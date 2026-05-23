@@ -1599,6 +1599,9 @@ window.IztacalaMap = (function() {
       if (treeData.photo_url && typeof sb !== 'undefined') {
         if (/^https?:\/\//.test(treeData.photo_url)) {
           photoSrc = treeData.photo_url;
+        } else if (typeof getThumbUrl === 'function') {
+          // Thumbnail de 600px para el popup (suficiente para preview, ~40KB)
+          photoSrc = await getThumbUrl('tree-photos', treeData.photo_url, 600) || '';
         } else {
           const { data } = await sb.storage
             .from('tree-photos')
