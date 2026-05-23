@@ -107,12 +107,111 @@ function applyRoleBasedUIRestrictions() {
       banner.style.display = 'none';
     }
   }
+
+  // ---- Limitar dropdowns de campus en forms (usuarios y árboles) ----
+  // admin-campus/responsable solo ven SU campus en los selects de creación.
+  // admin principal ve todos los campus siempre.
+  _applyCampusRestrictionsToForms();
+
+  // ---- Esconder rol "admin principal" en form de creación de usuarios ----
+  _applyRoleRestrictionsToUserForm();
+
+  // ---- Esconder jardines fuera de Iztacala (jardines solo existen en Iztacala) ----
+  _applyGardenVisibility();
+
+  // ---- Actualizar título del tab "Campus 3D" según el campus activo ----
+  _applyCampus3DTitle();
+}
+
+// Limita los <select> de campus de los forms a sólo el campus permitido para
+// admin-campus/responsable. Para admin principal restaura todos los campus.
+function _applyCampusRestrictionsToForms() {
+  const ids = ['admin-user-campus', 'admin-tree-campus'];
+  const restrict = isAdminCampusRole() || isResponsableRole();
+  ids.forEach(selId => {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    Array.from(sel.options).forEach(opt => {
+      if (restrict) {
+        opt.hidden = (opt.value !== _userCampus());
+        opt.disabled = (opt.value !== _userCampus());
+      } else {
+        opt.hidden = false;
+        opt.disabled = false;
+      }
+    });
+    if (restrict) {
+      sel.value = _userCampus();
+    }
+  });
+}
+
+// Oculta la opción "admin" (admin principal) del form de creación de usuarios
+// cuando el caller es admin-campus.
+function _applyRoleRestrictionsToUserForm() {
+  const roleSel = document.getElementById('admin-user-role');
+  if (!roleSel) return;
+  Array.from(roleSel.options).forEach(opt => {
+    if (opt.value === 'admin') {
+      // Solo el admin PRINCIPAL puede crear otros admins principales
+      opt.hidden = !isAdminRole();
+      opt.disabled = !isAdminRole();
+    }
+    if (opt.value === 'admin-campus') {
+      // admin principal y admin-campus pueden crear admin-campus
+      const allowed = isAdminRole() || isAdminCampusRole();
+      opt.hidden = !allowed;
+      opt.disabled = !allowed;
+    }
+  });
+  // Si el valor actual es uno oculto, resetear a 'user'
+  if (roleSel.selectedOptions[0]?.hidden) roleSel.value = 'user';
+}
+
+// Oculta el bloque "Asignar Jardín" + "Asignaciones de Jardines" + el form
+// de creación de jardines cuando el campus efectivo NO es Iztacala.
+// (Los jardines solo existen en FES Iztacala por ahora.)
+function _applyGardenVisibility() {
+  const cf = effectiveCampusFilter();
+  const showGardens = !cf || cf === 'Iztacala';
+  // Form de asignar jardín (en tab Asignaciones)
+  const assignForm = document.getElementById('assign-garden-form-wrap');
+  if (assignForm) assignForm.style.display = showGardens ? '' : 'none';
+  // Tabla de asignaciones de jardín
+  const assignTable = document.getElementById('garden-assignments-section');
+  if (assignTable) assignTable.style.display = showGardens ? '' : 'none';
+  // Tab "Jardines" en la barra de tabs admin (admin-campus YA está oculto por TABS_ADMIN_ONLY,
+  // pero el admin principal también lo verá oculto si filtra a un campus != Iztacala)
+  const gardensTab = document.querySelector('.admin-tab[data-tab="gardens"]');
+  if (gardensTab && isAdminRole()) {
+    gardensTab.style.display = showGardens ? '' : 'none';
+  }
+}
+
+// Actualiza el label del tab "FES Iztacala 3D" para reflejar el campus activo.
+// Si campus = Acatlán → "FES Acatlán 3D"; si "Todos" → "FES Iztacala 3D" (default).
+function _applyCampus3DTitle() {
+  const tabBtn = document.querySelector('.vis-tab[data-vis="iztacala"]');
+  if (!tabBtn) return;
+  const cf = effectiveCampusFilter();
+  const labelMap = {
+    'Iztacala':  'FES Iztacala 3D',
+    'Acatlan':   'FES Acatlán 3D',
+    'Aragon':    'FES Aragón 3D',
+    'Cuautitlan':'FES Cuautitlán 3D',
+    'Zaragoza':  'FES Zaragoza 3D',
+    'CU':        'CU 3D',
+  };
+  const label = labelMap[cf] || 'FES Iztacala 3D';
+  tabBtn.innerHTML = `<i class="fas fa-university"></i> ${label}`;
 }
 window.applyRoleBasedUIRestrictions = applyRoleBasedUIRestrictions;
 
 // Cambio del dropdown global de campus (solo admin principal)
 function onAdminCampusFilterChange(value) {
   _globalCampusFilter = value || '';
+  // Re-aplicar restricciones de UI (oculta jardines fuera de Iztacala, ajusta título 3D)
+  if (typeof applyRoleBasedUIRestrictions === 'function') applyRoleBasedUIRestrictions();
   // Re-cargar lo que esté visible actualmente
   const activePane = document.querySelector('.tab-pane.active');
   if (!activePane) return;
@@ -1586,7 +1685,11 @@ async function deleteAdminGarden(id) {
 let _groupsCache = [];
 async function loadAdminGroups() {
   try {
-    const { data, error } = await sb.from('user_groups').select('*, group_members(count)').order('name');
+    let q = sb.from('user_groups').select('*, group_members(count)').order('name');
+    // Filtrado por campus (admin-campus / responsable / dropdown global del admin principal)
+    const campusFilter = effectiveCampusFilter();
+    if (campusFilter) q = q.eq('campus', campusFilter);
+    const { data, error } = await q;
     if (error) throw error;
     _groupsCache = (data || []).map(g => ({
       ...g, _memberCount: g.group_members?.[0]?.count || 0
@@ -1646,7 +1749,13 @@ async function saveAdminGroup(e) {
   const name = document.getElementById('admin-group-name')?.value.trim();
   const desc = document.getElementById('admin-group-desc')?.value.trim();
   if (!name) { showToast('Nombre requerido', 'error'); return; }
-  const { error } = await sb.from('user_groups').insert([{ name, description: desc, created_by: currentUser?.id }]);
+  // Campus: admin-campus/responsable → su campus; admin principal → respeta selector global o default Iztacala
+  const groupCampus = (isAdminCampusRole() || isResponsableRole())
+    ? _userCampus()
+    : (effectiveCampusFilter() || _userCampus() || 'Iztacala');
+  const { error } = await sb.from('user_groups').insert([{
+    name, description: desc, campus: groupCampus, created_by: currentUser?.id
+  }]);
   if (error) { showToast('Error: ' + error.message, 'error'); return; }
   showToast('Grupo creado', 'success');
   document.getElementById('form-admin-group')?.reset();
@@ -3541,6 +3650,9 @@ function renderDashboardTree(treeList) {
   const container = document.getElementById('dashboard-tree-vis');
   if (!container) return;
   container.style.display = 'block';
+
+  // Asegurar que el título del tab Campus 3D refleja el campus activo
+  if (typeof _applyCampus3DTitle === 'function') _applyCampus3DTitle();
 
   // Render la tab activa
   const activeTab = document.querySelector('.vis-tab.active');

@@ -1039,7 +1039,7 @@
         </form>
     </div>
 
-    <div class="admin-form" style="margin-top:1.5rem;">
+    <div class="admin-form" id="assign-garden-form-wrap" style="margin-top:1.5rem;">
         <h4>Asignar Jardín a Usuario o Grupo</h4>
         <form id="form-assign-garden">
             <div class="form-row">
@@ -1104,6 +1104,7 @@
         </tbody>
     </table>
 
+    <div id="garden-assignments-section">
     <h4 style="margin-top:2rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
         <span>Asignaciones de Jardines</span>
         <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearGardenAssignmentFilters()">Limpiar filtros</button>
@@ -1134,6 +1135,7 @@
         <tbody id="garden-assignments-body">
         </tbody>
     </table>
+    </div>
 </div>
 
 <!-- DASHBOARD TAB -->
