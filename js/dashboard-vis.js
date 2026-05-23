@@ -454,6 +454,9 @@
           const tree = placeholder.userData.tree;
           const photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
           if (!photoUrl) continue;
+          // Guardar el path ORIGINAL en userData para que el modal de detalle
+          // pueda pedir la versión full-res (no el thumb que se ve en el carrusel)
+          placeholder.userData.photoPath = photoUrl;
           if (/^https?:\/\//.test(photoUrl)) {
             placeholder.userData.resolvedUrl = photoUrl;
             continue;
@@ -657,7 +660,12 @@
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObjects(photoPlanes);
       if (hits.length > 0 && hits[0].object.userData.tree) {
-        showMosaicoPhotoModal(hits[0].object.userData.tree, hits[0].object.material.map);
+        const hit = hits[0].object;
+        showMosaicoPhotoModal(
+          hit.userData.tree,
+          hit.material.map,
+          hit.userData.photoPath  // path original — para cargar full-res
+        );
       }
     };
     renderer.domElement.addEventListener('mousedown', (e) => { clickStartX = e.clientX; });
@@ -753,15 +761,19 @@
     return true;
   }
 
-  // Modal cuando se hace click en una foto del carrete
-  function showMosaicoPhotoModal(tree, texture) {
+  // Modal cuando se hace click en una foto del carrete.
+  // texture: THREE.Texture del carrusel (thumb 400px — preview instantáneo)
+  // photoPath: path original en Storage (ej. "424/123.jpg") — para cargar full-res
+  function showMosaicoPhotoModal(tree, texture, photoPath) {
     let modal = document.getElementById('mosaico-photo-modal');
     if (modal) modal.remove();
     modal = document.createElement('div');
     modal.id = 'mosaico-photo-modal';
     modal.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:1rem;backdrop-filter:blur(4px);';
 
-    // Convertir la textura (THREE.Texture) a data URL si es posible
+    // PREVIEW INSTANTÁNEO: convertir textura del carrusel (thumb) a data URL
+    // para mostrar algo de inmediato. Luego en background se carga la
+    // imagen ORIGINAL en alta resolución y se reemplaza.
     let photoSrc = null;
     try {
       if (texture && texture.image) {
@@ -778,7 +790,7 @@
 
     modal.innerHTML = `
       <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.45);">
-        ${photoSrc ? `<img src="${photoSrc}" style="width:100%;max-height:50vh;object-fit:cover;border-radius:16px 16px 0 0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')">` : ''}
+        ${photoSrc ? `<img id="mosaico-modal-img" src="${photoSrc}" style="width:100%;max-height:50vh;object-fit:cover;border-radius:16px 16px 0 0;cursor:zoom-in;transition:filter 0.3s;filter:blur(2px);" onclick="window.open(this.src,'_blank')">` : ''}
         <div style="padding:1.3rem 1.4rem;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
             <div>
@@ -798,6 +810,35 @@
     `;
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    // Cargar la versión ORIGINAL (full-res) en background y reemplazar el src.
+    // Mientras tanto el usuario ve el thumb del carrusel con un blur ligero
+    // que indica "esto se está cargando en alta calidad".
+    if (photoPath && typeof getThumbUrl === 'function') {
+      getThumbUrl('tree-photos', photoPath, { thumb: false }).then(fullUrl => {
+        if (!fullUrl) return;
+        const img = document.getElementById('mosaico-modal-img');
+        if (!img) return;
+        // Pre-cargar para evitar flash
+        const tmp = new Image();
+        tmp.onload = () => {
+          img.src = fullUrl;
+          img.style.filter = 'none';
+          // Cambiar el botón "Ver foto completa" al URL de alta resolución
+          const btn = modal.querySelector('button[onclick*="window.open"]');
+          if (btn) btn.setAttribute('onclick', `window.open('${fullUrl}','_blank')`);
+        };
+        tmp.onerror = () => { img.style.filter = 'none'; };
+        tmp.src = fullUrl;
+      }).catch(() => {
+        const img = document.getElementById('mosaico-modal-img');
+        if (img) img.style.filter = 'none';
+      });
+    } else {
+      // Sin photoPath, quitar el blur (no podemos cargar full)
+      const img = document.getElementById('mosaico-modal-img');
+      if (img) img.style.filter = 'none';
+    }
   }
   window.showMosaicoPhotoModal = showMosaicoPhotoModal;
 
