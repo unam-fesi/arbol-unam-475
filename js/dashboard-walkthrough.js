@@ -942,16 +942,26 @@
         // voltea la cara — el puma simplemente retrocede mientras sigue de
         // espaldas a ti. Cuando NO camina, mantiene su orientación → la
         // cámara puede orbitar libremente alrededor del puma.
-        // Modelo GLB tiene su cara default mirando +Z; atan2(camFwd.x,camFwd.z)
-        // da la rotation.y que hace que el puma mire EN dirección camFwd.
-        if (isWalking && _camFwd.lengthSq() > 0.001) {
-          pumaYawTarget = Math.atan2(_camFwd.x, _camFwd.z);
+        // Usamos camera.getWorldDirection cada frame para garantizar valor
+        // actualizado, sin depender del _camFwd del bloque de movimiento.
+        if (isWalking) {
+          const f = new THREE.Vector3();
+          camera.getWorldDirection(f);
+          f.y = 0;
+          if (f.lengthSq() > 0.001) {
+            f.normalize();
+            pumaYawTarget = Math.atan2(f.x, f.z);
+          }
         }
         let diff = pumaYawTarget - pumaYaw;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         pumaYaw += diff * Math.min(1, 0.15 * dt);
         avatar.rotation.y = pumaYaw;
+        // Debug log cada ~1 segundo
+        if (Math.floor(now / 1000) !== Math.floor(last / 1000)) {
+          console.log(`[Puma] walking=${isWalking} yaw=${pumaYaw.toFixed(2)} target=${pumaYawTarget.toFixed(2)} rotation.y=${avatar.rotation.y.toFixed(2)}`);
+        }
 
         avatar.visible = cameraDistance > 1.5;
 
