@@ -8,3 +8,5 @@ supabase-functions/
 3dmaps/
 docs/
 PROPUESTAS-INNOVACION.md
+scripts/node_modules/
+scripts/package-lock.json
