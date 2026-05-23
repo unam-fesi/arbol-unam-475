@@ -267,10 +267,10 @@
     scene.background = _makeSkyBackground();
     scene.fog = new THREE.Fog(0xcfe7ff, 60, 180);
 
-    // FOV 65° + cámara cercana (z=22) → los anillos llenan ~80% del ancho.
-    // Suficientemente grandes sin caer en distorsión fish-eye.
-    const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 300);
-    camera.position.set(0, 3, 22);
+    // FOV 65° + cámara z=28 para acomodar las 3 zonas con más espaciado
+    // vertical (sub-anillos apilados + separación generosa entre estados).
+    const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 400);
+    camera.position.set(0, 1, 28);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -293,11 +293,12 @@
     const clouds = _makeFloatingClouds(scene);
 
     // ---- 3 ZONAS apiladas VERTICALMENTE (cada una es un anillo horizontal) ----
-    //   y = altura del anillo · radio escala según # de árboles en la zona
+    // Separación amplia entre estados (±11) para que con los sub-anillos
+    // de Sano (5 niveles) no se toquen visualmente con Atención abajo.
     const ZONES = [
-      { name: 'Sano',     color: 0x4CAF50, y:  6.5, filter: t => (t.health_score || 0) >= 70 },
-      { name: 'Atención', color: 0xFFA726, y:  0,   filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xEF5350, y: -6.5, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
+      { name: 'Sano',     color: 0x4CAF50, y:  11, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Atención', color: 0xFFA726, y:   0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
+      { name: 'Crítico',  color: 0xEF5350, y: -11, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
     // Cuántas fotos caben cómodamente en un anillo y cuánto separar los
@@ -306,7 +307,7 @@
     // de la banda de su zona — así nunca hay demasiadas fotos peleándose
     // por arco en un solo anillo.
     const PHOTOS_PER_RING = 50;
-    const SUB_RING_GAP = 1.6;  // separación vertical entre sub-anillos
+    const SUB_RING_GAP = 2.4;  // más aire vertical entre sub-anillos
     const TARGET_ARC = 2.0;    // arco-unidad por foto (controla densidad)
 
     ZONES.forEach(zone => {
@@ -346,17 +347,19 @@
       ring.position.y = zone.y + RING_OFFSET_Y;
       scene.add(ring);
 
-      // Etiqueta de la zona — sprite billboard flotando arriba a la izquierda
-      // del anillo, con diseño tipo "pill" del color de la zona.
+      // Etiqueta flotando ARRIBA del stack de sub-anillos. Solo texto, sin
+      // fondo, en el color del semáforo, con stroke oscuro para legibilidad
+      // sobre el cielo. Posición justo encima del sub-anillo más alto.
+      const totalSpread = (zone.numSubRings - 1) * SUB_RING_GAP;
       const labelTex = _makeZoneLabel(zone.name, zone.count, zone.color);
       const labelMat = new THREE.SpriteMaterial({
         map: labelTex, transparent: true, depthTest: false, depthWrite: false
       });
       const label = new THREE.Sprite(labelMat);
-      // Lo colocamos arriba del anillo (no rotado por el grupo, fijo en el mundo)
-      label.position.set(-(zone.radius * 0.65), zone.y + 2.2, 0);
-      label.scale.set(4.5, 1.6, 1);
-      label.renderOrder = 999;  // siempre encima de las fotos
+      // Centrado horizontalmente, justo encima del top de la pila de sub-anillos
+      label.position.set(0, zone.y + totalSpread / 2 + 2.2, 0);
+      label.scale.set(11, 2.8, 1);  // más grande, abarca proporciones del texto
+      label.renderOrder = 999;
       scene.add(label);
     });
 
@@ -533,17 +536,19 @@
     const autoSpeed = 0.0006;  // mitad de v39 — rotación muy contemplativa
     // Estado de cámara: pitch (vertical) + radio (zoom).
     // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
-    let camRadius = 22;            // valor actual (cambia con la rueda)
-    const CAM_RADIUS_MIN = 10;     // zoom in tope — fotos llenan pantalla
-    const CAM_RADIUS_MAX = 50;     // zoom out tope — vista panorámica
+    let camRadius = 28;            // valor actual (cambia con la rueda)
+    const CAM_RADIUS_MIN = 12;     // zoom in tope — fotos llenan pantalla
+    const CAM_RADIUS_MAX = 60;     // zoom out tope — vista panorámica
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
     const PITCH_MIN = -0.55;  // ~31° hacia arriba
     const PITCH_MAX =  0.55;  // ~31° hacia abajo
 
     const _updateCamera = () => {
-      // Mantener cámara en órbita vertical (pitch) y radial (zoom)
+      // Cámara en órbita vertical (pitch) y radial (zoom)
+      // Bajamos el offset Y de 3 a 1 para que con escena más alta (zonas a
+      // ±11 y sub-anillos arriba/abajo) la vista quede más balanceada.
       camera.position.x = 0;
-      camera.position.y = -Math.sin(camPitch) * camRadius + 3 * Math.cos(camPitch);
+      camera.position.y = -Math.sin(camPitch) * camRadius + 1 * Math.cos(camPitch);
       camera.position.z = Math.cos(camPitch) * camRadius;
       camera.lookAt(0, 0, 0);
     };
@@ -805,64 +810,50 @@
     ctx.closePath();
   }
 
-  // ---- Etiqueta de zona: "pill" del color del semáforo + count ----
+  // ---- Etiqueta de zona: SOLO TEXTO sin fondo, en color del semáforo ----
+  // Diseño "palabras flotando" sobre el cielo:
+  //   • Nombre grande en el color del estado (verde/ámbar/rojo)
+  //   • Conteo más pequeño debajo en el mismo color
+  //   • Stroke oscuro semi-translúcido para que se lea sobre cielo claro
   function _makeZoneLabel(name, count, hexColor) {
     const c = document.createElement('canvas');
-    c.width = 768; c.height = 256;
+    c.width = 1024; c.height = 256;
     const ctx = c.getContext('2d');
 
     const colorStr = '#' + hexColor.toString(16).padStart(6, '0');
-    const PAD = 24;
-    const W = c.width - PAD * 2;
-    const H = c.height - PAD * 2;
 
-    // Sombra suave
-    ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 6;
+    // Glow blanco para que destaque sobre cielos saturados
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 22;
 
-    // Pill blanco con borde de color
-    ctx.fillStyle = '#ffffff';
-    _roundRect(ctx, PAD, PAD, W, H, 80);
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-
-    // Banda lateral izquierda con color del semáforo
-    ctx.fillStyle = colorStr;
-    _roundRect(ctx, PAD, PAD, 70, H, 80);
-    ctx.fill();
-    // Tapa el lado derecho del pill para que solo quede de un lado
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(PAD + 50, PAD + 10, 25, H - 20);
-
-    // Punto del color (semáforo) dentro de la banda
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(PAD + 35, PAD + H / 2, 18, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Texto del nombre
-    ctx.fillStyle = '#1b3a5f';
-    ctx.font = 'bold 78px -apple-system, "SF Pro Display", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(name, PAD + 110, PAD + H / 2 - 6);
-
-    // Conteo en pill chiquito al final
-    const countText = String(count);
-    ctx.font = '600 56px -apple-system, sans-serif';
-    const countW = ctx.measureText(countText).width;
-    const badgeW = countW + 50;
-    const badgeX = c.width - PAD - badgeW - 20;
-    const badgeY = PAD + H / 2 - 36;
-    ctx.fillStyle = colorStr;
-    _roundRect(ctx, badgeX, badgeY, badgeW, 72, 36);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
+    // Stroke oscuro para legibilidad
+    ctx.font = '900 150px -apple-system, "SF Pro Display", Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(countText, badgeX + badgeW / 2, badgeY + 36 + 2);
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(20,30,50,0.6)';
+    ctx.lineWidth = 10;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(name, 512, 100);
 
-    return new THREE.CanvasTexture(c);
+    // Relleno en color del estado
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = colorStr;
+    ctx.fillText(name, 512, 100);
+
+    // Conteo debajo — más chico, mismo color
+    ctx.font = '700 64px -apple-system, sans-serif';
+    ctx.shadowColor = 'rgba(255,255,255,0.85)';
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = 'rgba(20,30,50,0.6)';
+    ctx.lineWidth = 6;
+    ctx.strokeText(`${count} árboles`, 512, 200);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = colorStr;
+    ctx.fillText(`${count} árboles`, 512, 200);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;  // sin mipmaps — el texto se ve más nítido
+    return tex;
   }
 
   // ---- Fondo cielo (degradado vertical) renderizado en canvas ----
