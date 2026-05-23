@@ -45,6 +45,29 @@
   // Cache: path → Promise<THREE.Group> (cada modelo se descarga UNA vez)
   const _cache = Object.create(null);
 
+  // DRACOLoader compartido para todos los GLBs que vienen comprimidos con
+  // Google Draco (compresión moderna estándar de mallas). Sin este, los GLBs
+  // comprimidos truenan con "No DRACOLoader instance provided".
+  // Se inicializa lazily (la primera vez que se necesita) y se reusa.
+  let _dracoLoader = null;
+  function _getDracoLoader() {
+    if (_dracoLoader) return _dracoLoader;
+    if (typeof THREE === 'undefined' || !THREE.DRACOLoader) return null;
+    _dracoLoader = new THREE.DRACOLoader();
+    // Decoder hospedado por Google — soporta tanto .wasm como .js fallback
+    _dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    _dracoLoader.setDecoderConfig({ type: 'js' });  // 'js' es universal; 'wasm' es más rápido
+    return _dracoLoader;
+  }
+
+  // Construye un GLTFLoader configurado con DRACOLoader si está disponible.
+  function _makeLoader() {
+    const loader = new THREE.GLTFLoader();
+    const draco = _getDracoLoader();
+    if (draco) loader.setDRACOLoader(draco);
+    return loader;
+  }
+
   // Devuelve el path del GLB más adecuado para un árbol según su código/nombre/especie.
   function pickTreeGLBPath(tree) {
     if (!tree) return GENERIC_GLB;
@@ -71,7 +94,7 @@
         console.warn('TreeModels: THREE.GLTFLoader no disponible');
         return resolve(null);
       }
-      const loader = new THREE.GLTFLoader();
+      const loader = _makeLoader();
       loader.load(path,
         (gltf) => resolve(gltf.scene),
         undefined,

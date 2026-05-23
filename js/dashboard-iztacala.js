@@ -1230,7 +1230,18 @@ window.IztacalaMap = (function() {
         console.error('❌ THREE.GLTFLoader no está cargado');
         return resolve(null);
       }
+      // Mejor: usar el cache compartido de TreeModels (incluye DRACOLoader)
+      if (window.TreeModels && window.TreeModels.getTreeModel) {
+        return window.TreeModels.getTreeModel(stem + '.glb').then(resolve);
+      }
       const loader = new THREE.GLTFLoader();
+      // Configurar DRACOLoader si está disponible (para GLBs comprimidos)
+      if (THREE.DRACOLoader) {
+        const draco = new THREE.DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        draco.setDecoderConfig({ type: 'js' });
+        loader.setDRACOLoader(draco);
+      }
       const tryLoad = (path, onFail) => {
         console.log(`🔍 Intentando cargar ${path}…`);
         loader.load(path,

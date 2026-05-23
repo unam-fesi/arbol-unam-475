@@ -188,6 +188,14 @@
     return new Promise((resolve, reject) => {
       if (!THREE.GLTFLoader) return reject(new Error('GLTFLoader no cargado'));
       const loader = new THREE.GLTFLoader();
+      // DRACOLoader para GLBs comprimidos con Draco (Blender los exporta así
+      // por defecto con compresión activada).
+      if (THREE.DRACOLoader) {
+        const draco = new THREE.DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        draco.setDecoderConfig({ type: 'js' });
+        loader.setDRACOLoader(draco);
+      }
       loader.load(path, resolve, undefined, reject);
     });
   }
