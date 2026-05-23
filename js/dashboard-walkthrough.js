@@ -46,7 +46,7 @@
   let avatar = null;       // mesh visible solo en 3ª persona
   let cameraDistance = 0;  // 0 = primera persona; >0 = tercera persona (zoom out)
   const CAM_DIST_MIN = 0;
-  const CAM_DIST_MAX = 12;
+  const CAM_DIST_MAX = 80;   // zoom out tope — vista satelital del campus
   // Estado touch (móvil)
   let touchState = null;
 
@@ -414,10 +414,15 @@
     }
 
     // 3ª persona — orbit Roblox-style
-    // Elevation base: a más zoom-out, más alto va la cámara (vista panorámica)
-    // Va de 0.15 rad (~9°) en zoom cercano a 0.55 rad (~32°) en zoom lejano.
-    const distFrac = (cameraDistance - CAM_DIST_MIN) / (CAM_DIST_MAX - CAM_DIST_MIN);
-    const baseElevation = 0.15 + distFrac * 0.40;
+    // Elevation base: a más zoom-out, más alto va la cámara.
+    //   d=2  → ~9°  (vista de hombro, casi al ras)
+    //   d=15 → ~30° (vista isométrica)
+    //   d=40 → ~52° (vista alta panorámica)
+    //   d=80 → ~73° (vista casi cenital / satelital)
+    // Curva con sqrt para que la elevación crezca rápido al principio
+    // (cuando importa más) y suave en zooms lejanos.
+    const distFrac = Math.sqrt((cameraDistance - CAM_DIST_MIN) / (CAM_DIST_MAX - CAM_DIST_MIN));
+    const baseElevation = 0.15 + distFrac * 1.13;
     // El pitch del usuario suma sobre esa base (mouse arriba = más alto)
     const elevation = Math.max(-0.1, Math.min(1.30, baseElevation - pitch));
     const cosE = Math.cos(elevation);
@@ -529,11 +534,15 @@
     };
     const onKeyUp = (e) => { keys[e.code] = false; };
 
-    // SCROLL WHEEL = zoom (1ª persona <-> 3ª persona)
+    // SCROLL WHEEL = zoom proporcional (estilo Google Maps).
+    // Cada paso suma ~18% de la distancia actual, con mínimo de 0.6 unidades
+    // y máximo 6. Así zoomear se siente igual de natural cerca (de 2→2.4m)
+    // que lejos (de 30→35m).
     const onWheel = (e) => {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? 1 : -1;
-      cameraDistance = Math.max(CAM_DIST_MIN, Math.min(CAM_DIST_MAX, cameraDistance + delta * 0.7));
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const step = Math.max(0.6, Math.min(6, cameraDistance * 0.18 + 0.6));
+      cameraDistance = Math.max(CAM_DIST_MIN, Math.min(CAM_DIST_MAX, cameraDistance + dir * step));
     };
 
     if (renderer && renderer.domElement) {
