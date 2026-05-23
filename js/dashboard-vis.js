@@ -105,18 +105,24 @@
     if (heatmapInstance) { heatmapInstance.remove(); heatmapInstance = null; }
     el.innerHTML = '';
 
-    // Aplicar clamp al polígono del campus para no pintar árboles en la calle.
-    // Si IztacalaCampus no está disponible (script no cargado), comportamiento
-    // legacy = usar coords originales.
-    const clampFn = (window.IztacalaCampus && window.IztacalaCampus.clampToCampus)
-      ? window.IztacalaCampus.clampToCampus
+    // SIN clamp — preservamos coords reales (el polígono no es lo bastante
+    // fiel al GLB y aplastaba 78 árboles contra su borde). Solo detectamos
+    // outliers para marcarlos visualmente con anillo punteado, pero la
+    // posición en el mapa permanece igual a la original.
+    const detectFn = (window.IztacalaCampus && window.IztacalaCampus.pointInPolygon)
+      ? window.IztacalaCampus.pointInPolygon
       : null;
     const withCoord = (trees || [])
       .filter(t => t.location_lat && t.location_lng)
       .map(t => {
-        if (!clampFn) return { ...t, _lat: t.location_lat, _lng: t.location_lng, _clamped: false };
-        const c = clampFn(t.location_lat, t.location_lng);
-        return { ...t, _lat: c.lat, _lng: c.lng, _clamped: c.clamped, _clampDistM: c.distanceM };
+        const outside = detectFn ? !detectFn(t.location_lat, t.location_lng) : false;
+        return {
+          ...t,
+          _lat: t.location_lat,
+          _lng: t.location_lng,
+          _clamped: outside,        // se mantiene el nombre para no romper la UI
+          _clampDistM: 0
+        };
       });
 
     if (withCoord.length === 0) {
@@ -180,17 +186,17 @@
         fillOpacity: isCritical ? 0.35 : 0.22,
         weight: 0
       }).addTo(heatmapInstance);
-      // Indicador discreto cuando el árbol fue snappeado desde fuera del campus
-      const wasClamped = t._clamped && t._clampDistM > 5;
-      if (wasClamped) {
+      // Marcar visualmente árboles cuyas coords caen fuera del polígono del
+      // campus (probable GPS impreciso al registrar). NO se mueve su posición.
+      const isOutside = !!t._clamped;
+      if (isOutside) {
         L.circleMarker(pos, {
           radius: 9, color: '#FFB300', weight: 1.5,
           dashArray: '3 3', fill: false, opacity: 0.9
         }).addTo(heatmapInstance);
       }
-      // Círculo central
-      const tooltipExtra = wasClamped
-        ? `<br><span style="color:#b26500;font-size:0.72rem;">⚠ ubicación imprecisa (${Math.round(t._clampDistM)}m fuera)</span>`
+      const tooltipExtra = isOutside
+        ? `<br><span style="color:#b26500;font-size:0.72rem;">⚠ coord fuera del campus</span>`
         : '';
       const centerMarker = L.circleMarker(pos, {
         radius: isCritical ? 7 : 5,
@@ -206,8 +212,8 @@
       if (isCritical) centerMarker.bringToFront();
     });
 
-    // Conteo de árboles snappeados al campus (para la leyenda)
-    const clampedCount = withCoord.filter(t => t._clamped && t._clampDistM > 5).length;
+    // Conteo de árboles cuya coord cae fuera del polígono del campus
+    const clampedCount = withCoord.filter(t => t._clamped).length;
 
     // Leyenda — colores actualizados para semáforo unificado
     const legend = L.control({ position: 'bottomright' });
@@ -220,7 +226,7 @@
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#FFA726;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Atención (40-69)</div>
         <div style="display:flex;align-items:center;gap:4px;margin:2px 0;"><span style="width:14px;height:14px;background:#EF5350;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;"></span> Crítico (&lt;40)</div>
         <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
-          <span style="display:inline-block;width:12px;height:12px;border:1.5px dashed #FFB300;border-radius:50%;"></span> Ubicación imprecisa${clampedCount > 0 ? ` (${clampedCount})` : ''}
+          <span style="display:inline-block;width:12px;height:12px;border:1.5px dashed #FFB300;border-radius:50%;"></span> Coord fuera del campus${clampedCount > 0 ? ` (${clampedCount})` : ''}
         </div>
         <div style="margin-top:4px;display:flex;align-items:center;gap:4px;font-size:0.72rem;color:#6a5d4d;">
           <span style="display:inline-block;width:14px;height:0;border-top:2px dashed #2d5016;"></span> Límite del campus

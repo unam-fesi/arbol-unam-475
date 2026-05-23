@@ -590,8 +590,45 @@ async function saveAdminTree(e) {
   if (!TREE_SIZE_VALUES.includes(tree.size)) { showToast('Tamaño inválido', 'error'); return; }
 
   try {
-    const { error } = await sb.from('trees_catalog').insert([tree]);
+    // 1. Insertar árbol y obtener su id (necesario para el path de la foto,
+    //    porque la RLS de tree-photos verifica que el primer segmento sea
+    //    un tree_id válido)
+    const { data: inserted, error } = await sb
+      .from('trees_catalog')
+      .insert([tree])
+      .select('id')
+      .single();
     if (error) throw error;
+
+    // 2. Si hay foto en el form, subirla a Storage y actualizar photo_url.
+    //    BUG previo: el save NO subía la foto — solo se llegaba a subir
+    //    indirectamente cuando se invocaba PUM-AI, por eso la foto aparecía
+    //    solo cuando el admin usaba PUM-AI antes de guardar.
+    const photoFile = document.getElementById('admin-tree-photo')?.files?.[0];
+    if (photoFile && inserted?.id) {
+      try {
+        const ext = (photoFile.name.split('.').pop() || 'jpg').toLowerCase();
+        const fileName = `${inserted.id}/${Date.now()}.${ext}`;
+        const { error: upErr } = await sb.storage
+          .from('tree-photos')
+          .upload(fileName, photoFile, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: photoFile.type || 'image/jpeg'
+          });
+        if (upErr) throw upErr;
+        // Guardar el path (la URL firmada se genera al consultar)
+        const { error: updErr } = await sb
+          .from('trees_catalog')
+          .update({ photo_url: fileName })
+          .eq('id', inserted.id);
+        if (updErr) console.warn('photo_url update warning:', updErr.message);
+      } catch (photoErr) {
+        console.error('Photo upload failed:', photoErr);
+        showToast('Árbol creado, pero la foto no se subió: ' + (photoErr.message || photoErr), 'warning');
+      }
+    }
+
     showToast('Árbol agregado al inventario. La ubicación exacta se capturará en el primer seguimiento del usuario asignado.', 'success');
     document.getElementById('form-admin-tree')?.reset();
     loadAdminTrees();

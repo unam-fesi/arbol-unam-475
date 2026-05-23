@@ -1253,23 +1253,11 @@ window.IztacalaMap = (function() {
   }
 
   function addTree(treeData) {
-    // Clamp al polígono del campus para que árboles con GPS impreciso
-    // (registrados en la banqueta, parking exterior, etc.) no se rendericen
-    // flotando fuera del modelo 3D. Si IztacalaCampus no está cargado, usa
-    // la coord original sin cambios.
-    let lat = treeData.location_lat;
-    let lng = treeData.location_lng;
-    let wasClamped = false;
-    if (window.IztacalaCampus && window.IztacalaCampus.clampToCampus) {
-      const c = window.IztacalaCampus.clampToCampus(lat, lng);
-      lat = c.lat; lng = c.lng; wasClamped = c.clamped && c.distanceM > 5;
-      if (wasClamped) {
-        console.log(`📍 Snap a campus: ${treeData.tree_code} (${Math.round(c.distanceM)}m fuera)`);
-      }
-    }
-    const { x, y } = latlonToModelXY(lat, lng);
-    // Marca para que el render sepa que es ubicación aproximada (anillo punteado)
-    treeData._clampedToCampus = wasClamped;
+    // SIN clamp — preservamos coords reales. El polígono que se usaba antes
+    // estaba mal calibrado y aplastaba todos los árboles contra su borde.
+    // Si un árbol tiene GPS impreciso, se renderiza ligeramente fuera del
+    // modelo GLB; mejor eso que aplastar 78 árboles en el mismo lugar.
+    const { x, y } = latlonToModelXY(treeData.location_lat, treeData.location_lng);
     // Escala visual EXAGERADA porque el campus es de 800x500m y un árbol real
     // de 5m sería un puntito desde la cámara. Los datos reales no cambian.
     const realHeight = (treeData.initial_height_cm || 400) / 100;
