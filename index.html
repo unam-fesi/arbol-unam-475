@@ -391,16 +391,19 @@
                                     </form>
                                 </div>
 
-                                <h4 style="margin-bottom: 1rem;">Usuarios Registrados</h4>
+                                <h4 style="margin-bottom: 1rem;display:flex;justify-content:space-between;align-items:center;">
+                                    <span>Usuarios Registrados</span>
+                                    <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearUsersFilters()">Limpiar filtros</button>
+                                </h4>
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Nombre</th>
-                                            <th>No. Cuenta</th>
-                                            <th>Rol</th>
-                                            <th>Estatus</th>
-                                            <th>Campus</th>
-                                            <th>Telegram</th>
+                                            <th><div>Nombre</div><input type="text" class="filter-input" data-filter="u-name" placeholder="🔍 nombre" oninput="_filterUsers()" autocomplete="off"></th>
+                                            <th><div>No. Cuenta</div><input type="text" class="filter-input" data-filter="u-acc" placeholder="🔍 cuenta" oninput="_filterUsers()" autocomplete="off"></th>
+                                            <th><div>Rol</div><select class="filter-input" data-filter="u-role" onchange="_filterUsers()"><option value="">— Todos —</option><option value="admin">admin</option><option value="user">user</option><option value="specialist">specialist</option></select></th>
+                                            <th><div>Estatus</div><select class="filter-input" data-filter="u-status" onchange="_filterUsers()"><option value="">— Todos —</option><option value="alumno">alumno</option><option value="profesor">profesor</option><option value="ciudadano">ciudadano</option><option value="ex-alumno">ex-alumno</option></select></th>
+                                            <th><div>Campus</div><select class="filter-input" data-filter="u-campus" onchange="_filterUsers()"><option value="">— Todos —</option><option value="Iztacala">FES Iztacala</option><option value="Acatlan">FES Acatlán</option><option value="Aragon">FES Aragón</option><option value="Cuautitlan">FES Cuautitlán</option><option value="Zaragoza">FES Zaragoza</option><option value="CU">CU</option></select></th>
+                                            <th><div>Telegram</div><select class="filter-input" data-filter="u-tg" onchange="_filterUsers()"><option value="">— Todos —</option><option value="yes">Sí ✅</option><option value="no">No ❌</option></select></th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -832,13 +835,16 @@
                                     </form>
                                 </div>
 
-                                <h4 style="margin-bottom: 1rem;">Jardines Registrados</h4>
+                                <h4 style="margin-bottom: 1rem;display:flex;justify-content:space-between;align-items:center;">
+                                    <span>Jardines Registrados</span>
+                                    <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearGardensFilters()">Limpiar filtros</button>
+                                </h4>
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Nombre</th>
-                                            <th>Campus</th>
-                                            <th>Ubicación</th>
+                                            <th><div>Nombre</div><input type="text" class="filter-input" data-filter="g-name" placeholder="🔍 nombre" oninput="_filterGardens()" autocomplete="off"></th>
+                                            <th><div>Campus</div><select class="filter-input" data-filter="g-campus" onchange="_filterGardens()"><option value="">— Todos —</option><option value="Iztacala">FES Iztacala</option><option value="Acatlan">FES Acatlán</option><option value="Aragon">FES Aragón</option><option value="Cuautitlan">FES Cuautitlán</option><option value="Zaragoza">FES Zaragoza</option><option value="CU">CU</option></select></th>
+                                            <th><div>Ubicación</div><input type="text" class="filter-input" data-filter="g-loc" placeholder="🔍 ubicación" oninput="_filterGardens()" autocomplete="off"></th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -867,12 +873,15 @@
                                     </form>
                                 </div>
 
-                                <h4 style="margin-bottom: 1rem;">Grupos Registrados</h4>
+                                <h4 style="margin-bottom: 1rem;display:flex;justify-content:space-between;align-items:center;">
+                                    <span>Grupos Registrados</span>
+                                    <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearGroupsFilters()">Limpiar filtros</button>
+                                </h4>
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Nombre</th>
-                                            <th>Descripción</th>
+                                            <th><div>Nombre</div><input type="text" class="filter-input" data-filter="grp-name" placeholder="🔍 nombre" oninput="_filterGroups()" autocomplete="off"></th>
+                                            <th><div>Descripción</div><input type="text" class="filter-input" data-filter="grp-desc" placeholder="🔍 descripción" oninput="_filterGroups()" autocomplete="off"></th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -941,14 +950,17 @@
                                     </form>
                                 </div>
 
-                                <h4 style="margin-bottom: 1rem;">Historial de Notificaciones</h4>
+                                <h4 style="margin-bottom: 1rem;display:flex;justify-content:space-between;align-items:center;">
+                                    <span>Historial de Notificaciones</span>
+                                    <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearNotificationsFilters()">Limpiar filtros</button>
+                                </h4>
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Título</th>
-                                            <th>Destinatario</th>
-                                            <th>Fecha</th>
-                                            <th>Estado</th>
+                                            <th><div>Título</div><input type="text" class="filter-input" data-filter="n-title" placeholder="🔍 título" oninput="_filterNotifications()" autocomplete="off"></th>
+                                            <th><div>Destinatario</div><input type="text" class="filter-input" data-filter="n-dest" placeholder="🔍 destinatario" oninput="_filterNotifications()" autocomplete="off"></th>
+                                            <th><div>Fecha</div><input type="text" class="filter-input" data-filter="n-date" placeholder="🔍 fecha" oninput="_filterNotifications()" autocomplete="off"></th>
+                                            <th><div>Estado</div><select class="filter-input" data-filter="n-status" onchange="_filterNotifications()"><option value="">— Todos —</option><option value="leida">Leída</option><option value="no leida">No leída</option><option value="enviada">Enviada</option><option value="fallida">Fallida</option></select></th>
                                         </tr>
                                     </thead>
                                     <tbody id="notificationsTableBody">

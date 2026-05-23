@@ -215,33 +215,71 @@ function loadAdminMap(treeList) {
 }
 
 // ---- USERS ----
+let _usersCache = [];
 async function loadAdminUsers() {
   try {
     const { data, error } = await sb.from('user_profiles').select('*').order('full_name');
     if (error) throw error;
-    const tbody = document.getElementById('users-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    (data || []).forEach(user => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${escapeHtml(user.full_name || '-')}</td>
-        <td>${escapeHtml(user.account_number || '-')}</td>
-        <td><span style="background:var(--primary);color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${user.role || 'user'}</span></td>
-        <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
-        <td>${escapeHtml(user.campus || '-')}</td>
-        <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')" title="Editar">✏️</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${escapeHtml(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    _usersCache = data || [];
+    _renderUsers(_usersCache);
   } catch (err) {
     showToast('Error cargando usuarios: ' + err.message, 'error');
   }
 }
+
+function _renderUsers(users) {
+  const tbody = document.getElementById('users-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  users.forEach(user => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(user.full_name || '-')}</td>
+      <td>${escapeHtml(user.account_number || '-')}</td>
+      <td><span style="background:var(--primary);color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${user.role || 'user'}</span></td>
+      <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
+      <td>${escapeHtml(user.campus || '-')}</td>
+      <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')" title="Editar">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${escapeHtml(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterUsers() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fName = get('u-name'), fAcc = get('u-acc'), fRole = get('u-role'),
+        fStatus = get('u-status'), fCampus = get('u-campus'), fTg = get('u-tg');
+  const filtered = _usersCache.filter(u => {
+    if (fName && !(u.full_name || '').toLowerCase().includes(fName)) return false;
+    if (fAcc && !(u.account_number || '').toLowerCase().includes(fAcc)) return false;
+    if (fRole && (u.role || 'user') !== fRole) return false;
+    if (fStatus && (u.academic_status || '').toLowerCase() !== fStatus) return false;
+    if (fCampus && (u.campus || '') !== fCampus) return false;
+    if (fTg === 'yes' && !u.telegram_chat_id) return false;
+    if (fTg === 'no' && u.telegram_chat_id) return false;
+    return true;
+  });
+  _renderUsers(filtered);
+}
+
+function _clearUsersFilters() {
+  ['u-name','u-acc','u-role','u-status','u-campus','u-tg'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderUsers(_usersCache);
+}
+
+window._filterUsers = _filterUsers;
+window._clearUsersFilters = _clearUsersFilters;
 
 async function deleteAdminUser(userId, userName) {
   if (!confirm(`¿Borrar al usuario "${userName}"?\n\n⚠ Se eliminarán TAMBIÉN:\n• Sus asignaciones de árboles y jardines\n• Sus mediciones/seguimientos (la foto queda en storage)\n• Sus reportes\n• Su perfil completo\n\nLa cuenta de auth también se elimina y NO se puede recuperar.`)) return;
@@ -1046,33 +1084,68 @@ async function populateSpecialistDropdown(selectId, currentValue) {
   }
 }
 
+let _gardensCache = [];
 async function loadAdminGardens() {
-  // Populate the specialist dropdown for garden create form
   populateSpecialistDropdown('admin-garden-specialist');
   try {
     const { data, error } = await sb.from('gardens').select('*').order('name');
     if (error) throw error;
-    const tbody = document.getElementById('gardens-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    (data || []).forEach(g => {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${escapeHtml(g.name)}</td>
-        <td>${escapeHtml(g.campus || '-')}</td>
-        <td>${g.location_lat != null ? g.location_lat + ', ' + g.location_lng : '<span class="text-muted">—</span>'}</td>
-        <td>
-          <button class="btn btn-sm btn-secondary" onclick="editAdminGarden('${g.id}')" title="Editar">✏️ Editar</button>
-          <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewGardenVisitsAdmin('${g.id}')" title="Ver seguimientos">📋 Seguimientos</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminGarden('${g.id}')" title="Eliminar">🗑️</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    _gardensCache = data || [];
+    _renderGardens(_gardensCache);
   } catch (err) {
     showToast('Error cargando jardines: ' + err.message, 'error');
   }
 }
+
+function _renderGardens(rows) {
+  const tbody = document.getElementById('gardens-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(g => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(g.name)}</td>
+      <td>${escapeHtml(g.campus || '-')}</td>
+      <td>${g.location_lat != null ? g.location_lat + ', ' + g.location_lng : '<span class="text-muted">—</span>'}</td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="editAdminGarden('${g.id}')" title="Editar">✏️</button>
+        <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewGardenVisitsAdmin('${g.id}')" title="Ver seguimientos">📋</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminGarden('${g.id}')" title="Eliminar">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterGardens() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fName = get('g-name'), fCampus = get('g-campus'), fLoc = get('g-loc');
+  const filtered = _gardensCache.filter(g => {
+    if (fName && !(g.name || '').toLowerCase().includes(fName)) return false;
+    if (fCampus && (g.campus || '') !== fCampus) return false;
+    if (fLoc) {
+      const locStr = `${g.location_lat || ''} ${g.location_lng || ''}`.toLowerCase();
+      if (!locStr.includes(fLoc)) return false;
+    }
+    return true;
+  });
+  _renderGardens(filtered);
+}
+
+function _clearGardensFilters() {
+  ['g-name','g-campus','g-loc'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderGardens(_gardensCache);
+}
+
+window._filterGardens = _filterGardens;
+window._clearGardensFilters = _clearGardensFilters;
 
 async function saveAdminGarden(e) {
   if (e) e.preventDefault();
@@ -1378,31 +1451,63 @@ async function deleteAdminGarden(id) {
 }
 
 // ---- GROUPS ----
+let _groupsCache = [];
 async function loadAdminGroups() {
   try {
     const { data, error } = await sb.from('user_groups').select('*, group_members(count)').order('name');
     if (error) throw error;
-    const tbody = document.getElementById('groups-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    (data || []).forEach(g => {
-      const memberCount = g.group_members?.[0]?.count || 0;
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${escapeHtml(g.name)}</td>
-        <td>${escapeHtml(g.description || '-')}</td>
-        <td>${memberCount}</td>
-        <td>
-          <button class="btn btn-sm btn-secondary" onclick="manageGroupMembers('${g.id}', '${escapeHtml(g.name)}')">Miembros</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAdminGroup('${g.id}')">Eliminar</button>
-        </td>
-      `;
-      tbody.appendChild(row);
-    });
+    _groupsCache = (data || []).map(g => ({
+      ...g, _memberCount: g.group_members?.[0]?.count || 0
+    }));
+    _renderGroups(_groupsCache);
   } catch (err) {
     showToast('Error cargando grupos: ' + err.message, 'error');
   }
 }
+
+function _renderGroups(rows) {
+  const tbody = document.getElementById('groups-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(g => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(g.name)} <small style="color:#888;">(${g._memberCount} miembros)</small></td>
+      <td>${escapeHtml(g.description || '-')}</td>
+      <td>
+        <button class="btn btn-sm btn-secondary" onclick="manageGroupMembers('${g.id}', '${escapeHtml(g.name)}')">Miembros</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminGroup('${g.id}')">Eliminar</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterGroups() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fName = get('grp-name'), fDesc = get('grp-desc');
+  const filtered = _groupsCache.filter(g => {
+    if (fName && !(g.name || '').toLowerCase().includes(fName)) return false;
+    if (fDesc && !(g.description || '').toLowerCase().includes(fDesc)) return false;
+    return true;
+  });
+  _renderGroups(filtered);
+}
+
+function _clearGroupsFilters() {
+  ['grp-name','grp-desc'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderGroups(_groupsCache);
+}
+
+window._filterGroups = _filterGroups;
+window._clearGroupsFilters = _clearGroupsFilters;
 
 async function saveAdminGroup(e) {
   if (e) e.preventDefault();
@@ -1536,25 +1641,72 @@ async function loadAdminNotifications() {
       });
     }
 
-    const { data: history } = await sb.from('notifications').select('*').order('sent_at', { ascending: false }).limit(20);
-    const historyBody = document.getElementById('notificationsTableBody');
-    if (historyBody) {
-      historyBody.innerHTML = '';
-      (history || []).forEach(n => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${escapeHtml(n.title || '-')}</td>
-          <td>${n.target_user_id ? 'Usuario' : n.target_group_id ? 'Grupo' : 'Todos'}</td>
-          <td>${formatDate(n.sent_at)}</td>
-          <td>${n.telegram_sent ? '✅' : '⏳'}</td>
-        `;
-        historyBody.appendChild(row);
-      });
-    }
+    const { data: history } = await sb.from('notifications').select('*').order('sent_at', { ascending: false }).limit(200);
+    _notificationsCache = history || [];
+    _renderNotifications(_notificationsCache);
   } catch (err) {
     showToast('Error cargando notificaciones: ' + err.message, 'error');
   }
 }
+
+let _notificationsCache = [];
+
+function _renderNotifications(rows) {
+  const tbody = document.getElementById('notificationsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(n => {
+    const dest = n.target_user_id ? 'Usuario' : n.target_group_id ? 'Grupo' : 'Todos';
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${escapeHtml(n.title || '-')}</td>
+      <td>${dest}</td>
+      <td>${formatDate(n.sent_at)}</td>
+      <td>${n.telegram_sent ? '✅ Enviada' : '⏳ Pendiente'}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterNotifications() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fTitle = get('n-title'), fDest = get('n-dest'), fDate = get('n-date'), fStatus = get('n-status');
+  const filtered = _notificationsCache.filter(n => {
+    if (fTitle && !(n.title || '').toLowerCase().includes(fTitle)) return false;
+    if (fDest) {
+      const dest = (n.target_user_id ? 'usuario' : n.target_group_id ? 'grupo' : 'todos');
+      if (!dest.includes(fDest)) return false;
+    }
+    if (fDate) {
+      const dateStr = (n.sent_at || '').toLowerCase();
+      if (!dateStr.includes(fDate)) return false;
+    }
+    if (fStatus) {
+      const statusMatches = (fStatus === 'enviada' && n.telegram_sent)
+        || (fStatus === 'fallida' && n.telegram_failed)
+        || (fStatus === 'leida' && n.read_at)
+        || (fStatus === 'no leida' && !n.read_at);
+      if (!statusMatches) return false;
+    }
+    return true;
+  });
+  _renderNotifications(filtered);
+}
+
+function _clearNotificationsFilters() {
+  ['n-title','n-dest','n-date','n-status'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderNotifications(_notificationsCache);
+}
+
+window._filterNotifications = _filterNotifications;
+window._clearNotificationsFilters = _clearNotificationsFilters;
 
 async function sendNotification(e) {
   if (e) e.preventDefault();
@@ -1714,6 +1866,15 @@ async function loadAssignments() {
       (gd || []).forEach(g => { taGroupMap[g.id] = g; });
     }
 
+    // Pre-cargar TODOS los especialistas para resolver UUIDs viejos en notes
+    const { data: allSpecialists } = await sb.from('user_profiles')
+      .select('id, full_name, specialty').eq('role', 'specialist');
+    const specialistMap = {};
+    (allSpecialists || []).forEach(s => {
+      specialistMap[s.id] = s.full_name + (s.specialty ? ` — ${s.specialty}` : '');
+    });
+    const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     // Pre-procesar cada asignación de árbol con los campos display
     const treeAssignmentsEnriched = (treeAssignments || []).map(a => {
       const tree = taTreeMap[a.tree_id] || {};
@@ -1723,7 +1884,11 @@ async function loadAssignments() {
       let specialist = '-';
       if (a.notes && a.notes.startsWith('[ESPECIALISTA:')) {
         const match = a.notes.match(/\[ESPECIALISTA:\s*([^\]]+)\]/);
-        if (match) specialist = match[1].trim();
+        if (match) {
+          let raw = match[1].trim();
+          // Si el valor es un UUID, resolver al nombre del especialista
+          specialist = UUID_RX.test(raw) ? (specialistMap[raw] || raw) : raw;
+        }
       }
       return { raw: a, tree, targetName, type, badgeClass, specialist };
     });
@@ -1906,7 +2071,11 @@ async function doAssignTreeFromTab() {
     if (!specialistCustom) { showToast('Ingresa nombre del especialista personalizado', 'warning'); return; }
     finalSpecialist = specialistCustom;
   } else if (specialist && specialist !== '') {
-    finalSpecialist = specialist;
+    // BUG FIX: el value del select es el UUID, pero queremos guardar el NOMBRE
+    // (el textContent de la opción). Si el value es UUID, sacar el texto.
+    const specEl = document.getElementById('assign-specialist');
+    const opt = specEl?.options[specEl.selectedIndex];
+    finalSpecialist = (opt?.textContent || specialist).trim();
   }
 
   // Build notes with specialist prefix if specialist is selected
@@ -2937,34 +3106,86 @@ async function exportDashboardToPDF() {
 // =============================================================
 // INNOVACIÓN #18 — Vista de Audit Log (admin)
 // =============================================================
+let _auditCache = [];
 async function loadAuditLog() {
   const container = document.getElementById('audit-log-container');
   if (!container) return;
   try {
     const { data, error } = await sb.from('audit_log')
-      .select('*').order('occurred_at', { ascending: false }).limit(100);
+      .select('*').order('occurred_at', { ascending: false }).limit(500);
     if (error) throw error;
-    if (!data || data.length === 0) {
-      container.innerHTML = '<p class="text-muted">Sin eventos registrados.</p>';
-      return;
-    }
-    let html = '<table class="admin-table"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Tabla</th><th>Row ID</th></tr></thead><tbody>';
-    data.forEach(e => {
-      const color = e.action === 'delete' ? '#f44336' : e.action === 'update' ? '#FFC107' : '#4CAF50';
-      html += `<tr>
-        <td>${formatDate(e.occurred_at)}</td>
-        <td>${escapeHtml(e.actor_email || '—')}</td>
-        <td><span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${e.action}</span></td>
-        <td>${escapeHtml(e.table_name)}</td>
-        <td>${escapeHtml(e.row_id || '')}</td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
+    _auditCache = data || [];
+    // Header con filtros + clear button
+    container.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:0.6rem;">
+        <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearAuditFilters()">Limpiar filtros</button>
+      </div>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th><div>Fecha</div><input type="text" class="filter-input" data-filter="a-date" placeholder="🔍 fecha" oninput="_filterAudit()" autocomplete="off"></th>
+            <th><div>Usuario</div><input type="text" class="filter-input" data-filter="a-user" placeholder="🔍 email" oninput="_filterAudit()" autocomplete="off"></th>
+            <th><div>Acción</div><select class="filter-input" data-filter="a-action" onchange="_filterAudit()"><option value="">— Todas —</option><option value="insert">insert</option><option value="update">update</option><option value="delete">delete</option></select></th>
+            <th><div>Tabla</div><input type="text" class="filter-input" data-filter="a-table" placeholder="🔍 tabla" oninput="_filterAudit()" autocomplete="off"></th>
+            <th><div>Row ID</div><input type="text" class="filter-input" data-filter="a-row" placeholder="🔍 id" oninput="_filterAudit()" autocomplete="off"></th>
+          </tr>
+        </thead>
+        <tbody id="audit-log-tbody"></tbody>
+      </table>
+    `;
+    _renderAudit(_auditCache);
   } catch (err) {
     container.innerHTML = `<p class="text-danger">Error: ${escapeHtml(err.message)}</p>`;
   }
 }
+
+function _renderAudit(rows) {
+  const tbody = document.getElementById('audit-log-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    return;
+  }
+  rows.forEach(e => {
+    const color = e.action === 'delete' ? '#f44336' : e.action === 'update' ? '#FFC107' : '#4CAF50';
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${formatDate(e.occurred_at)}</td>
+      <td>${escapeHtml(e.actor_email || '—')}</td>
+      <td><span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${e.action}</span></td>
+      <td>${escapeHtml(e.table_name)}</td>
+      <td>${escapeHtml(e.row_id || '')}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function _filterAudit() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fDate = get('a-date'), fUser = get('a-user'), fAction = get('a-action'),
+        fTable = get('a-table'), fRow = get('a-row');
+  const filtered = _auditCache.filter(e => {
+    if (fDate && !(e.occurred_at || '').toLowerCase().includes(fDate)) return false;
+    if (fUser && !(e.actor_email || '').toLowerCase().includes(fUser)) return false;
+    if (fAction && (e.action || '') !== fAction) return false;
+    if (fTable && !(e.table_name || '').toLowerCase().includes(fTable)) return false;
+    if (fRow && !(e.row_id || '').toLowerCase().includes(fRow)) return false;
+    return true;
+  });
+  _renderAudit(filtered);
+}
+
+function _clearAuditFilters() {
+  ['a-date','a-user','a-action','a-table','a-row'].forEach(k => {
+    const el = document.querySelector(`[data-filter="${k}"]`);
+    if (el) el.value = '';
+  });
+  _renderAudit(_auditCache);
+}
+
+window._filterAudit = _filterAudit;
+window._clearAuditFilters = _clearAuditFilters;
 
 // =============================================================
 // INNOVACIÓN #10 — Widget de clima en dashboard admin
