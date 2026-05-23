@@ -131,30 +131,30 @@
     };
     window.addEventListener('resize', resizeHandler);
 
-    // Cargar escenario (mismo del campus iztacala — coords ya alineadas) +
-    // modelo de árbol + árboles desde BD en paralelo
-    const [scenePromise, treePromise, treesData] = [
-      _loadGLB('data/iztacala_campus.glb'),
-      _loadGLB('data/trees/tree_model.glb'),
-      _fetchTrees()
-    ];
+    // ARRANCAR EL LOOP YA — así el usuario ve el cielo + suelo de inmediato
+    // mientras se cargan los GLBs en background (en lugar de pantalla negra).
+    _startLoop();
 
-    // Mostrar escenario apenas cargue
-    scenePromise.then((gltf) => {
+    // Cargar escenario + modelo de árbol + árboles desde BD en paralelo (no
+    // bloqueante: cada uno se agrega a la escena conforme termine).
+    _loadGLB('data/iztacala_campus.glb').then((gltf) => {
       if (!scene || !gltf) return;
       scene.add(gltf.scene);
-    }).catch((e) => console.warn('walkescene.glb no cargó:', e));
+      console.log('🏛️  Campus GLB cargado');
+    }).catch((e) => console.warn('iztacala_campus.glb no cargó:', e?.message || e));
 
-    // Esperar el modelo de árbol antes de plotear (los necesita)
-    treeTemplate = await treePromise.catch(() => null);
-    const trees = await treesData;
+    _loadGLB('data/trees/tree_model.glb').then(async (gltf) => {
+      treeTemplate = gltf ? gltf.scene : null;
+      console.log('🌳 Modelo de árbol cargado');
+      // Una vez tenemos el template, plotear los árboles
+      const trees = await _fetchTrees();
+      if (!scene) return;
+      const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
+      valid.forEach(tree => _addTree(tree));
+      _setHUDInfo(valid.length, (trees || []).length);
+      console.log(`🌲 ${valid.length} árboles plotteados en el walkthrough`);
+    }).catch((e) => console.warn('tree_model.glb no cargó:', e?.message || e));
 
-    // Plotear todos los árboles con coords
-    const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
-    valid.forEach(tree => _addTree(tree));
-
-    _setHUDInfo(valid.length, (trees || []).length);
-    _startLoop();
     return true;
   }
 
