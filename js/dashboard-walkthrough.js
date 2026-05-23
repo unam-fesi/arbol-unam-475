@@ -209,19 +209,38 @@
     // mira -Z por defecto). Así caminar adelante es ir norte.
     group.position.set(x, 0, -y);
 
+    const healthColorHex = colorForHealth(treeData.health_score);
+
     // Modelo del árbol (clon del template GLB)
     if (treeTemplate) {
       const tree = treeTemplate.clone(true);
-      // Normalizar altura: el modelo viene con varias escalas; lo
-      // escalamos para que mida ~TREE_HEIGHT_M metros de alto.
+      // TINTAR el follaje con el color de salud. Busca meshes verdosos
+      // (la copa) y los re-materializa con el color del semáforo. Así un
+      // árbol "Atención" se ve AMARILLO desde lejos, no solo en su anillo.
+      tree.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+        // Detectar si el material parece "follaje" (verdoso/marrón)
+        // En vez de heurísticas frágiles, simplemente sustituimos todas
+        // las copas: el modelo de árbol no tiene materiales múltiples
+        // críticos para nosotros aquí.
+        const matName = (node.material.name || '').toLowerCase();
+        const isTrunk = /trunk|wood|bark|tronco/.test(matName);
+        if (!isTrunk) {
+          // Clonar el material para no afectar otros árboles (template compartido)
+          const newMat = node.material.clone();
+          newMat.color = new THREE.Color(healthColorHex);
+          if (newMat.emissive) newMat.emissive = new THREE.Color(healthColorHex);
+          if ('emissiveIntensity' in newMat) newMat.emissiveIntensity = 0.15;
+          node.material = newMat;
+        }
+      });
+      // Normalizar altura ~TREE_HEIGHT_M metros
       const box = new THREE.Box3().setFromObject(tree);
       const size = box.getSize(new THREE.Vector3());
       const scale = TREE_HEIGHT_M / Math.max(size.y, 0.01);
       tree.scale.setScalar(scale);
-      // Bajar para que la base quede en y=0
       const newBox = new THREE.Box3().setFromObject(tree);
       tree.position.y = -newBox.min.y;
-      // Pequeña variación angular para que no todos los árboles miren igual
       tree.rotation.y = (treeData.id || 0) * 0.7919 % (Math.PI * 2);
       group.add(tree);
     } else {
@@ -240,12 +259,11 @@
       group.add(crown);
     }
 
-    // Anillo semáforo en la base (mismo concepto que Bosque 3D)
-    const ringColor = colorForHealth(treeData.health_score);
+    // Anillo semáforo en la base (mismo concepto que Bosque 3D / Iztacala)
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(0.95, 0.08, 8, 24),
       new THREE.MeshStandardMaterial({
-        color: ringColor, emissive: ringColor, emissiveIntensity: 0.55,
+        color: healthColorHex, emissive: healthColorHex, emissiveIntensity: 0.55,
         roughness: 0.4, metalness: 0.3
       })
     );
@@ -257,7 +275,7 @@
     const disc = new THREE.Mesh(
       new THREE.CircleGeometry(1.2, 24),
       new THREE.MeshBasicMaterial({
-        color: ringColor, transparent: true, opacity: 0.12, side: THREE.DoubleSide
+        color: healthColorHex, transparent: true, opacity: 0.12, side: THREE.DoubleSide
       })
     );
     disc.rotation.x = -Math.PI / 2;
@@ -374,28 +392,29 @@
     return g;
   }
 
+  // Vector reusable para no crear objetos cada frame
+  const _fwd = new THREE.Vector3();
+
   // Actualizar posición de la cámara según playerPos + yaw/pitch + cameraDistance
+  // CLAVE: el puma SIEMPRE queda centrado en la vista de la cámara. La
+  // cámara orbita ALREDEDOR del puma (no al revés).
   function _updateCameraFromPlayer() {
     if (!camera || !playerPos) return;
-    // En 1ª persona la cámara coincide con la posición de ojos del puma
-    if (cameraDistance <= 0.05) {
-      camera.position.copy(playerPos);
-    } else {
-      // En 3ª persona la cámara está DETRÁS y un poco ARRIBA del jugador.
-      // Forward del jugador = dirección que se determina por yaw (y un poco por pitch)
-      const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
-      const sinP = Math.sin(pitch), cosP = Math.cos(pitch);
-      const fwdX =  sinY * cosP;
-      const fwdY = -sinP;
-      const fwdZ = -cosY * cosP;
-      camera.position.set(
-        playerPos.x - fwdX * cameraDistance,
-        playerPos.y - fwdY * cameraDistance + 0.5,   // +0.5 = "altura de hombro"
-        playerPos.z - fwdZ * cameraDistance
-      );
-    }
+    // 1. Aplicar rotación (yaw + pitch) — esto define hacia dónde mira la cámara
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
+    if (cameraDistance <= 0.05) {
+      // 1ª persona: cámara coincide con ojos del puma
+      camera.position.copy(playerPos);
+      return;
+    }
+    // 3ª persona: cámara está DETRÁS del puma a lo largo de la dirección
+    // hacia donde mira. Usamos applyEuler para que el vector forward salga
+    // directo del sistema de rotación de Three.js (sin errores de signo).
+    _fwd.set(0, 0, -1).applyEuler(camera.rotation);
+    camera.position.copy(playerPos);
+    camera.position.addScaledVector(_fwd, -cameraDistance);
+    camera.position.y += 0.6;  // ligera elevación tipo "altura de hombro"
   }
 
   // ---- HUD ---------------------------------------------------------------
