@@ -369,39 +369,66 @@
         const loader = new THREE.TextureLoader();
         loader.crossOrigin = 'anonymous';
 
-        // Para cada placeholder, intentar cargar la foto real
+        // -------------------------------------------------------------------
+        // PASO 1 — Juntar todos los paths que requieren firmar y BATCHEAR
+        // la firma en UN solo POST a Supabase. Antes hacíamos 133 POSTs (uno
+        // por foto). Ahora 1 POST que firma todos a la vez con
+        // createSignedUrls (plural). Después le añadimos los params de
+        // transform a mano sobre la URL devuelta para pedir thumbs 400px.
+        // -------------------------------------------------------------------
         const placeholders = photoPlanes.filter(p => p.userData.isPlaceholder).slice();
+
+        // (a) Resolver paths y URLs ya completas
+        const pathsToSign = [];
+        const placeholdersByPath = new Map();
         for (const placeholder of placeholders) {
           const tree = placeholder.userData.tree;
-          let photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
+          const photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
           if (!photoUrl) continue;
-
-          if (!/^https?:\/\//.test(photoUrl)) {
-            try {
-              // Pedir THUMBNAIL de 400px en vez de la foto completa.
-              // Storage de Supabase hace resize/recompress server-side: una
-              // textura del mosaico baja de ~3MB a ~25KB. Si la transform no
-              // está habilitada en el plan free, cae al URL original.
-              const { data } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600, {
-                transform: { width: 400, height: 400, resize: 'cover', quality: 70 }
-              });
-              photoUrl = data?.signedUrl;
-              if (!photoUrl) {
-                const { data: full } = await sb.storage.from('tree-photos').createSignedUrl(photoUrl, 3600);
-                photoUrl = full?.signedUrl;
-              }
-            } catch (_) { photoUrl = null; }
+          if (/^https?:\/\//.test(photoUrl)) {
+            placeholder.userData.resolvedUrl = photoUrl;
+            continue;
           }
-          if (!photoUrl) continue;
+          pathsToSign.push(photoUrl);
+          if (!placeholdersByPath.has(photoUrl)) placeholdersByPath.set(photoUrl, []);
+          placeholdersByPath.get(photoUrl).push(placeholder);
+        }
 
-          // Cargar textura
-          loader.load(photoUrl,
+        // (b) Una sola llamada batch a createSignedUrls para todos los paths
+        if (pathsToSign.length > 0) {
+          try {
+            const { data: signedList, error: signErr } = await sb.storage
+              .from('tree-photos')
+              .createSignedUrls(pathsToSign, 3600);
+            if (signErr) throw signErr;
+            (signedList || []).forEach(item => {
+              if (!item || !item.signedUrl) return;
+              // Truco: el SDK no expone "transform" en createSignedUrls, pero
+              // basta con cambiar el endpoint a /render/image/sign y añadir
+              // los params para que el server haga el resize on-the-fly.
+              const transformed = item.signedUrl
+                .replace('/object/sign/', '/render/image/sign/')
+                + (item.signedUrl.includes('?') ? '&' : '?')
+                + 'width=400&height=400&resize=cover&quality=70';
+              const phs = placeholdersByPath.get(item.path);
+              if (phs) phs.forEach(p => { p.userData.resolvedUrl = transformed; });
+            });
+          } catch (e) {
+            console.warn('Mosaico batch sign falló, sin fotos:', e);
+          }
+        }
+
+        // (c) Cargar texturas en paralelo desde los URLs ya resueltos
+        for (const placeholder of placeholders) {
+          const url = placeholder.userData.resolvedUrl;
+          if (!url) continue;
+          const tree = placeholder.userData.tree;
+          loader.load(url,
             (tex) => {
               const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
               const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), mat);
               photoPlane.position.copy(placeholder.position);
               photoPlane.userData = { ...placeholder.userData, isPlaceholder: false };
-              // Buscar el grupo padre y reemplazar
               const parent = placeholder.parent;
               if (parent) {
                 parent.add(photoPlane);
