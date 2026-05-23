@@ -937,15 +937,17 @@
       if (avatar) {
         avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
 
-        // Cuando el puma camina, gira para mirar la dirección de movimiento.
-        // Cuando NO camina, mantiene su última orientación → así la cámara
-        // puede orbitar y ver el FRENTE del puma sin que el cuerpo "se voltee".
+        // Cuando el puma CAMINA, gira para mirar la dirección hacia donde
+        // apunta la cámara (no donde estoy moviendo). Así caminar S no le
+        // voltea la cara — el puma simplemente retrocede mientras sigue de
+        // espaldas a ti. Cuando NO camina, mantiene su orientación → la
+        // cámara puede orbitar libremente alrededor del puma.
+        // Modelo GLB tiene su cara default mirando +Z; atan2(camFwd.x,camFwd.z)
+        // da la rotation.y que hace que el puma mire EN dirección camFwd.
         if (isWalking && _camFwd.lengthSq() > 0.001) {
-          pumaYawTarget = Math.atan2(-_camFwd.x, -_camFwd.z);
+          pumaYawTarget = Math.atan2(_camFwd.x, _camFwd.z);
         }
-        // Interpolación suave de pumaYaw → pumaYawTarget (turn rate ~6 rad/s)
         let diff = pumaYawTarget - pumaYaw;
-        // Normalizar a (-π, π) para girar por el camino corto
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         pumaYaw += diff * Math.min(1, 0.15 * dt);
