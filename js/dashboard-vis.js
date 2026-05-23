@@ -320,12 +320,16 @@
     });
 
     // ---- PEDESTAL-spotlight para cada zona ----
-    // Antes el anillo (torus) estaba a la misma altura que las fotos y las
-    // cruzaba como una línea horizontal molesta. Ahora el anillo va DEBAJO
-    // de las fotos (zone.y - 1.4) funcionando como un "halo de spotlight"
-    // del que parecen flotar las imágenes. Se ve más limpio y no las tapa.
-    const RING_OFFSET_Y = -1.4;
+    // El anillo va DEBAJO del sub-anillo de fotos MÁS BAJO de la zona,
+    // no en el centro. Así funciona como un "pedestal" del que emergen
+    // las fotos hacia arriba, sin cruzar entre los sub-anillos.
+    const RING_OFFSET_BELOW = 1.4;  // unidades debajo del sub-anillo más bajo
     ZONES.forEach(zone => {
+      // Y del sub-anillo más bajo dentro de esta zona
+      const totalSpread = (zone.numSubRings - 1) * SUB_RING_GAP;
+      const lowestSubRingY = zone.y - totalSpread / 2;
+      const ringY = lowestSubRingY - RING_OFFSET_BELOW;
+
       // Disco translúcido del color del semáforo (el "spotlight")
       const discGeo = new THREE.CircleGeometry(zone.radius + 0.6, 64);
       const discMat = new THREE.MeshBasicMaterial({
@@ -333,7 +337,7 @@
       });
       const disc = new THREE.Mesh(discGeo, discMat);
       disc.rotation.x = -Math.PI / 2;
-      disc.position.y = zone.y + RING_OFFSET_Y + 0.02;
+      disc.position.y = ringY + 0.02;
       scene.add(disc);
 
       // Anillo delgado y luminoso en el perímetro del disco
@@ -344,7 +348,7 @@
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = Math.PI / 2;
-      ring.position.y = zone.y + RING_OFFSET_Y;
+      ring.position.y = ringY;
       scene.add(ring);
 
       // Etiqueta flotando ARRIBA del stack de sub-anillos. Solo texto, sin

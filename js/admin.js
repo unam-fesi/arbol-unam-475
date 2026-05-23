@@ -513,6 +513,7 @@ function _renderAdminTreesRows(trees) {
       <td>${tree.health_score || 0}%${co2Tag}</td>
       <td>
         <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
+        <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>
         <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
         <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
         <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
@@ -872,9 +873,19 @@ async function editAdminTree(treeId) {
         <div class="form-group"><label>Campus</label><select id="edit-tree-campus" style="width:100%;padding:0.5rem;">${campusOpts}</select></div>
         <div class="form-group"><label>Jardín</label><select id="edit-tree-garden" style="width:100%;padding:0.5rem;">${gardenOpts}</select></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
-        <div class="form-group"><label>Latitud (capturada en seguimiento)</label><input type="number" step="any" id="edit-tree-lat" value="${tree.location_lat || ''}" style="width:100%;padding:0.5rem;"></div>
-        <div class="form-group"><label>Longitud (capturada en seguimiento)</label><input type="number" step="any" id="edit-tree-lng" value="${tree.location_lng || ''}" style="width:100%;padding:0.5rem;"></div>
+      <div class="form-group" style="margin-bottom:0.75rem;">
+        <label>Ubicación (lat/lng)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0.5rem;align-items:stretch;">
+          <input type="number" step="any" id="edit-tree-lat" placeholder="Latitud"
+                 value="${tree.location_lat || ''}" style="width:100%;padding:0.5rem;">
+          <input type="number" step="any" id="edit-tree-lng" placeholder="Longitud"
+                 value="${tree.location_lng || ''}" style="width:100%;padding:0.5rem;">
+          <button type="button" id="edit-tree-loc-mapbtn"
+                  style="background:#2e7d32;color:#fff;border:none;padding:0 1rem;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap;">
+            📍 Mapa
+          </button>
+        </div>
+        <small style="color:#666;font-size:0.75rem;">Click en "📍 Mapa" para arrastrar un pin en el mapa real (estilo Uber)</small>
       </div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Salud (0-100)</label><input type="number" id="edit-tree-health" value="${tree.health_score || 0}" min="0" max="100" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Estado</label>
@@ -889,6 +900,27 @@ async function editAdminTree(treeId) {
       <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Guardar</button>
     </form>
   `);
+  // Botón "📍 Mapa" abre el editor gráfico y actualiza los inputs sin guardar
+  // todavía (el user tiene que seguir con el form completo).
+  const locBtn = document.getElementById('edit-tree-loc-mapbtn');
+  if (locBtn) {
+    locBtn.addEventListener('click', () => {
+      const curLat = parseFloat(document.getElementById('edit-tree-lat').value);
+      const curLng = parseFloat(document.getElementById('edit-tree-lng').value);
+      openLocationMapEditor({
+        initialLat: isFinite(curLat) ? curLat : null,
+        initialLng: isFinite(curLng) ? curLng : null,
+        treeCode: tree.tree_code,
+        treeName: tree.common_name || tree.species || 'Árbol',
+        onSave: (lat, lng) => {
+          document.getElementById('edit-tree-lat').value = lat.toFixed(6);
+          document.getElementById('edit-tree-lng').value = lng.toFixed(6);
+          showToast('Coords actualizadas — recuerda "Guardar" abajo para confirmar', 'info');
+        }
+      });
+    });
+  }
+
   document.getElementById('edit-tree-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const { error } = await sb.from('trees_catalog').update({
@@ -1941,6 +1973,155 @@ window.editAdminUser = editAdminUser;
 window.loadAdminTrees = loadAdminTrees;
 window.saveAdminTree = saveAdminTree;
 window.editAdminTree = editAdminTree;
+
+// ============================================================================
+// EDITOR GRÁFICO DE UBICACIÓN (estilo Uber: pin draggable en mapa)
+// ----------------------------------------------------------------------------
+// Modal con Leaflet centrado en la coord actual del árbol. El admin arrastra
+// el pin (o hace click en el mapa) para corregir la ubicación. Al guardar,
+// los 3 mapas (Mapa 3D, Heatmap, FES Iztacala 3D) se sincronizan solos
+// porque todos leen del mismo campo trees_catalog.location_lat/lng.
+// ============================================================================
+
+// Implementación reusable. Acepta callback onSave para que pueda usarse
+// tanto desde el botón de la fila (guarda directo a BD) como desde el form
+// de edición (solo actualiza los inputs lat/lng).
+function openLocationMapEditor(opts) {
+  const { initialLat, initialLng, treeCode, treeName, onSave } = opts;
+  if (typeof L === 'undefined') {
+    showToast('Leaflet no está cargado', 'error');
+    return;
+  }
+
+  // Coord inicial: la del árbol o el centro de FES Iztacala como fallback
+  const lat0 = (initialLat != null && isFinite(initialLat)) ? initialLat : 19.52552345;
+  const lng0 = (initialLng != null && isFinite(initialLng)) ? initialLng : -99.1881276;
+  const hadCoord = (initialLat != null && initialLng != null);
+
+  const existing = document.getElementById('tree-location-editor-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'tree-location-editor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10010;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.45);overflow:hidden;">
+      <div style="padding:0.9rem 1.3rem;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fafafa;">
+        <div>
+          <h3 style="margin:0;color:#1b5e20;font-size:1.05rem;"><i class="fas fa-map-marker-alt"></i> Editar ubicación</h3>
+          <p style="margin:0.2rem 0 0;color:#666;font-size:0.82rem;">${escapeHtml(treeCode || '')} · ${escapeHtml(treeName || 'Árbol')}</p>
+        </div>
+        <button id="tree-loc-close-x" style="background:transparent;border:none;font-size:1.4rem;cursor:pointer;color:#999;line-height:1;">&times;</button>
+      </div>
+      <div style="padding:0.6rem 1rem;background:#fff7ec;border-bottom:1px solid #f0e0c0;font-size:0.8rem;color:#7a5a2a;">
+        💡 Arrastra el pin verde o haz click en el mapa para corregir la ubicación. Al guardar, los 3 mapas (Mapa 3D, Heatmap, FES Iztacala 3D) se actualizan automáticamente.
+      </div>
+      <div id="tree-location-map" style="flex:1;min-height:460px;"></div>
+      <div style="padding:0.8rem 1.3rem;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;background:#fafafa;flex-wrap:wrap;">
+        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.78rem;color:#444;">
+          <span style="color:#888;">Coord:</span> <span id="tree-loc-coords">${lat0.toFixed(6)}, ${lng0.toFixed(6)}</span>
+          ${!hadCoord ? '<span style="color:#c66;margin-left:0.5rem;">(sin ubicación previa, partiendo del centro de FES Iztacala)</span>' : ''}
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+          <button id="tree-loc-cancel" style="background:#f0f0f0;color:#444;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:500;cursor:pointer;">Cancelar</button>
+          <button id="tree-loc-save" style="background:#2E7D32;color:#fff;border:none;padding:0.6rem 1.2rem;border-radius:10px;font-weight:600;cursor:pointer;">Guardar ubicación</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Inicializar el mapa después de que el modal esté en el DOM
+  setTimeout(() => {
+    const mapEl = document.getElementById('tree-location-map');
+    const map = L.map(mapEl, { zoomControl: true }).setView([lat0, lng0], 18);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap', maxZoom: 19
+    }).addTo(map);
+
+    // Overlay del polígono del campus (referencia visual)
+    if (window.IztacalaCampus && window.IztacalaCampus.polygon) {
+      L.polygon(window.IztacalaCampus.polygon, {
+        color: '#1b5e20', weight: 2, opacity: 0.7,
+        fillColor: '#1b5e20', fillOpacity: 0.05,
+        dashArray: '6 4', interactive: false
+      }).addTo(map);
+    }
+
+    // Pin draggable
+    const pin = L.marker([lat0, lng0], {
+      draggable: true,
+      autoPan: true
+    }).addTo(map);
+    pin.bindTooltip('Arrastra para mover · o haz click en el mapa', {
+      permanent: true, direction: 'top', offset: [-15, -8]
+    }).openTooltip();
+
+    const updateCoordDisplay = (latlng) => {
+      document.getElementById('tree-loc-coords').textContent =
+        `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
+    };
+    pin.on('drag', () => updateCoordDisplay(pin.getLatLng()));
+    map.on('click', (e) => {
+      pin.setLatLng(e.latlng);
+      updateCoordDisplay(e.latlng);
+    });
+
+    // Botones
+    const closeModal = () => modal.remove();
+    document.getElementById('tree-loc-close-x').addEventListener('click', closeModal);
+    document.getElementById('tree-loc-cancel').addEventListener('click', closeModal);
+    document.getElementById('tree-loc-save').addEventListener('click', async () => {
+      const pos = pin.getLatLng();
+      try {
+        if (typeof onSave === 'function') await onSave(pos.lat, pos.lng);
+        closeModal();
+      } catch (err) {
+        showToast('Error: ' + (err.message || err), 'error');
+      }
+    });
+
+    // Cerrar con click en backdrop (pero no dentro del modal)
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Asegurar que el mapa se renderice bien después del setTimeout
+    setTimeout(() => map.invalidateSize(), 80);
+  }, 50);
+}
+
+// Handler para el botón de la fila (guarda directo a BD)
+async function editAdminTreeLocation(treeId) {
+  const { data: tree, error } = await sb
+    .from('trees_catalog')
+    .select('id, tree_code, common_name, species, location_lat, location_lng')
+    .eq('id', treeId)
+    .single();
+  if (error || !tree) {
+    showToast('No se pudo cargar el árbol', 'error');
+    return;
+  }
+  openLocationMapEditor({
+    initialLat: tree.location_lat,
+    initialLng: tree.location_lng,
+    treeCode: tree.tree_code,
+    treeName: tree.common_name || tree.species || 'Árbol',
+    onSave: async (lat, lng) => {
+      const { error: upErr } = await sb.from('trees_catalog').update({
+        location_lat: lat,
+        location_lng: lng,
+        updated_at: new Date().toISOString()
+      }).eq('id', treeId);
+      if (upErr) throw upErr;
+      showToast('Ubicación actualizada ✓', 'success');
+      if (typeof loadAdminTrees === 'function') loadAdminTrees();
+    }
+  });
+}
+
+window.openLocationMapEditor = openLocationMapEditor;
+window.editAdminTreeLocation = editAdminTreeLocation;
 // ============================================================================
 // HELPER — Resuelve photo_url de Storage a URL utilizable
 // ============================================================================
