@@ -260,17 +260,17 @@
     el.innerHTML = '<div class="vis-loading" style="color:#1b3a5f;padding:2rem;text-align:center;font-weight:500;">Cargando anillos del bosque…</div>';
 
     const w = el.clientWidth || 800;
-    const h = 640;
+    const h = 720;  // canvas más alto → más cielo visible
 
     const scene = new THREE.Scene();
     // ---- Fondo cielo con degradado vertical (canvas → CubeTexture-like) ----
     scene.background = _makeSkyBackground();
     scene.fog = new THREE.Fog(0xcfe7ff, 60, 180);
 
-    // FOV más amplio (55°) y cámara más lejana para que entren los 3 anillos
-    // con holgura horizontal y vertical.
-    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 300);
-    camera.position.set(0, 3, 34);
+    // FOV 65° + cámara cercana (z=22) → los anillos llenan ~80% del ancho.
+    // Suficientemente grandes sin caer en distorsión fish-eye.
+    const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 300);
+    camera.position.set(0, 3, 22);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -486,7 +486,7 @@
     let lastX = 0, lastY = 0;
     const autoSpeed = 0.003;
     // Estado de cámara: ángulo de pitch que vamos a interpolar
-    const CAM_RADIUS = 34;
+    const CAM_RADIUS = 22;  // debe coincidir con camera.position.z inicial
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
     const PITCH_MIN = -0.55;  // ~31° hacia arriba
     const PITCH_MAX =  0.55;  // ~31° hacia abajo

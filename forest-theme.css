@@ -1052,9 +1052,12 @@ a:hover { color: var(--primary-dark); }
   height: 520px; cursor: default;
   background: #e8e0c8;
 }
+/* Mosaico tiene su propio ancho: el escenario 3D del cielo aprovecha mucho
+   más espacio horizontal y vertical que las otras vistas. */
 .dashboard-mosaico-vis {
-  background: linear-gradient(180deg, #2d2418 0%, #4a3a28 100%);
-  min-height: 520px;
+  max-width: 1400px;
+  min-height: 720px;
+  background: linear-gradient(180deg, #5fa8d8 0%, #8ecbed 45%, #c8e4f3 85%, #e8f3fb 100%);
 }
 .dashboard-tree-3d:active { cursor: grabbing; }
 .dashboard-tree-3d canvas, .dashboard-mosaico-vis canvas { display: block; }
