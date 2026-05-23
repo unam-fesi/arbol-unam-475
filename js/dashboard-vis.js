@@ -251,8 +251,8 @@
     // FOV 65° + cámara z=42 para acomodar las 3 zonas con sub-anillos
     // bien separados (Sano arriba en y=+16, Crítico abajo en y=-16, sub-anillos
     // de Sano se extienden 6 unidades más → llega a y=+22, necesita más z).
-    const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 600);
-    camera.position.set(0, 1, 55);
+    const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 700);
+    camera.position.set(0, 1, 75);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -278,9 +278,9 @@
     // Separación AMPLIA (±16) para que los sub-anillos de Sano (5 niveles)
     // queden bien lejos de Atención abajo. Antes ±11 → se encimaban.
     const ZONES = [
-      { name: 'Sano',     color: 0x4CAF50, y:  22, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Sano',     color: 0x4CAF50, y:  30, filter: t => (t.health_score || 0) >= 70 },
       { name: 'Atención', color: 0xFFA726, y:   0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xEF5350, y: -22, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
+      { name: 'Crítico',  color: 0xEF5350, y: -30, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
     // Cuántas fotos caben cómodamente en un anillo y cuánto separar los
@@ -289,7 +289,9 @@
     // de la banda de su zona — así nunca hay demasiadas fotos peleándose
     // por arco en un solo anillo.
     const PHOTOS_PER_RING = 50;
-    const SUB_RING_GAP = 4.0;  // separación amplia entre sub-anillos
+    // Gap > altura máxima de foto en cover flow (foto 2.0 alto × scale 1.6 = 3.2)
+    // Con 6.0 hay 2.8 unidades de aire entre fotos de sub-anillos adyacentes.
+    const SUB_RING_GAP = 6.0;
     const TARGET_ARC = 2.0;    // arco-unidad por foto (controla densidad)
 
     ZONES.forEach(zone => {
@@ -540,9 +542,9 @@
     const autoSpeed = 0.0006;  // mitad de v39 — rotación muy contemplativa
     // Estado de cámara: pitch (vertical) + radio (zoom).
     // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
-    let camRadius = 55;            // valor actual (cambia con la rueda)
-    const CAM_RADIUS_MIN = 20;     // zoom in tope — fotos llenan pantalla
-    const CAM_RADIUS_MAX = 120;    // zoom out tope — vista panorámica
+    let camRadius = 75;            // valor actual (cambia con la rueda)
+    const CAM_RADIUS_MIN = 25;     // zoom in tope — fotos llenan pantalla
+    const CAM_RADIUS_MAX = 160;    // zoom out tope — vista panorámica
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
     const PITCH_MIN = -0.55;  // ~31° hacia arriba
     const PITCH_MAX =  0.55;  // ~31° hacia abajo
@@ -705,10 +707,10 @@
         // t en [0,1]: 0 = back, 1 = front
         const t = (cosFront + 1) / 2;
         // Curva con exponente: el back colapsa rápido (escala 0.05),
-        // el front domina claramente (escala 2.0). Solo unas pocas fotos
-        // alrededor del frente se ven completas; las demás son puntitos.
+        // el front llega a 1.6x (no 2.0) para que no se enciman las fotos
+        // de sub-anillos adyacentes (foto 2.0×1.6 = 3.2 unidades vs gap 6.0).
         const eased = Math.pow(t, 3);  // ease-in cúbico
-        const scale = 0.05 + (2.0 - 0.05) * eased;
+        const scale = 0.05 + (1.6 - 0.05) * eased;
         p.scale.setScalar(scale);
         // El plano del back queda detrás de TODO mediante depthWrite/order
         p.renderOrder = Math.round(t * 1000);
