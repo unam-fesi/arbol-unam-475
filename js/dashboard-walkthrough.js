@@ -40,6 +40,15 @@
   let crosshairEl = null;
   let hudEl = null;
   let promptEl = null;
+  // Posición del JUGADOR (no de la cámara). En 3ª persona la cámara orbita
+  // alrededor del jugador a cameraDistance metros.
+  let playerPos = null;    // THREE.Vector3
+  let avatar = null;       // mesh visible solo en 3ª persona
+  let cameraDistance = 0;  // 0 = primera persona; >0 = tercera persona (zoom out)
+  const CAM_DIST_MIN = 0;
+  const CAM_DIST_MAX = 12;
+  // Estado touch (móvil)
+  let touchState = null;
 
   const EYE_HEIGHT = 1.7;
   const WALK_SPEED = 0.13;
@@ -83,12 +92,17 @@
     scene.fog = new THREE.Fog(0xc8e4f3, 80, 380);
 
     camera = new THREE.PerspectiveCamera(75, W / H, 0.05, 800);
-    // Spawn al centro del campus, mirando hacia el norte (donde están la
-    // mayoría de los árboles registrados en BD según los seguimientos)
-    camera.position.set(0, EYE_HEIGHT, 50);
     camera.rotation.order = 'YXZ';
-    yaw = 0;
-    pitch = 0;
+    // El JUGADOR (no la cámara) se posiciona en el campus. La cámara
+    // orbita alrededor del jugador en 3ª persona, o coincide con el
+    // jugador en 1ª persona (cameraDistance = 0).
+    // Spawn cerca del cluster de árboles del NE del campus para que el
+    // usuario vea contenido inmediato al entrar.
+    playerPos = new THREE.Vector3(50, EYE_HEIGHT, -80);
+    yaw = -0.5;     // mirando ligeramente hacia el SO (centro del campus)
+    pitch = -0.1;   // un poquito hacia abajo
+    cameraDistance = 6;  // arranca en 3ª persona para que veas al pumita
+    _updateCameraFromPlayer();
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -115,6 +129,12 @@
     ground.position.y = -0.02;
     ground.receiveShadow = true;
     scene.add(ground);
+
+    // Avatar PUMITA UNAM (procedural — sin GLB)
+    avatar = _makePumaAvatar();
+    avatar.position.copy(playerPos);
+    avatar.position.y = 0;  // patas en el piso
+    scene.add(avatar);
 
     raycaster = new THREE.Raycaster();
 
@@ -249,6 +269,135 @@
     treeGroups.push(group);
   }
 
+  // ---- AVATAR PUMITA UNAM (procedural) -----------------------------------
+  // Construido con primitivas — sin GLB. Es una representación cartoonish
+  // del puma: cuerpo alargado, cabeza con orejas/ojos/nariz, 4 patas y cola.
+  // Diseñado mirando hacia -Z (la dirección "forward" por defecto de Three.js),
+  // así rotar avatar.rotation.y = yaw lo alinea con la cámara.
+  function _makePumaAvatar() {
+    const g = new THREE.Group();
+    const tan = 0xc99054;       // color puma (tan/dorado UNAM)
+    const tanDark = 0x9c6d3a;   // sombra
+    const black = 0x222222;
+    const goldEye = 0xffd54f;
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color: tan, roughness: 0.7 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: tanDark, roughness: 0.7 });
+    const blackMat = new THREE.MeshStandardMaterial({ color: black, roughness: 0.6 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: goldEye });
+
+    // Cuerpo (esfera alargada en Z = longitud del cuerpo)
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 12), bodyMat);
+    body.scale.set(1, 0.85, 1.55);
+    body.position.y = 0.55;
+    g.add(body);
+
+    // Cabeza (frontal — hacia -Z)
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 12), bodyMat);
+    head.position.set(0, 0.72, -0.55);
+    head.scale.set(1.05, 1, 1.05);
+    g.add(head);
+
+    // Hocico (más oscuro, sobresale)
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), darkMat);
+    muzzle.position.set(0, 0.6, -0.78);
+    muzzle.scale.set(1, 0.85, 1);
+    g.add(muzzle);
+
+    // Nariz negra
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), blackMat);
+    nose.position.set(0, 0.65, -0.92);
+    g.add(nose);
+
+    // Ojos amarillos + pupilas negras
+    const eyeGeo = new THREE.SphereGeometry(0.055, 10, 8);
+    const pupilGeo = new THREE.SphereGeometry(0.025, 8, 6);
+    [-0.11, 0.11].forEach(x => {
+      const eye = new THREE.Mesh(eyeGeo, eyeMat);
+      eye.position.set(x, 0.78, -0.74);
+      g.add(eye);
+      const pupil = new THREE.Mesh(pupilGeo, blackMat);
+      pupil.position.set(x, 0.78, -0.79);
+      g.add(pupil);
+    });
+
+    // Orejas (conos)
+    const earGeo = new THREE.ConeGeometry(0.1, 0.22, 8);
+    [-0.16, 0.16].forEach(x => {
+      const ear = new THREE.Mesh(earGeo, bodyMat);
+      ear.position.set(x, 0.99, -0.5);
+      ear.rotation.z = x < 0 ? 0.15 : -0.15;  // ligeramente hacia afuera
+      g.add(ear);
+      // Interior de la oreja (negro)
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), blackMat);
+      inner.position.set(x, 0.98, -0.5);
+      inner.rotation.z = x < 0 ? 0.15 : -0.15;
+      g.add(inner);
+    });
+
+    // 4 patas. Las almaceno en userData.legs para animarlas al caminar
+    const legGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.55, 8);
+    const legPositions = [
+      { x: -0.22, z: -0.35, key: 'FL' },  // delantera izquierda
+      { x:  0.22, z: -0.35, key: 'FR' },  // delantera derecha
+      { x: -0.22, z:  0.35, key: 'BL' },  // trasera izquierda
+      { x:  0.22, z:  0.35, key: 'BR' },  // trasera derecha
+    ];
+    const legs = {};
+    legPositions.forEach(p => {
+      const leg = new THREE.Mesh(legGeo, bodyMat);
+      leg.position.set(p.x, 0.27, p.z);
+      g.add(leg);
+      legs[p.key] = leg;
+    });
+    g.userData.legs = legs;
+
+    // Cola (cilindro inclinado hacia arriba-atrás)
+    const tail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.04, 0.85, 8),
+      bodyMat
+    );
+    tail.position.set(0, 0.72, 0.7);
+    tail.rotation.x = -Math.PI / 4.5;
+    g.add(tail);
+    g.userData.tail = tail;
+
+    // Sombra plana debajo (disco oscuro)
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.55, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.01;
+    g.add(shadow);
+
+    return g;
+  }
+
+  // Actualizar posición de la cámara según playerPos + yaw/pitch + cameraDistance
+  function _updateCameraFromPlayer() {
+    if (!camera || !playerPos) return;
+    // En 1ª persona la cámara coincide con la posición de ojos del puma
+    if (cameraDistance <= 0.05) {
+      camera.position.copy(playerPos);
+    } else {
+      // En 3ª persona la cámara está DETRÁS y un poco ARRIBA del jugador.
+      // Forward del jugador = dirección que se determina por yaw (y un poco por pitch)
+      const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
+      const sinP = Math.sin(pitch), cosP = Math.cos(pitch);
+      const fwdX =  sinY * cosP;
+      const fwdY = -sinP;
+      const fwdZ = -cosY * cosP;
+      camera.position.set(
+        playerPos.x - fwdX * cameraDistance,
+        playerPos.y - fwdY * cameraDistance + 0.5,   // +0.5 = "altura de hombro"
+        playerPos.z - fwdZ * cameraDistance
+      );
+    }
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+  }
+
   // ---- HUD ---------------------------------------------------------------
   function _setupHUD() {
     // Crosshair central
@@ -278,9 +427,10 @@
       font-size:0.75rem;font-family:Inter,sans-serif;pointer-events:none;
       box-shadow:0 4px 12px rgba(0,0,0,0.15);font-weight:500;text-align:center;
       backdrop-filter:blur(6px);`;
-    hudEl.innerHTML = `
-      <div><strong>Click</strong> para entrar · <strong>WASD</strong> caminar · <strong>Shift</strong> correr · <strong>Espacio</strong> saltar · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>
-    `;
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    hudEl.innerHTML = isTouch
+      ? `<div><strong>Joystick</strong> caminar · <strong>Arrastra</strong> mirar · <strong>Pinch</strong> zoom · <strong>↑</strong> saltar · <strong>🔍</strong> inspeccionar</div>`
+      : `<div><strong>Click</strong> para entrar · <strong>WASD</strong> caminar · <strong>Shift</strong> correr · <strong>Espacio</strong> saltar · <strong>Rueda</strong> zoom · <strong>V</strong> 1ª/3ª persona · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>`;
     containerEl.appendChild(hudEl);
   }
 
@@ -295,7 +445,10 @@
 
   // ---- Controles ----------------------------------------------------------
   function _setupControls() {
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
     const onCanvasClick = () => {
+      if (isTouch) return;  // touch usa otros controles
       if (!isLocked && renderer && renderer.domElement) {
         renderer.domElement.requestPointerLock();
       }
@@ -316,6 +469,10 @@
       keys[e.code] = true;
       if (e.code === 'Escape' && isLocked) document.exitPointerLock();
       if (e.code === 'KeyE' && isLocked) _inspectFront();
+      // V toggle 1ª/3ª persona (mismo concepto que F5 en Minecraft)
+      if (e.code === 'KeyV') {
+        cameraDistance = cameraDistance > 0.05 ? 0 : 6;
+      }
       if (e.code === 'Space' && onGround && isLocked) {
         velY = JUMP_SPEED;
         onGround = false;
@@ -324,15 +481,164 @@
     };
     const onKeyUp = (e) => { keys[e.code] = false; };
 
+    // SCROLL WHEEL = zoom (1ª persona <-> 3ª persona)
+    const onWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 1 : -1;
+      cameraDistance = Math.max(CAM_DIST_MIN, Math.min(CAM_DIST_MAX, cameraDistance + delta * 0.7));
+    };
+
     if (renderer && renderer.domElement) {
       renderer.domElement.addEventListener('click', onCanvasClick);
+      renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
     }
     document.addEventListener('pointerlockchange', onPointerLockChange);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
 
-    pointerHandlers = { onCanvasClick, onPointerLockChange, onMouseMove, onKeyDown, onKeyUp };
+    // ---- TOUCH (móvil): joystick virtual + look pad + pinch zoom ----
+    if (isTouch) _setupTouchControls();
+
+    pointerHandlers = { onCanvasClick, onPointerLockChange, onMouseMove, onKeyDown, onKeyUp, onWheel };
+  }
+
+  function _setupTouchControls() {
+    // Estado del touch
+    touchState = {
+      active: true,
+      joystick: { x: 0, y: 0 },
+      lookTouchId: null,
+      lookStartX: 0, lookStartY: 0,
+      pinchStartDist: 0, pinchStartCamDist: 0
+    };
+
+    // Joystick virtual (esquina inferior izquierda)
+    const stick = document.createElement('div');
+    stick.style.cssText = `
+      position:absolute;left:18px;bottom:18px;width:120px;height:120px;
+      border-radius:50%;background:rgba(255,255,255,0.25);
+      border:2px solid rgba(255,255,255,0.5);touch-action:none;
+      backdrop-filter:blur(6px);z-index:5;`;
+    const knob = document.createElement('div');
+    knob.style.cssText = `
+      position:absolute;left:35px;top:35px;width:50px;height:50px;
+      border-radius:50%;background:rgba(255,255,255,0.7);
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:none;pointer-events:none;`;
+    stick.appendChild(knob);
+    containerEl.appendChild(stick);
+
+    let stickTouchId = null;
+    const STICK_RADIUS = 50;
+
+    stick.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      stickTouchId = t.identifier;
+    }, { passive: false });
+    stick.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const rect = stick.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== stickTouchId) continue;
+        let dx = t.clientX - cx;
+        let dy = t.clientY - cy;
+        const d = Math.hypot(dx, dy);
+        if (d > STICK_RADIUS) { dx = dx / d * STICK_RADIUS; dy = dy / d * STICK_RADIUS; }
+        knob.style.left = `${35 + dx}px`;
+        knob.style.top = `${35 + dy}px`;
+        touchState.joystick.x = dx / STICK_RADIUS;
+        touchState.joystick.y = dy / STICK_RADIUS;  // arriba = -y → adelante
+      }
+    }, { passive: false });
+    const stickEnd = () => {
+      stickTouchId = null;
+      knob.style.left = '35px';
+      knob.style.top = '35px';
+      touchState.joystick.x = 0;
+      touchState.joystick.y = 0;
+    };
+    stick.addEventListener('touchend', stickEnd);
+    stick.addEventListener('touchcancel', stickEnd);
+
+    // Botón "E" (inspeccionar) en esquina inferior derecha
+    const eBtn = document.createElement('button');
+    eBtn.textContent = '🔍 Inspeccionar';
+    eBtn.style.cssText = `
+      position:absolute;right:18px;bottom:18px;background:#2E7D32;color:#fff;
+      border:none;padding:0.7rem 1.1rem;border-radius:24px;font-weight:600;
+      box-shadow:0 4px 12px rgba(0,0,0,0.35);font-size:0.85rem;touch-action:manipulation;
+      z-index:5;`;
+    eBtn.addEventListener('touchstart', (e) => { e.preventDefault(); _inspectFront(); }, { passive: false });
+    containerEl.appendChild(eBtn);
+
+    // Botón "↕" saltar
+    const jumpBtn = document.createElement('button');
+    jumpBtn.textContent = '↑';
+    jumpBtn.style.cssText = `
+      position:absolute;right:18px;bottom:80px;background:rgba(255,255,255,0.85);
+      color:#1b3a5f;border:none;width:50px;height:50px;border-radius:50%;
+      font-weight:700;font-size:1.4rem;box-shadow:0 4px 12px rgba(0,0,0,0.25);
+      touch-action:manipulation;z-index:5;`;
+    jumpBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (onGround) { velY = JUMP_SPEED; onGround = false; }
+    }, { passive: false });
+    containerEl.appendChild(jumpBtn);
+
+    // Look pad = arrastrar en el área de la pantalla (no sobre el joystick/botones)
+    const canvas = renderer.domElement;
+    canvas.addEventListener('touchstart', (e) => {
+      for (const t of e.changedTouches) {
+        // Ignorar si el touch toca el joystick o botones (ya tienen sus listeners)
+        if (touchState.lookTouchId == null) {
+          touchState.lookTouchId = t.identifier;
+          touchState.lookStartX = t.clientX;
+          touchState.lookStartY = t.clientY;
+        }
+      }
+      // Pinch zoom
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchState.pinchStartDist = Math.hypot(dx, dy);
+        touchState.pinchStartCamDist = cameraDistance;
+      }
+    }, { passive: true });
+    canvas.addEventListener('touchmove', (e) => {
+      // Pinch
+      if (e.touches.length === 2 && touchState.pinchStartDist > 0) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const d = Math.hypot(dx, dy);
+        const factor = touchState.pinchStartDist / d;
+        cameraDistance = Math.max(CAM_DIST_MIN, Math.min(CAM_DIST_MAX,
+          touchState.pinchStartCamDist * factor));
+        return;
+      }
+      // Look (1 dedo)
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touchState.lookTouchId) continue;
+        const dx = t.clientX - touchState.lookStartX;
+        const dy = t.clientY - touchState.lookStartY;
+        touchState.lookStartX = t.clientX;
+        touchState.lookStartY = t.clientY;
+        yaw -= dx * 0.005;
+        pitch -= dy * 0.005;
+        pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+      }
+    }, { passive: true });
+    canvas.addEventListener('touchend', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchState.lookTouchId) touchState.lookTouchId = null;
+      }
+      if (e.touches.length < 2) touchState.pinchStartDist = 0;
+    });
+
+    // Guardar refs para destroy
+    touchState.uiEls = [stick, eBtn, jumpBtn];
   }
 
   // Raycast desde el centro de pantalla — si pega en un árbol, muestra modal
@@ -394,54 +700,90 @@
   // ---- Loop principal ----------------------------------------------------
   function _startLoop() {
     let last = performance.now();
+    let walkPhase = 0;  // para animar las patas del pumita
+
     function loop() {
       if (!renderer || !scene || !camera) { animId = null; return; }
       animId = requestAnimationFrame(loop);
       const now = performance.now();
-      const dt = Math.min((now - last) / 16.67, 3);  // delta en frames (cap a 3)
+      const dt = Math.min((now - last) / 16.67, 3);
       last = now;
 
-      // Aplicar yaw/pitch a la cámara (orden YXZ)
-      camera.rotation.y = yaw;
-      camera.rotation.x = pitch;
-
-      // Movimiento WASD
+      // ---- Input: WASD + joystick táctil ----
       const move = new THREE.Vector3();
       if (keys['KeyW']) move.z -= 1;
       if (keys['KeyS']) move.z += 1;
       if (keys['KeyA']) move.x -= 1;
       if (keys['KeyD']) move.x += 1;
+      // Joystick virtual (móvil)
+      if (touchState && touchState.joystick) {
+        move.x += touchState.joystick.x;
+        move.z += touchState.joystick.y;
+      }
+
+      let isWalking = false;
       if (move.lengthSq() > 0) {
+        isWalking = true;
         move.normalize();
         const speed = WALK_SPEED * (keys['ShiftLeft'] || keys['ShiftRight'] ? RUN_FACTOR : 1) * dt;
-        // Aplicar solo el yaw (rotación horizontal) para que mirar arriba/abajo
-        // no afecte la dirección de caminata
         const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
         const dx = move.x * cosY + move.z * sinY;
         const dz = -move.x * sinY + move.z * cosY;
-        camera.position.x += dx * speed;
-        camera.position.z += dz * speed;
+        playerPos.x += dx * speed;
+        playerPos.z += dz * speed;
       }
 
-      // Gravedad / salto
+      // ---- Gravedad / salto del jugador ----
       if (!onGround || velY > 0) {
         velY -= GRAVITY * dt;
-        camera.position.y += velY;
-        if (camera.position.y <= EYE_HEIGHT) {
-          camera.position.y = EYE_HEIGHT;
+        playerPos.y += velY;
+        if (playerPos.y <= EYE_HEIGHT) {
+          playerPos.y = EYE_HEIGHT;
           velY = 0;
           onGround = true;
         }
       } else {
-        camera.position.y = EYE_HEIGHT;
+        playerPos.y = EYE_HEIGHT;
       }
 
-      // Mostrar/ocultar prompt "[E] Inspeccionar" según si tienes un árbol al frente
+      // ---- Avatar (puma): sincronizar posición + rotación ----
+      if (avatar) {
+        avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
+        avatar.rotation.y = yaw;  // mira hacia donde apunta la cámara
+        // Mostrar/ocultar según vista 1ª/3ª persona
+        avatar.visible = cameraDistance > 1.5;
+        // Animar patas + cola al caminar
+        if (isWalking) {
+          walkPhase += dt * 0.25 * (keys['ShiftLeft'] ? 1.6 : 1);
+          const legs = avatar.userData.legs || {};
+          const swing = Math.sin(walkPhase) * 0.35;
+          if (legs.FL) legs.FL.rotation.x = swing;
+          if (legs.BR) legs.BR.rotation.x = swing;
+          if (legs.FR) legs.FR.rotation.x = -swing;
+          if (legs.BL) legs.BL.rotation.x = -swing;
+          // Cola se mueve un poquito
+          if (avatar.userData.tail) {
+            avatar.userData.tail.rotation.z = Math.sin(walkPhase * 0.7) * 0.18;
+          }
+          // Body bob suave (subir y bajar)
+          avatar.position.y += Math.abs(Math.sin(walkPhase)) * 0.04;
+        } else {
+          // Reset patas en reposo
+          const legs = avatar.userData.legs || {};
+          ['FL','FR','BL','BR'].forEach(k => { if (legs[k]) legs[k].rotation.x *= 0.85; });
+        }
+      }
+
+      // ---- Cámara sigue al jugador ----
+      _updateCameraFromPlayer();
+
+      // ---- Prompt "[E] Inspeccionar" ----
       if (raycaster && treeGroups.length > 0 && promptEl) {
         raycaster.setFromCamera({ x: 0, y: 0 }, camera);
         const hits = raycaster.intersectObjects(treeGroups, true);
-        const closeHit = hits.find(h => h.distance < 12);
-        promptEl.style.display = (closeHit && isLocked) ? 'block' : 'none';
+        const closeHit = hits.find(h => h.distance < 14);
+        const showPrompt = closeHit && (isLocked || (touchState && touchState.active));
+        promptEl.style.display = showPrompt ? 'block' : 'none';
       }
 
       renderer.render(scene, camera);
@@ -462,9 +804,15 @@
       document.removeEventListener('keyup', pointerHandlers.onKeyUp);
       if (renderer && renderer.domElement) {
         renderer.domElement.removeEventListener('click', pointerHandlers.onCanvasClick);
+        if (pointerHandlers.onWheel) renderer.domElement.removeEventListener('wheel', pointerHandlers.onWheel);
       }
       pointerHandlers = null;
     }
+    // Remover UI touch (joystick + botones) si existe
+    if (touchState && touchState.uiEls) {
+      touchState.uiEls.forEach(el => { if (el && el.parentNode) el.parentNode.removeChild(el); });
+    }
+    touchState = null;
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (_) {}
     }
@@ -481,6 +829,9 @@
     scene = camera = renderer = raycaster = null;
     treeGroups.length = 0;
     treeTemplate = null;
+    avatar = null;
+    playerPos = null;
+    cameraDistance = 0;
     isLocked = false;
     yaw = pitch = 0;
     velY = 0;
