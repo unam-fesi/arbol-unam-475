@@ -256,18 +256,20 @@
     if (!el) return false;
     mosaicoDestroy();
     el.style.position = 'relative';
-    el.innerHTML = '<div class="vis-loading" style="color:#c8aae0;padding:2rem;text-align:center;">Cargando carretes…</div>';
+    el.style.background = 'linear-gradient(180deg, #5fa8d8 0%, #8ecbed 45%, #c8e4f3 85%, #e8f3fb 100%)';
+    el.innerHTML = '<div class="vis-loading" style="color:#1b3a5f;padding:2rem;text-align:center;font-weight:500;">Cargando anillos del bosque…</div>';
 
     const w = el.clientWidth || 800;
-    const h = 560;
+    const h = 600;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1410);
-    scene.fog = new THREE.Fog(0x1a1410, 30, 90);
+    // ---- Fondo cielo con degradado vertical (canvas → CubeTexture-like) ----
+    scene.background = _makeSkyBackground();
+    scene.fog = new THREE.Fog(0xcfe7ff, 50, 140);
 
-    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
-    camera.position.set(0, 8, 24);
-    camera.lookAt(0, 5, 0);
+    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 300);
+    camera.position.set(0, 4, 28);
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -275,74 +277,95 @@
     el.innerHTML = '';
     el.appendChild(renderer.domElement);
 
-    // Iluminación
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 0.5);
-    key.position.set(5, 15, 8);
-    scene.add(key);
+    // ---- Iluminación tipo "día soleado" ----
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xfff4d6, 0.9);
+    sun.position.set(8, 20, 10);
+    scene.add(sun);
+    // Luz de relleno cálida desde abajo (rebote del suelo imaginario)
+    const fill = new THREE.DirectionalLight(0xa8d5ff, 0.3);
+    fill.position.set(-5, -10, 5);
+    scene.add(fill);
 
-    // 3 zonas — carretes verticales separados horizontalmente
+    // ---- Nubes decorativas flotando en el fondo ----
+    const clouds = _makeFloatingClouds(scene);
+
+    // ---- 3 ZONAS apiladas VERTICALMENTE (cada una es un anillo horizontal) ----
+    //   y = altura del anillo · radio escala según # de árboles en la zona
     const ZONES = [
-      { name: 'Sano',     color: 0x4a7c2a, x: -10, filter: t => (t.health_score || 0) >= 70 },
-      { name: 'Atención', color: 0xd49b3a, x:   0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xb54f3a, x:  10, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
+      { name: 'Sano',     color: 0x4CAF50, y:  9, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Atención', color: 0xFFA726, y:  0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
+      { name: 'Crítico',  color: 0xEF5350, y: -9, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
-    // ---- BASES de los carretes (discos en el suelo + columnas) ----
+    // Pre-calcular el radio de cada anillo según cuántos árboles tiene
+    // (más árboles = anillo más grande para que no se encimen las fotos)
     ZONES.forEach(zone => {
-      // Base disco
-      const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(3.2, 3.4, 0.3, 24),
-        new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.7, emissive: zone.color, emissiveIntensity: 0.2 })
-      );
-      base.position.set(zone.x, -0.5, 0);
-      scene.add(base);
+      const count = (trees || []).filter(zone.filter).length;
+      // Radio = lo necesario para que cada foto tenga ~1.6 unidades de arco
+      zone.radius = Math.max(5, Math.min(count * 1.6 / (2 * Math.PI), 11));
+      zone.count = count;
+    });
 
-      // Columna central del carrete (transparente)
-      const col = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.06, 11, 8),
-        new THREE.MeshBasicMaterial({ color: zone.color, transparent: true, opacity: 0.25 })
-      );
-      col.position.set(zone.x, 5, 0);
-      scene.add(col);
+    // ---- ANILLOS-base (torus) para cada zona, marcan el "carrusel" ----
+    ZONES.forEach(zone => {
+      // Anillo principal (torus delgado y luminoso)
+      const ringGeo = new THREE.TorusGeometry(zone.radius, 0.08, 12, 64);
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: zone.color, emissive: zone.color, emissiveIntensity: 0.5,
+        roughness: 0.5, metalness: 0.3
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = Math.PI / 2;  // horizontal
+      ring.position.y = zone.y;
+      scene.add(ring);
 
-      // Etiqueta arriba del carrete
-      const labelTex = makeLabelTexture(zone.name);
+      // Aro de halo translúcido (le da volumen al anillo)
+      const haloGeo = new THREE.TorusGeometry(zone.radius, 0.5, 8, 64);
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: zone.color, transparent: true, opacity: 0.12
+      });
+      const halo = new THREE.Mesh(haloGeo, haloMat);
+      halo.rotation.x = Math.PI / 2;
+      halo.position.y = zone.y;
+      scene.add(halo);
+
+      // Etiqueta de la zona — al lado izquierdo del anillo
+      const labelTex = makeLabelTexture(`${zone.name}  (${zone.count})`);
       const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
       const label = new THREE.Sprite(labelMat);
-      label.position.set(zone.x, 11.5, 0);
-      label.scale.set(4, 1, 1);
+      label.position.set(-(zone.radius + 3), zone.y + 1.3, 0);
+      label.scale.set(5.5, 1.4, 1);
       scene.add(label);
     });
 
-    // ---- Cargar la ÚLTIMA foto de cada árbol (de tree_measurements) ----
-    // Si el árbol no tiene seguimientos, usar tree.photo_url
+    // ---- Grupos rotatorios — uno por zona, gira sobre su eje Y ----
     const photoPlanes = [];
-    const zoneGroups = {};  // { zoneIdx: THREE.Group } — el group permite rotar todo el carrete junto
+    const zoneGroups = {};
     ZONES.forEach((zone, i) => {
       const g = new THREE.Group();
-      g.position.set(zone.x, 0, 0);
+      g.position.y = zone.y;  // anclado a la altura del anillo
       scene.add(g);
       zoneGroups[i] = g;
     });
 
-    // ---- Paso 1: Crear PLACEHOLDERS para TODOS los árboles primero ----
-    // (así si las fotos tardan o fallan, igual se ve algo en pantalla)
+    // ---- Placeholders: cada foto se posiciona en el anillo de su zona ----
     for (let zIdx = 0; zIdx < ZONES.length; zIdx++) {
       const zone = ZONES[zIdx];
       const zg = zoneGroups[zIdx];
       const treesInZone = (trees || []).filter(zone.filter);
       for (let i = 0; i < treesInZone.length; i++) {
         const tree = treesInZone[i];
-        const angle = (i / Math.max(treesInZone.length, 6)) * Math.PI * 2;
-        const r = 2.3;
-        const y = 1.0 + i * (9 / Math.max(treesInZone.length, 1));
+        const angle = (i / Math.max(treesInZone.length, 1)) * Math.PI * 2;
+        const r = zone.radius;
         const px = Math.cos(angle) * r;
         const pz = Math.sin(angle) * r;
+        // Pequeño jitter vertical para que no queden todas perfectamente alineadas
+        const yOffset = (Math.sin(i * 1.7) * 0.4);
 
         const plane = makePlaceholderPlane(tree, zone.color);
-        plane.position.set(px, y, pz);
-        plane.userData = { tree, zoneIdx: zIdx, angle, r, y, isPlaceholder: true };
+        plane.position.set(px, yOffset, pz);
+        plane.userData = { tree, zoneIdx: zIdx, angle, r, y: yOffset, isPlaceholder: true };
         zg.add(plane);
         photoPlanes.push(plane);
       }
@@ -516,11 +539,21 @@
 
     function animate() {
       animId = requestAnimationFrame(animate);
-      // Auto-rotación lenta cuando no se arrastra (efecto "carrete idle")
+      // Cada anillo gira a velocidad ligeramente distinta para dar dinamismo
       if (!isDragging) {
-        Object.values(zoneGroups).forEach(zg => { zg.rotation.y += autoSpeed; });
+        Object.entries(zoneGroups).forEach(([idx, zg]) => {
+          zg.rotation.y += autoSpeed * (1 + Number(idx) * 0.3);
+        });
       }
-      // Las fotos miran a la cámara (billboard) en coordenadas globales
+      // Mover las nubes lento para sensación de cielo vivo
+      if (clouds && clouds.length) {
+        const t = Date.now() * 0.00003;
+        clouds.forEach((c, i) => {
+          c.position.x = c.userData.baseX + Math.sin(t + i) * 4;
+          c.position.y = c.userData.baseY + Math.sin(t * 1.3 + i * 0.7) * 0.8;
+        });
+      }
+      // Billboard — las fotos miran a la cámara
       photoPlanes.forEach(p => {
         p.getWorldPosition(_v0);
         p.lookAt(camera.position);
@@ -532,8 +565,8 @@
 
     // HUD overlay con hint de uso
     const hint = document.createElement('div');
-    hint.style.cssText = 'position:absolute;bottom:0.5rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:0.4rem 0.9rem;border-radius:18px;font-size:0.72rem;pointer-events:none;backdrop-filter:blur(4px);';
-    hint.innerHTML = '🖱️ Arrastra para rotar los carretes · clic en una foto para ver detalle';
+    hint.style.cssText = 'position:absolute;bottom:0.5rem;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.85);color:#1b3a5f;padding:0.4rem 0.9rem;border-radius:18px;font-size:0.72rem;pointer-events:none;backdrop-filter:blur(6px);font-weight:500;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
+    hint.innerHTML = '🖱️ Arrastra para rotar los anillos · clic en una foto para ver detalle';
     el.appendChild(hint);
 
     mosaicoState = {
@@ -606,15 +639,97 @@
     const c = document.createElement('canvas');
     c.width = 512; c.height = 128;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = 'rgba(0,0,0,0)';
-    ctx.fillRect(0, 0, 512, 128);
-    ctx.font = 'bold 56px -apple-system, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    // Fondo redondeado semi-transparente para que sea legible sobre el cielo
+    ctx.fillStyle = 'rgba(27, 58, 95, 0.78)';
+    _roundRect(ctx, 16, 24, 480, 80, 16);
+    ctx.fill();
+    ctx.font = 'bold 50px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.98)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 4;
     ctx.fillText(text, 256, 64);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---- Fondo cielo (degradado vertical) renderizado en canvas ----
+  // Azul cielo arriba → azul claro abajo, con sutil viñeta. Se usa como
+  // CanvasTexture para scene.background (cubre todo el viewport).
+  function _makeSkyBackground() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 512;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#5fa8d8');   // cielo arriba
+    grad.addColorStop(0.45, '#8ecbed'); // cielo medio
+    grad.addColorStop(0.85, '#c8e4f3'); // horizonte clarito
+    grad.addColorStop(1, '#e8f3fb');   // suelo nebuloso
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 512);
+    return new THREE.CanvasTexture(c);
+  }
+
+  // ---- Sprites de nubes flotantes ----
+  // Genera ~6 nubes blancas que se mueven lentamente en el fondo.
+  // Retorna el array para que la función animate las anime.
+  function _makeFloatingClouds(scene) {
+    const arr = [];
+    const cloudTex = _makeCloudTexture();
+    const positions = [
+      { x: -16, y: 12, z: -25, scale: 8 },
+      { x:  18, y: 14, z: -22, scale: 7 },
+      { x:  -8, y:  6, z: -30, scale: 9 },
+      { x:  12, y: -2, z: -28, scale: 6 },
+      { x: -20, y: -8, z: -26, scale: 7 },
+      { x:  16, y:-12, z: -24, scale: 8 }
+    ];
+    positions.forEach(p => {
+      const mat = new THREE.SpriteMaterial({
+        map: cloudTex, transparent: true, opacity: 0.75, depthWrite: false
+      });
+      const s = new THREE.Sprite(mat);
+      s.position.set(p.x, p.y, p.z);
+      s.scale.set(p.scale, p.scale * 0.55, 1);
+      s.userData.baseX = p.x;
+      s.userData.baseY = p.y;
+      scene.add(s);
+      arr.push(s);
+    });
+    return arr;
+  }
+
+  function _makeCloudTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const ctx = c.getContext('2d');
+    // Varios círculos blandos solapados para parecer nube
+    const blobs = [
+      {x: 80, y: 80, r: 38}, {x: 130, y: 70, r: 46},
+      {x: 175, y: 75, r: 38}, {x: 110, y: 95, r: 32},
+      {x: 155, y: 95, r: 30}, {x: 195, y: 90, r: 28},
+      {x: 60, y: 90, r: 25}
+    ];
+    blobs.forEach(b => {
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.6, 'rgba(255,255,255,0.7)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
     return new THREE.CanvasTexture(c);
   }
 
