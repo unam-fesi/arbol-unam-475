@@ -356,7 +356,7 @@ a:hover { color: var(--primary-dark); }
      Capa 2 (cuando termine de descargar): foto encima */
   background-color: #2d5016;
   background-image:
-    url('img/background.png'),
+    url('img/background.jpg'),
     linear-gradient(180deg, #6a8d4a 0%, #4a6e2a 35%, #5d4e37 70%, #3d2817 100%);
   background-size: cover, cover;
   background-position: center center, center center;
