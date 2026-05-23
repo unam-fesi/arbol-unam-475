@@ -44,9 +44,17 @@
   // alrededor del jugador a cameraDistance metros.
   let playerPos = null;    // THREE.Vector3
   let avatar = null;       // mesh visible solo en 3ª persona
+  let pumaYaw = 0;         // ORIENTACIÓN del puma (independiente de la cámara)
+  let pumaYawTarget = 0;   // dirección a la que se está girando suavemente
+  let pumaMixer = null;    // AnimationMixer si el GLB trae clips embebidos
+  // Acciones que detectamos por nombre del clip (Mixamo / Blender NLA names)
+  const pumaActions = { idle: null, walk: null, run: null, jump: null, dance: null };
+  // Estado lógico (cuál animación queremos activa)
+  let pumaState = 'idle';     // 'idle' | 'walk' | 'run' | 'jump' | 'dance'
+  let danceToggled = false;   // toggle B
   let cameraDistance = 0;  // 0 = primera persona; >0 = tercera persona (zoom out)
   const CAM_DIST_MIN = 0;
-  const CAM_DIST_MAX = 80;   // zoom out tope — vista satelital del campus
+  const CAM_DIST_MAX = 80;
   // Estado touch (móvil)
   let touchState = null;
 
@@ -130,11 +138,13 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Avatar PUMITA UNAM (procedural — sin GLB)
-    avatar = _makePumaAvatar();
+    // Avatar PUMITA UNAM. Intenta cargar GLB de `data/pumita.glb` (también
+    // acepta `puma.glb`). Si no existe o falla, cae al puma procedural.
+    avatar = _makePumaAvatar();  // placeholder inmediato mientras intenta el GLB
     avatar.position.copy(playerPos);
-    avatar.position.y = 0;  // patas en el piso
+    avatar.position.y = 0;
     scene.add(avatar);
+    _tryLoadPumaGLB();
 
     raycaster = new THREE.Raycaster();
 
@@ -290,7 +300,102 @@
     treeGroups.push(group);
   }
 
-  // ---- AVATAR PUMITA UNAM (procedural) -----------------------------------
+  // ---- Cargar GLB del puma si existe -------------------------------------
+  // Intenta data/pumita.glb y data/puma.glb (en ese orden). Si carga, sustituye
+  // el avatar procedural. Si trae clips de animación (idle, walk, run...) los
+  // configura en un AnimationMixer para reproducirlos según el estado.
+  function _tryLoadPumaGLB() {
+    const candidates = [
+      'data/pumita.glb',
+      'data/puma.glb',
+      'data/trees/pumita.glb',
+    ];
+    const tryNext = (i) => {
+      if (i >= candidates.length || !scene) return;
+      const path = candidates[i];
+      _loadGLB(path).then((gltf) => {
+        if (!scene || !gltf) { tryNext(i + 1); return; }
+        _setupPumaFromGLB(gltf);
+        console.log(`🐾 Puma GLB cargado: ${path}`);
+      }).catch((err) => {
+        // 404 silencioso — solo loguear si no es el último
+        if (i < candidates.length - 1) tryNext(i + 1);
+        else console.log('🐾 No se encontró GLB del puma, usando procedural.');
+      });
+    };
+    tryNext(0);
+  }
+
+  function _setupPumaFromGLB(gltf) {
+    const newPuma = gltf.scene;
+    // Normalizar altura: 1.85m porque la botarga del Puma UNAM es humanoide
+    // (cabeza + cuerpo + pantalón + tenis), no cuadrúpedo.
+    const box = new THREE.Box3().setFromObject(newPuma);
+    const size = box.getSize(new THREE.Vector3());
+    const targetHeight = 1.85;
+    const scale = targetHeight / Math.max(size.y, 0.01);
+    newPuma.scale.setScalar(scale);
+    // Centrar horizontalmente y poner los pies en y=0
+    const newBox = new THREE.Box3().setFromObject(newPuma);
+    newPuma.position.y = -newBox.min.y;
+    // Centro X y Z al origen del avatar (por si el GLB viene descentrado)
+    const center = newBox.getCenter(new THREE.Vector3());
+    newPuma.position.x = -center.x;
+    newPuma.position.z = -center.z;
+
+    // Sombras
+    newPuma.traverse(o => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+    });
+
+    // Reemplazar el avatar procedural
+    if (avatar && avatar.parent) avatar.parent.remove(avatar);
+    avatar = new THREE.Group();
+    avatar.add(newPuma);
+    // Sombra plana debajo
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.6, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.01;
+    avatar.add(shadow);
+    avatar.position.copy(playerPos);
+    avatar.position.y = 0;
+    scene.add(avatar);
+
+    // Si el GLB trae animaciones, configurar el mixer + acciones nombradas
+    if (gltf.animations && gltf.animations.length > 0) {
+      pumaMixer = new THREE.AnimationMixer(newPuma);
+      const findClip = (regex) => gltf.animations.find(c => regex.test(c.name || ''));
+      const map = {
+        idle:  findClip(/^idle$|^stand|^rest/i),
+        walk:  findClip(/^walk$|^trot/i),
+        run:   findClip(/^run$|^sprint|^jog/i),
+        jump:  findClip(/^jump|^leap/i),
+        dance: findClip(/^dance|^party/i),
+      };
+      // Si no hay clip específico, fallback a walk/genérico
+      if (!map.idle && gltf.animations.length > 0) map.idle = gltf.animations[0];
+      if (!map.walk && map.idle) map.walk = map.idle;
+
+      for (const [name, clip] of Object.entries(map)) {
+        if (!clip) continue;
+        const action = pumaMixer.clipAction(clip);
+        // Loop config — jump no es loop, los demás sí
+        action.loop = (name === 'jump') ? THREE.LoopOnce : THREE.LoopRepeat;
+        if (name === 'jump') action.clampWhenFinished = true;
+        action.setEffectiveWeight(name === 'idle' ? 1 : 0);
+        action.play();
+        pumaActions[name] = action;
+      }
+      console.log(`🎬 ${gltf.animations.length} animaciones del puma cargadas:`,
+        gltf.animations.map(c => c.name).join(', '),
+        '· mapeo:', Object.fromEntries(Object.entries(map).map(([k,v]) => [k, v?.name || null])));
+    }
+  }
+
+  // ---- AVATAR PUMITA UNAM (procedural — fallback) ------------------------
   // Construido con primitivas — sin GLB. Es una representación cartoonish
   // del puma: cuerpo alargado, cabeza con orejas/ojos/nariz, 4 patas y cola.
   // Diseñado mirando hacia -Z (la dirección "forward" por defecto de Three.js),
@@ -481,7 +586,7 @@
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     hudEl.innerHTML = isTouch
       ? `<div><strong>Joystick</strong> caminar · <strong>Arrastra</strong> mirar · <strong>Pinch</strong> zoom · <strong>↑</strong> saltar · <strong>🔍</strong> inspeccionar</div>`
-      : `<div><strong>Click</strong> para entrar · <strong>WASD</strong> caminar · <strong>Shift</strong> correr · <strong>Espacio</strong> saltar · <strong>Rueda</strong> zoom · <strong>V</strong> 1ª/3ª persona · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>`;
+      : `<div><strong>Click</strong> entrar · <strong>WASD</strong> caminar · <strong>Shift</strong> correr · <strong>Espacio</strong> saltar · <strong>B</strong> bailar · <strong>Rueda</strong> zoom · <strong>V</strong> 1ª/3ª · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>`;
     containerEl.appendChild(hudEl);
   }
 
@@ -532,7 +637,17 @@
       if (e.code === 'Space' && onGround && isLocked) {
         velY = JUMP_SPEED;
         onGround = false;
+        // Trigger jump animation (no loop, vuelve solo al terminar)
+        if (pumaActions.jump) {
+          pumaActions.jump.reset();
+          pumaActions.jump.fadeIn(0.15);
+          pumaActions.jump.play();
+        }
         e.preventDefault();
+      }
+      if (e.code === 'KeyB' && isLocked) {
+        // Toggle dance mode
+        danceToggled = !danceToggled;
       }
     };
     const onKeyUp = (e) => { keys[e.code] = false; };
@@ -818,40 +933,94 @@
         playerPos.y = EYE_HEIGHT;
       }
 
-      // ---- Avatar (puma): sincronizar posición + rotación ----
+      // ---- Avatar (puma): orientación INDEPENDIENTE de la cámara ----
       if (avatar) {
         avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
-        // El puma SIEMPRE mira en la dirección horizontal hacia donde apunta
-        // la cámara. Así caminar W lo lleva hacia adelante (la dirección que
-        // ya está viendo). Mirar Roblox-style: cuerpo siempre alineado con
-        // la vista, no con el yaw que es solo el ángulo del orbit.
-        camera.getWorldDirection(_camFwd);
-        _camFwd.y = 0;
-        if (_camFwd.lengthSq() > 0.001) {
-          // atan2 con doble negativo para que el "head -Z default" mire al fwd
-          avatar.rotation.y = Math.atan2(-_camFwd.x, -_camFwd.z);
+
+        // Cuando el puma camina, gira para mirar la dirección de movimiento.
+        // Cuando NO camina, mantiene su última orientación → así la cámara
+        // puede orbitar y ver el FRENTE del puma sin que el cuerpo "se voltee".
+        if (isWalking && _camFwd.lengthSq() > 0.001) {
+          pumaYawTarget = Math.atan2(-_camFwd.x, -_camFwd.z);
         }
-        // Mostrar/ocultar según vista 1ª/3ª persona
+        // Interpolación suave de pumaYaw → pumaYawTarget (turn rate ~6 rad/s)
+        let diff = pumaYawTarget - pumaYaw;
+        // Normalizar a (-π, π) para girar por el camino corto
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        pumaYaw += diff * Math.min(1, 0.15 * dt);
+        avatar.rotation.y = pumaYaw;
+
         avatar.visible = cameraDistance > 1.5;
-        // Animar patas + cola al caminar
-        if (isWalking) {
-          walkPhase += dt * 0.25 * (keys['ShiftLeft'] ? 1.6 : 1);
-          const legs = avatar.userData.legs || {};
-          const swing = Math.sin(walkPhase) * 0.35;
-          if (legs.FL) legs.FL.rotation.x = swing;
-          if (legs.BR) legs.BR.rotation.x = swing;
-          if (legs.FR) legs.FR.rotation.x = -swing;
-          if (legs.BL) legs.BL.rotation.x = -swing;
-          // Cola se mueve un poquito
-          if (avatar.userData.tail) {
-            avatar.userData.tail.rotation.z = Math.sin(walkPhase * 0.7) * 0.18;
+
+        // Animaciones — preferir mixer de GLB si existe.
+        if (pumaMixer) {
+          pumaMixer.update(dt / 60);
+          // Decidir qué estado lógico queremos según el input
+          const running = keys['ShiftLeft'] || keys['ShiftRight'];
+          let desired = 'idle';
+          if (danceToggled) desired = 'dance';
+          else if (isWalking) desired = running ? 'run' : 'walk';
+          // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
+
+          // Crossfade hacia el estado deseado
+          const targetWeights = {
+            idle:  desired === 'idle'  ? 1 : 0,
+            walk:  desired === 'walk'  ? 1 : 0,
+            run:   desired === 'run'   ? 1 : 0,
+            dance: desired === 'dance' ? 1 : 0,
+            // jump no se afecta — su weight lo controla su LoopOnce
+          };
+          const fadeSpeed = 0.15 * dt;
+          for (const [name, action] of Object.entries(pumaActions)) {
+            if (!action || name === 'jump') continue;
+            const cur = action.getEffectiveWeight();
+            const tgt = targetWeights[name] != null ? targetWeights[name] : 0;
+            action.setEffectiveWeight(cur + (tgt - cur) * Math.min(1, fadeSpeed));
           }
-          // Body bob suave (subir y bajar)
-          avatar.position.y += Math.abs(Math.sin(walkPhase)) * 0.04;
+        } else if (avatar.userData.legs) {
+          // Animación procedural del puma cartoon (con patas como nodos)
+          if (isWalking) {
+            walkPhase += dt * 0.25 * (keys['ShiftLeft'] ? 1.6 : 1);
+            const legs = avatar.userData.legs;
+            const swing = Math.sin(walkPhase) * 0.35;
+            if (legs.FL) legs.FL.rotation.x = swing;
+            if (legs.BR) legs.BR.rotation.x = swing;
+            if (legs.FR) legs.FR.rotation.x = -swing;
+            if (legs.BL) legs.BL.rotation.x = -swing;
+            if (avatar.userData.tail) {
+              avatar.userData.tail.rotation.z = Math.sin(walkPhase * 0.7) * 0.18;
+            }
+            avatar.position.y += Math.abs(Math.sin(walkPhase)) * 0.04;
+          } else {
+            const legs = avatar.userData.legs;
+            ['FL','FR','BL','BR'].forEach(k => { if (legs[k]) legs[k].rotation.x *= 0.85; });
+          }
         } else {
-          // Reset patas en reposo
-          const legs = avatar.userData.legs || {};
-          ['FL','FR','BL','BR'].forEach(k => { if (legs[k]) legs[k].rotation.x *= 0.85; });
+          // GLB ESTÁTICO sin clips ni patas separables (caso típico de
+          // ComfyUI/TripoSR). Animamos el MODELO ENTERO para simular caminata:
+          //   • Bob vertical sincopado (cuerpo sube/baja como felino al trotar)
+          //   • Forward lean cuando corre (Shift)
+          //   • Side-to-side sway leve (balanceo de gato)
+          const running = keys['ShiftLeft'] || keys['ShiftRight'];
+          if (isWalking) {
+            walkPhase += dt * (running ? 0.40 : 0.27);
+            const bob = Math.abs(Math.sin(walkPhase)) * (running ? 0.10 : 0.06);
+            avatar.position.y += bob;
+            // Sway lateral (rotación Z muy suave, como balanceo)
+            const sway = Math.sin(walkPhase * 0.5) * (running ? 0.06 : 0.04);
+            avatar.rotation.z = sway;
+            // Forward lean al correr
+            avatar.rotation.x = running ? -0.12 : -0.05;
+          } else {
+            // Idle: respiración sutil (escala suave) + retornar a postura recta
+            const breathPhase = (Date.now() * 0.0015);
+            const breathScale = 1 + Math.sin(breathPhase) * 0.012;
+            // No sobreescribir scale total — preservar escala calculada al cargar
+            // Aproximación: usar rotación pequeña que oscila
+            avatar.rotation.z *= 0.88;  // decay hacia 0
+            avatar.rotation.x *= 0.88;
+          }
         }
       }
 
@@ -915,6 +1084,12 @@
     cameraDistance = 0;
     isLocked = false;
     yaw = pitch = 0;
+    pumaYaw = pumaYawTarget = 0;
+    if (pumaMixer) { try { pumaMixer.stopAllAction(); } catch (_) {} }
+    pumaMixer = null;
+    for (const k of Object.keys(pumaActions)) pumaActions[k] = null;
+    pumaState = 'idle';
+    danceToggled = false;
     velY = 0;
     onGround = true;
     Object.keys(keys).forEach(k => delete keys[k]);
