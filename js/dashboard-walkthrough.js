@@ -14,6 +14,8 @@
 //
 // El módulo expone window.DashboardWalkthrough.{ init, destroy }.
 
+console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-weight:bold;font-size:14px;');
+
 (function () {
   'use strict';
 
