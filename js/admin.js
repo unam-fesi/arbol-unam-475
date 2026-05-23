@@ -3078,7 +3078,7 @@ function switchVisTab(which) {
   // Cleanup de visualizaciones inactivas (libera memoria GPU/Leaflet)
   // Nota: IztacalaMap no tiene destroy — se mantiene viva para no perder la
   // escena ya cargada. Solo se reataja el canvas si vuelves a entrar.
-  ['DashboardTree3D','DashboardMapa','DashboardMosaico','DashboardHeatmap'].forEach(mod => {
+  ['DashboardTree3D','DashboardMapa','DashboardMosaico','DashboardHeatmap','DashboardWalkthrough'].forEach(mod => {
     if (window[mod] && window[mod].destroy) {
       try { window[mod].destroy(); } catch (e) {}
     }
@@ -3097,6 +3097,8 @@ function switchVisTab(which) {
         window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
       } else if (which === 'iztacala' && window.IztacalaMap) {
         window.IztacalaMap.init('#dashboard-iztacala-vis');
+      } else if (which === 'walkthrough' && window.DashboardWalkthrough) {
+        window.DashboardWalkthrough.init('#dashboard-walkthrough-vis');
       }
     } catch (e) {
       console.warn('Vis init failed:', which, e);
