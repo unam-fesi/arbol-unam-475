@@ -300,13 +300,22 @@
       { name: 'Crítico',  color: 0xEF5350, y: -6.5, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
-    // Pre-calcular el radio de cada anillo según cuántos árboles tiene
-    // (más árboles = anillo más grande para que no se encimen las fotos).
-    // Arco objetivo ~2.0 por foto y máximo 16 para ocupar más ancho horizontal.
+    // Cuántas fotos caben cómodamente en un anillo y cuánto separar los
+    // sub-anillos verticalmente. Si una zona tiene MÁS de PHOTOS_PER_RING
+    // (ej. Sano con 249), se divide en varios sub-anillos apilados dentro
+    // de la banda de su zona — así nunca hay demasiadas fotos peleándose
+    // por arco en un solo anillo.
+    const PHOTOS_PER_RING = 50;
+    const SUB_RING_GAP = 1.6;  // separación vertical entre sub-anillos
+    const TARGET_ARC = 2.0;    // arco-unidad por foto (controla densidad)
+
     ZONES.forEach(zone => {
       const count = (trees || []).filter(zone.filter).length;
-      zone.radius = Math.max(6, Math.min(count * 2.0 / (2 * Math.PI), 16));
       zone.count = count;
+      // Radio fijo para todos los sub-anillos de la zona (uniforme)
+      // Se calcula para que 50 fotos quepan con buen espaciado.
+      zone.radius = PHOTOS_PER_RING * TARGET_ARC / (2 * Math.PI);  // ≈ 16
+      zone.numSubRings = Math.max(1, Math.ceil(count / PHOTOS_PER_RING));
     });
 
     // ---- PEDESTAL-spotlight para cada zona ----
@@ -361,24 +370,41 @@
       zoneGroups[i] = g;
     });
 
-    // ---- Placeholders: cada foto se posiciona en el anillo de su zona ----
-    // TODAS a la MISMA altura zone.y (sin jitter vertical). El jitter previo
-    // hacía que con muchas fotos pareciera lluvia caótica de tarjetas
-    // saltando arriba/abajo, especialmente combinado con cover flow.
+    // ---- Placeholders: cada foto va en uno de los sub-anillos de su zona ----
+    // Las fotos se reparten en sub-anillos de máx PHOTOS_PER_RING, apilados
+    // verticalmente dentro de la banda de la zona. Así Sano con 249 fotos
+    // queda como 5 anillos de ~50 c/u en lugar de 249 amontonadas en uno.
     for (let zIdx = 0; zIdx < ZONES.length; zIdx++) {
       const zone = ZONES[zIdx];
       const zg = zoneGroups[zIdx];
       const treesInZone = (trees || []).filter(zone.filter);
+      const numSub = zone.numSubRings;
+      const totalSpread = (numSub - 1) * SUB_RING_GAP;
+
       for (let i = 0; i < treesInZone.length; i++) {
         const tree = treesInZone[i];
-        const angle = (i / Math.max(treesInZone.length, 1)) * Math.PI * 2;
+        const subRingIdx = Math.floor(i / PHOTOS_PER_RING);
+        const posInSubRing = i % PHOTOS_PER_RING;
+        // Cuántas fotos hay realmente en este sub-anillo (el último puede tener menos)
+        const inThisRing = Math.min(
+          PHOTOS_PER_RING,
+          treesInZone.length - subRingIdx * PHOTOS_PER_RING
+        );
+        // Offset angular pequeño por sub-anillo para que no queden
+        // todos los sub-anillos exactamente alineados (visual más interesante)
+        const angle = (posInSubRing / inThisRing) * Math.PI * 2
+          + (subRingIdx * 0.18);
         const r = zone.radius;
         const px = Math.cos(angle) * r;
         const pz = Math.sin(angle) * r;
+        // Y dentro del grupo: centrar verticalmente la pila de sub-anillos
+        const subY = subRingIdx * SUB_RING_GAP - totalSpread / 2;
 
         const plane = makePlaceholderPlane(tree, zone.color);
-        plane.position.set(px, 0, pz);  // y=0 dentro del grupo (que ya está en zone.y)
-        plane.userData = { tree, zoneIdx: zIdx, angle, r, y: 0, isPlaceholder: true };
+        plane.position.set(px, subY, pz);
+        plane.userData = {
+          tree, zoneIdx: zIdx, subRingIdx, angle, r, y: subY, isPlaceholder: true
+        };
         zg.add(plane);
         photoPlanes.push(plane);
       }
@@ -504,7 +530,7 @@
     // Vertical:   tilta la cámara para enfocar arriba (Sano) o abajo (Crítico)
     let isDragging = false;
     let lastX = 0, lastY = 0;
-    const autoSpeed = 0.0012;  // 2.5x más lento — la rotación se siente más suave
+    const autoSpeed = 0.0006;  // mitad de v39 — rotación muy contemplativa
     // Estado de cámara: pitch (vertical) + radio (zoom).
     // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
     let camRadius = 22;            // valor actual (cambia con la rueda)
