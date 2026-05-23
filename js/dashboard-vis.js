@@ -468,12 +468,20 @@
             (tex) => {
               // OPACO (sin transparent). Si dejamos transparent:true el
               // renderer tiene que ordenar TODAS las fotos por profundidad
-              // cada frame, y con planos billboard rotando los ordena mal:
-              // resultaba en fotos que se "ven a través" o desaparecen.
+              // cada frame, y con planos billboard rotando los ordena mal.
               const mat = new THREE.MeshBasicMaterial({
                 map: tex, side: THREE.DoubleSide
               });
-              const photoPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), mat);
+              // Aspecto del plano segun la foto: si es landscape (típicamente
+              // 4:3) usa 2.0x1.5; si es portrait (típicamente 3:4) usa 1.5x2.0.
+              // Las texturas del celular vienen en ambos formatos.
+              const imgW = tex.image?.width || 1;
+              const imgH = tex.image?.height || 1;
+              const isPortrait = imgH > imgW;
+              const planeGeo = isPortrait
+                ? new THREE.PlaneGeometry(1.5, 2.0)
+                : new THREE.PlaneGeometry(2.0, 1.5);
+              const photoPlane = new THREE.Mesh(planeGeo, mat);
               photoPlane.position.copy(placeholder.position);
               photoPlane.userData = { ...placeholder.userData, isPlaceholder: false };
               const parent = placeholder.parent;
@@ -497,20 +505,55 @@
     let isDragging = false;
     let lastX = 0, lastY = 0;
     const autoSpeed = 0.0012;  // 2.5x más lento — la rotación se siente más suave
-    // Estado de cámara: ángulo de pitch que vamos a interpolar
-    const CAM_RADIUS = 22;  // debe coincidir con camera.position.z inicial
+    // Estado de cámara: pitch (vertical) + radio (zoom).
+    // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
+    let camRadius = 22;            // valor actual (cambia con la rueda)
+    const CAM_RADIUS_MIN = 10;     // zoom in tope — fotos llenan pantalla
+    const CAM_RADIUS_MAX = 50;     // zoom out tope — vista panorámica
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
     const PITCH_MIN = -0.55;  // ~31° hacia arriba
     const PITCH_MAX =  0.55;  // ~31° hacia abajo
 
     const _updateCamera = () => {
-      // Mantener cámara en órbita vertical de radio CAM_RADIUS alrededor del origen
+      // Mantener cámara en órbita vertical (pitch) y radial (zoom)
       camera.position.x = 0;
-      camera.position.y = -Math.sin(camPitch) * CAM_RADIUS + 3 * Math.cos(camPitch);
-      camera.position.z = Math.cos(camPitch) * CAM_RADIUS;
+      camera.position.y = -Math.sin(camPitch) * camRadius + 3 * Math.cos(camPitch);
+      camera.position.z = Math.cos(camPitch) * camRadius;
       camera.lookAt(0, 0, 0);
     };
     _updateCamera();
+
+    // ---- ZOOM con rueda del mouse / pinch en touch ----
+    const onWheel = (e) => {
+      e.preventDefault();
+      // deltaY positivo = scroll abajo = zoom out
+      const dir = e.deltaY > 0 ? 1 : -1;
+      camRadius = Math.max(CAM_RADIUS_MIN, Math.min(CAM_RADIUS_MAX, camRadius + dir * 1.5));
+      _updateCamera();
+    };
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+
+    // Pinch-to-zoom para touch (dos dedos)
+    let pinchStartDist = 0, pinchStartRadius = 22;
+    const _pinchDist = (touches) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        pinchStartDist = _pinchDist(e.touches);
+        pinchStartRadius = camRadius;
+      }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && pinchStartDist > 0) {
+        const d = _pinchDist(e.touches);
+        const factor = pinchStartDist / d;  // dedos más juntos = factor alto = zoom out
+        camRadius = Math.max(CAM_RADIUS_MIN, Math.min(CAM_RADIUS_MAX, pinchStartRadius * factor));
+        _updateCamera();
+      }
+    }, { passive: true });
 
     renderer.domElement.style.cursor = 'grab';
 
@@ -621,12 +664,15 @@
         const cosFront = (camDirZ > 0 ? dz : -dz) / dist;
         // t en [0,1]: 0 = back, 1 = front
         const t = (cosFront + 1) / 2;
-        // Curva ease-in: el back se hunde rápido y el front gana
-        const eased = t * t * (3 - 2 * t);  // smoothstep
-        const scale = 0.15 + (1.5 - 0.15) * eased;
+        // Curva con exponente: el back colapsa rápido (escala 0.05),
+        // el front domina claramente (escala 2.0). Solo unas pocas fotos
+        // alrededor del frente se ven completas; las demás son puntitos.
+        const eased = Math.pow(t, 3);  // ease-in cúbico
+        const scale = 0.05 + (2.0 - 0.05) * eased;
         p.scale.setScalar(scale);
-        // RenderOrder ascendente con t — los del frente se dibujan al final
+        // El plano del back queda detrás de TODO mediante depthWrite/order
         p.renderOrder = Math.round(t * 1000);
+        p.visible = scale > 0.08;  // ocultar las casi-invisibles para ganar perf
       });
       renderer.render(scene, camera);
     }
@@ -636,7 +682,7 @@
     // HUD overlay con hint de uso
     const hint = document.createElement('div');
     hint.style.cssText = 'position:absolute;bottom:0.5rem;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.85);color:#1b3a5f;padding:0.4rem 0.9rem;border-radius:18px;font-size:0.72rem;pointer-events:none;backdrop-filter:blur(6px);font-weight:500;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
-    hint.innerHTML = '🖱️ Arrastra ↔ para rotar · ↕ para mirar arriba/abajo · clic en una foto para detalle';
+    hint.innerHTML = '🖱️ Arrastra ↔ rota · ↕ tilta · rueda hace zoom · clic en foto = detalle';
     el.appendChild(hint);
 
     mosaicoState = {
