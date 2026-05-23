@@ -1,0 +1,13 @@
+{
+  "name": "arbol-unam-scripts",
+  "version": "1.0.0",
+  "description": "Scripts utilitarios — backfill de thumbnails, migrations, etc.",
+  "private": true,
+  "scripts": {
+    "backfill-thumbs": "node backfill-thumbnails.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0",
+    "sharp": "^0.33.0"
+  }
+}

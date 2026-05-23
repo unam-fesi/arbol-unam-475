@@ -789,23 +789,39 @@ async function saveMeasurement(e) {
     let photoUrl = null;
     if (pendingPhotoBase64) {
       try {
-        // Compress image before uploading to storage (max 1200px, JPEG 80%)
-        const compressed = await compressImageForAI(pendingPhotoBase64, 1200, 1200, 0.8);
-        // Convert data URL to Blob for upload
-        const byteString = atob(compressed.split(',')[1]);
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-        const blob = new Blob([ab], { type: 'image/jpeg' });
+        // Generar DOS versiones desde el mismo base64:
+        //   • Original: 1200px JPEG 80% (~300-500KB) — para zoom/detalle
+        //   • Thumbnail: 400px JPEG 65% (~25KB) — para mosaico/listas
+        // Evita usar el "image transform" de Supabase (limitado a 100/mes free).
+        const [fullDataUrl, thumbDataUrl] = await Promise.all([
+          compressImageForAI(pendingPhotoBase64, 1200, 1200, 0.8),
+          compressImageForAI(pendingPhotoBase64, 400, 400, 0.65)
+        ]);
+        const dataUrlToBlob = (dataUrl) => {
+          const byteString = atob(dataUrl.split(',')[1]);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+          return new Blob([ab], { type: 'image/jpeg' });
+        };
+        const fullBlob = dataUrlToBlob(fullDataUrl);
+        const thumbBlob = dataUrlToBlob(thumbDataUrl);
 
-        const fileName = `${currentTreeData.id}/${Date.now()}.jpg`;
-        const { error: uploadError } = await sb.storage.from('tree-photos').upload(fileName, blob, { contentType: 'image/jpeg' });
-        if (uploadError) {
-          console.error('Photo upload error:', uploadError);
+        const baseFileName = `${currentTreeData.id}/${Date.now()}`;
+        const fullPath = baseFileName + '.jpg';
+        const thumbPath = baseFileName + '_thumb.jpg';
+
+        // Subir ambas en paralelo
+        const [fullRes, thumbRes] = await Promise.all([
+          sb.storage.from('tree-photos').upload(fullPath, fullBlob, { contentType: 'image/jpeg' }),
+          sb.storage.from('tree-photos').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' })
+        ]);
+        if (fullRes.error) {
+          console.error('Photo upload error:', fullRes.error);
           showToast('Error subiendo foto, se guardará sin ella', 'warning');
         } else {
-          // Guardar solo el path relativo — la URL firmada se genera al consultar
-          photoUrl = fileName;
+          if (thumbRes.error) console.warn('Thumb upload failed (no crítico):', thumbRes.error);
+          photoUrl = fullPath;  // photo_url apunta al original; thumb se deriva con thumbPathFor()
         }
       } catch (compErr) {
         console.error('Photo compress/upload error:', compErr);

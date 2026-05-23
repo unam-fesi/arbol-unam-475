@@ -1600,8 +1600,9 @@ window.IztacalaMap = (function() {
         if (/^https?:\/\//.test(treeData.photo_url)) {
           photoSrc = treeData.photo_url;
         } else if (typeof getThumbUrl === 'function') {
-          // Thumbnail de 600px para el popup (suficiente para preview, ~40KB)
-          photoSrc = await getThumbUrl('tree-photos', treeData.photo_url, 600) || '';
+          // Para el popup pedimos el thumbnail pre-generado (_thumb.jpg).
+          // getThumbUrl ya hace fallback al original si el thumb no existe.
+          photoSrc = await getThumbUrl('tree-photos', treeData.photo_url) || '';
         } else {
           const { data } = await sb.storage
             .from('tree-photos')

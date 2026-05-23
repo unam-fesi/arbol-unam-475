@@ -187,32 +187,87 @@ async function compressImageFile(file, maxDim, quality) {
 }
 
 // ============================================================================
-// Generar URL firmada de una foto en tree-photos con TRANSFORMACIÓN de tamaño.
-// Supabase Storage hace el resize/recompress server-side y devuelve un PNG/JPEG
-// chico (típicamente 20-50 KB para un thumb de 400px), evitando descargar 3MB
-// solo para mostrarlo en una tile del mosaico o lista.
-//   await getThumbUrl('tree-photos', '424/123.jpg', 400)
-// Si la transformación no está disponible (free tier sin renderer), cae al
-// URL firmado completo.
+// Sube una foto en DOS versiones: original (1200px ~400KB) + thumbnail
+// (400px ~30KB). Esto reemplaza la dependencia del "image transform" de
+// Supabase (limitado a 100 imágenes/mes en el plan free).
+//   Path original:  baseFileName + ".jpg"
+//   Path thumbnail: baseFileName + "_thumb.jpg"
+// Devuelve { fullPath, thumbPath, thumbOk }.
 // ============================================================================
-async function getThumbUrl(bucket, path, size, quality) {
+async function uploadPhotoWithThumb(file, bucket, baseFileName, opts) {
+  if (!file) throw new Error('uploadPhotoWithThumb: file requerido');
+  opts = opts || {};
+  const fullMax = opts.fullMax || 1200;
+  const fullQ = opts.fullQ != null ? opts.fullQ : 0.8;
+  const thumbMax = opts.thumbMax || 400;
+  const thumbQ = opts.thumbQ != null ? opts.thumbQ : 0.65;
+
+  // Comprimir en paralelo (ambas versiones desde el mismo File)
+  const [fullBlob, thumbBlob] = await Promise.all([
+    compressImageFile(file, fullMax, fullQ),
+    compressImageFile(file, thumbMax, thumbQ)
+  ]);
+
+  const fullPath = baseFileName + '.jpg';
+  const thumbPath = baseFileName + '_thumb.jpg';
+
+  // Subir en paralelo
+  const [fullRes, thumbRes] = await Promise.all([
+    sb.storage.from(bucket).upload(fullPath, fullBlob, {
+      cacheControl: '3600', upsert: false, contentType: 'image/jpeg'
+    }),
+    sb.storage.from(bucket).upload(thumbPath, thumbBlob, {
+      cacheControl: '3600', upsert: false, contentType: 'image/jpeg'
+    })
+  ]);
+
+  if (fullRes.error) throw fullRes.error;
+  // No fallar si solo el thumb falla — el original es lo crítico
+  if (thumbRes.error) {
+    console.warn('Thumb upload failed (fallback al original):', thumbRes.error);
+  }
+  return {
+    fullPath,
+    thumbPath,
+    thumbOk: !thumbRes.error
+  };
+}
+
+// Dado el path de una foto original (e.g. "424/1779207400433.jpg"),
+// devuelve el path del thumbnail correspondiente ("424/1779207400433_thumb.jpg").
+function thumbPathFor(fullPath) {
+  if (!fullPath) return null;
+  if (/^https?:\/\//i.test(fullPath)) return fullPath; // URLs absolutas no se tocan
+  if (/_thumb\.jpg$/i.test(fullPath)) return fullPath; // ya es thumb
+  return fullPath.replace(/\.(jpe?g|png|webp)$/i, '_thumb.jpg');
+}
+
+// Generar URL firmada para un path. Si pides thumb=true, intenta primero
+// la versión _thumb.jpg; si no existe, cae al original.
+async function getThumbUrl(bucket, path, opts) {
   if (!path) return null;
   if (typeof sb === 'undefined') return null;
-  size = size || 400;
-  quality = quality || 70;
-  // Si ya viene un URL completo, regresarlo tal cual
   if (/^https?:\/\//i.test(path)) return path;
+  opts = opts || {};
+  const wantThumb = opts.thumb !== false;
+  // Por compatibilidad con llamadas antiguas getThumbUrl(bucket, path, 400)
+  if (typeof opts === 'number') { /* ignore old size param */ }
+
+  // Pedir thumbnail si lo queremos. Si no existe, .signedUrl puede dar 400
+  // al fetch — manejamos fallback en el caller. Aquí solo firmamos URLs.
+  const target = wantThumb ? thumbPathFor(path) : path;
   try {
-    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 3600, {
-      transform: { width: size, height: size, resize: 'cover', quality }
-    });
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(target, 3600);
     if (!error && data?.signedUrl) return data.signedUrl;
-  } catch (_) { /* fallback below */ }
-  // Fallback: URL firmada sin transformación
-  try {
-    const { data } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
-    return data?.signedUrl || null;
-  } catch (_) { return null; }
+  } catch (_) {}
+  // Si fallamos firmando el thumb (no existe), firmar el original
+  if (wantThumb) {
+    try {
+      const { data } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+      return data?.signedUrl || null;
+    } catch (_) {}
+  }
+  return null;
 }
 
 // ============================================================================

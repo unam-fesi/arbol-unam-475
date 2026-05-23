@@ -354,7 +354,7 @@
       // Etiqueta flotando ARRIBA del stack de sub-anillos. Solo texto, sin
       // fondo, en el color del semáforo, con stroke oscuro para legibilidad
       // sobre el cielo. Posición justo encima del sub-anillo más alto.
-      const totalSpread = (zone.numSubRings - 1) * SUB_RING_GAP;
+      // (totalSpread ya está declarado arriba en este mismo forEach)
       const labelTex = _makeZoneLabel(zone.name, zone.count, zone.color);
       const labelMat = new THREE.SpriteMaterial({
         map: labelTex, transparent: true, depthTest: false, depthWrite: false
@@ -463,32 +463,47 @@
           placeholdersByPath.get(photoUrl).push(placeholder);
         }
 
-        // (b) Firmar en PARALELO con transform: 400px. El batch (createSignedUrls)
-        // no soporta transform en el SDK y mi truco de swap-ear el endpoint
-        // ignoraba los params, dejando las fotos en 300KB c/u. La alternativa:
-        // 133 POSTs pero en paralelo (con Promise.all) — el navegador los
-        // multiplexa, en la práctica termina en ~500ms vs varios segundos
-        // serial. Mucho menos requests totales no logramos en plan free pero
-        // los GETs ya bajan a ~25KB que es el grueso del ahorro.
+        // (b) Firmar URLs en BATCH apuntando al thumbnail pre-generado
+        //   path original:  "424/123.jpg"
+        //   thumbnail:      "424/123_thumb.jpg"
+        // El thumbnail ya viene a 400px ~25KB desde el upload, así no
+        // necesitamos pasarle "transform" a Supabase (free tier limita a 100).
+        // Si el thumb no existe (foto vieja antes de v49), caemos al original.
         if (pathsToSign.length > 0) {
           try {
-            const signed = await Promise.all(pathsToSign.map(async (p) => {
-              try {
-                const { data } = await sb.storage
-                  .from('tree-photos')
-                  .createSignedUrl(p, 3600, {
-                    transform: { width: 400, height: 400, resize: 'cover', quality: 70 }
-                  });
-                return { path: p, url: data?.signedUrl || null };
-              } catch (_) { return { path: p, url: null }; }
-            }));
-            signed.forEach(({ path, url }) => {
-              if (!url) return;
-              const phs = placeholdersByPath.get(path);
-              if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = url; });
+            // Mapeo path original → path thumb para firmar el thumb
+            const thumbPaths = pathsToSign.map(p =>
+              (typeof thumbPathFor === 'function') ? thumbPathFor(p) : p
+            );
+            // Una sola llamada batch firma todos los thumbs en un POST
+            const { data: signedList, error: signErr } = await sb.storage
+              .from('tree-photos')
+              .createSignedUrls(thumbPaths, 3600);
+            if (signErr) throw signErr;
+            // Reverse-map del thumb path al original para localizar el placeholder
+            const thumbToOriginal = {};
+            pathsToSign.forEach((orig, i) => { thumbToOriginal[thumbPaths[i]] = orig; });
+            (signedList || []).forEach(item => {
+              if (!item || !item.signedUrl) return;
+              const originalPath = thumbToOriginal[item.path] || item.path;
+              const phs = placeholdersByPath.get(originalPath);
+              if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = item.signedUrl; });
             });
           } catch (e) {
-            console.warn('Mosaico parallel sign falló:', e);
+            console.warn('Mosaico thumb sign falló, intentando con originales:', e);
+            // Fallback: firmar los originales (fotos sin thumb pre-generado)
+            try {
+              const { data: signedList } = await sb.storage
+                .from('tree-photos')
+                .createSignedUrls(pathsToSign, 3600);
+              (signedList || []).forEach(item => {
+                if (!item || !item.signedUrl) return;
+                const phs = placeholdersByPath.get(item.path);
+                if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = item.signedUrl; });
+              });
+            } catch (e2) {
+              console.warn('Fallback fallido también:', e2);
+            }
           }
         }
 

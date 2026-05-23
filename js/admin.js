@@ -608,24 +608,16 @@ async function saveAdminTree(e) {
     const photoFile = document.getElementById('admin-tree-photo')?.files?.[0];
     if (photoFile && inserted?.id) {
       try {
-        // Comprimir a ~1200px JPEG 80% antes de subir. Una foto de celular
-        // típica baja de 3-5MB a 300-500KB sin pérdida visible.
-        const blob = (typeof compressImageFile === 'function')
-          ? await compressImageFile(photoFile, 1200, 0.8)
-          : photoFile;
-        const fileName = `${inserted.id}/${Date.now()}.jpg`;
-        const { error: upErr } = await sb.storage
-          .from('tree-photos')
-          .upload(fileName, blob, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: 'image/jpeg'
-          });
-        if (upErr) throw upErr;
-        // Guardar el path (la URL firmada se genera al consultar)
+        // Subir DOS versiones: original (1200px) + thumbnail (400px).
+        // El mosaico/listas usan el thumb (~25KB c/u) — así evitamos
+        // depender del "image transform" de Supabase (límite 100/mes en free).
+        const baseFileName = `${inserted.id}/${Date.now()}`;
+        const { fullPath } = await uploadPhotoWithThumb(photoFile, 'tree-photos', baseFileName);
+        // Guardamos el path del ORIGINAL como photo_url; el thumb se deriva
+        // automáticamente con thumbPathFor() al mostrarse.
         const { error: updErr } = await sb
           .from('trees_catalog')
-          .update({ photo_url: fileName })
+          .update({ photo_url: fullPath })
           .eq('id', inserted.id);
         if (updErr) console.warn('photo_url update warning:', updErr.message);
       } catch (photoErr) {

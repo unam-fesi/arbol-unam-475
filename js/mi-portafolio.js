@@ -1367,17 +1367,10 @@ async function saveGardenVisit() {
     const visitId = (crypto.randomUUID && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    // Comprimir foto antes de subir (3-5MB → 300-500KB sin pérdida visible)
-    const blob = (typeof compressImageFile === 'function')
-      ? await compressImageFile(file, 1200, 0.8)
-      : file;
-    const path = `${gardenId}/${visitId}.jpg`;
-    const { error: upErr } = await sb.storage.from('garden-photos').upload(path, blob, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: 'image/jpeg',
-    });
-    if (upErr) throw upErr;
+    // Subir foto + thumbnail (evita usar image transforms de Supabase)
+    const baseFileName = `${gardenId}/${visitId}`;
+    const { fullPath } = await uploadPhotoWithThumb(file, 'garden-photos', baseFileName);
+    const path = fullPath;
 
     // Generar URL firmada (válida 7 días) para guardar como photo_url
     let photoUrl = path; // fallback al path crudo si createSignedUrl no funciona
