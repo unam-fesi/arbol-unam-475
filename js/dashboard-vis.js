@@ -394,27 +394,32 @@
           placeholdersByPath.get(photoUrl).push(placeholder);
         }
 
-        // (b) Una sola llamada batch a createSignedUrls para todos los paths
+        // (b) Firmar en PARALELO con transform: 400px. El batch (createSignedUrls)
+        // no soporta transform en el SDK y mi truco de swap-ear el endpoint
+        // ignoraba los params, dejando las fotos en 300KB c/u. La alternativa:
+        // 133 POSTs pero en paralelo (con Promise.all) — el navegador los
+        // multiplexa, en la práctica termina en ~500ms vs varios segundos
+        // serial. Mucho menos requests totales no logramos en plan free pero
+        // los GETs ya bajan a ~25KB que es el grueso del ahorro.
         if (pathsToSign.length > 0) {
           try {
-            const { data: signedList, error: signErr } = await sb.storage
-              .from('tree-photos')
-              .createSignedUrls(pathsToSign, 3600);
-            if (signErr) throw signErr;
-            (signedList || []).forEach(item => {
-              if (!item || !item.signedUrl) return;
-              // Truco: el SDK no expone "transform" en createSignedUrls, pero
-              // basta con cambiar el endpoint a /render/image/sign y añadir
-              // los params para que el server haga el resize on-the-fly.
-              const transformed = item.signedUrl
-                .replace('/object/sign/', '/render/image/sign/')
-                + (item.signedUrl.includes('?') ? '&' : '?')
-                + 'width=400&height=400&resize=cover&quality=70';
-              const phs = placeholdersByPath.get(item.path);
-              if (phs) phs.forEach(p => { p.userData.resolvedUrl = transformed; });
+            const signed = await Promise.all(pathsToSign.map(async (p) => {
+              try {
+                const { data } = await sb.storage
+                  .from('tree-photos')
+                  .createSignedUrl(p, 3600, {
+                    transform: { width: 400, height: 400, resize: 'cover', quality: 70 }
+                  });
+                return { path: p, url: data?.signedUrl || null };
+              } catch (_) { return { path: p, url: null }; }
+            }));
+            signed.forEach(({ path, url }) => {
+              if (!url) return;
+              const phs = placeholdersByPath.get(path);
+              if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = url; });
             });
           } catch (e) {
-            console.warn('Mosaico batch sign falló, sin fotos:', e);
+            console.warn('Mosaico parallel sign falló:', e);
           }
         }
 
