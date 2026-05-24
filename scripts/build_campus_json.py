@@ -77,15 +77,31 @@ out geom;
     pad = 0.002  # ~200m
     bbox_str = f"{min(lats)-pad},{min(lons)-pad},{max(lats)+pad},{max(lons)+pad}"
 
-    # 2) Obtener edificios dentro del bbox
+    # 2) Obtener edificios + canchas + calles dentro del bbox
     bldg_query = f"""[out:json][timeout:60];
-(way["building"]({bbox_str}););
+(
+  way["building"]({bbox_str});
+  way["leisure"="pitch"]({bbox_str});
+  way["leisure"="track"]({bbox_str});
+  way["highway"]({bbox_str});
+);
 out geom;
 """
     bldg_data = overpass_query(bldg_query)
-    buildings_raw = [e for e in bldg_data['elements']
-                     if e.get('type') == 'way' and 'geometry' in e]
-    print(f"  Edificios candidatos: {len(buildings_raw)}")
+    buildings_raw = []
+    pitches_raw = []
+    roads_raw = []
+    for e in bldg_data['elements']:
+        if e.get('type') != 'way' or 'geometry' not in e:
+            continue
+        tags = e.get('tags', {})
+        if tags.get('building'):
+            buildings_raw.append(e)
+        elif tags.get('leisure') in ('pitch', 'track'):
+            pitches_raw.append(e)
+        elif tags.get('highway'):
+            roads_raw.append(e)
+    print(f"  Edificios candidatos: {len(buildings_raw)}, canchas: {len(pitches_raw)}, calles: {len(roads_raw)}")
 
     # 3) Centroide del campus
     center_lat = sum(lats) / len(lats)
@@ -132,6 +148,46 @@ out geom;
             'footprint': footprint,
         })
 
+    # 4b) Filtrar canchas dentro del polígono del campus
+    pitches = []
+    for p in pitches_raw:
+        geom = p.get('geometry', [])
+        if len(geom) < 3: continue
+        c_lat = sum(pt['lat'] for pt in geom) / len(geom)
+        c_lon = sum(pt['lon'] for pt in geom) / len(geom)
+        if not in_poly(c_lat, c_lon, campus_poly): continue
+        footprint = [[round(x,2), round(y,2)] for x,y in (project(pt['lat'], pt['lon']) for pt in geom)]
+        tags = p.get('tags', {})
+        pitches.append({
+            'id': p['id'],
+            'name': tags.get('name', tags.get('sport', 'Cancha')),
+            'sport': tags.get('sport', ''),
+            'footprint': footprint,
+        })
+
+    # 4c) Filtrar calles — incluir las que toquen o pasen cerca del campus
+    # (no solo las dentro). Útil para mostrar el entorno.
+    def expand_bbox(pts, pad=0.0005):
+        lats = [p['lat'] for p in pts]
+        lons = [p['lon'] for p in pts]
+        return (min(lats)-pad, min(lons)-pad, max(lats)+pad, max(lons)+pad)
+    cb = expand_bbox(campus_poly, pad=0.001)  # ~100m alrededor
+    roads = []
+    for r in roads_raw:
+        geom = r.get('geometry', [])
+        if len(geom) < 2: continue
+        # Verificar que al menos un punto esté dentro del bbox expandido
+        any_in = any(cb[0] <= pt['lat'] <= cb[2] and cb[1] <= pt['lon'] <= cb[3] for pt in geom)
+        if not any_in: continue
+        path = [[round(x,2), round(y,2)] for x,y in (project(pt['lat'], pt['lon']) for pt in geom)]
+        tags = r.get('tags', {})
+        roads.append({
+            'id': r['id'],
+            'name': tags.get('name', ''),
+            'kind': tags.get('highway', 'unclassified'),
+            'path': path,
+        })
+
     # 5) Proyectar polígono del campus
     poly_proj = [project(p['lat'], p['lon']) for p in campus_poly]
     poly_proj_rounded = [[round(x,2), round(y,2)] for x,y in poly_proj]
@@ -157,6 +213,8 @@ out geom;
         'boundary': poly_proj_rounded,
         'boundary_latlng': poly_latlng,
         'buildings': buildings,
+        'pitches': pitches,
+        'roads': roads,
         'source': 'OpenStreetMap (Overpass API)',
         'osm_way_id': way_id,
     }
@@ -167,6 +225,8 @@ out geom;
 
     print(f"  ✓ Centroide: ({center_lat:.6f}, {center_lon:.6f})")
     print(f"  ✓ Edificios DENTRO del campus: {len(buildings)}")
+    print(f"  ✓ Canchas DENTRO del campus: {len(pitches)}")
+    print(f"  ✓ Calles cercanas al campus: {len(roads)}")
     print(f"  ✓ Guardado en {out_path}")
     return output
 

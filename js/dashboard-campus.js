@@ -46,6 +46,51 @@ window.CampusMap = (function() {
     };
   }
 
+  // Centroide simple (promedio de vértices) de un polígono [[x,y],...]
+  function _polyCentroid(pts) {
+    let sx = 0, sy = 0;
+    pts.forEach(p => { sx += p[0]; sy += p[1]; });
+    return [sx / pts.length, sy / pts.length];
+  }
+
+  // Sprite de texto que siempre mira a la cámara — para etiquetar edificios/canchas
+  function _makeTextSprite(text, buildingHeight, fg = '#1b3a0a', bg = 'rgba(255,253,247,0.92)') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    // Background con borde redondeado
+    ctx.fillStyle = bg;
+    const r = 18;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.arcTo(canvas.width, 0, canvas.width, canvas.height, r);
+    ctx.arcTo(canvas.width, canvas.height, 0, canvas.height, r);
+    ctx.arcTo(0, canvas.height, 0, 0, r);
+    ctx.arcTo(0, 0, canvas.width, 0, r);
+    ctx.closePath();
+    ctx.fill();
+    // Texto
+    ctx.fillStyle = fg;
+    ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Truncar si es muy largo
+    const maxLen = 35;
+    const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
+    ctx.fillText(display, canvas.width / 2, canvas.height / 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    // Escala — más grande si el edificio es más alto, dentro de un rango
+    const scale = Math.max(14, Math.min(28, buildingHeight * 1.8));
+    sprite.scale.set(scale, scale * (96 / 512), 1);
+    sprite.renderOrder = 999; // siempre encima
+    return sprite;
+  }
+
   // ============================================================================
   // INIT
   // ============================================================================
@@ -184,11 +229,13 @@ window.CampusMap = (function() {
       const lineMat = new THREE.LineBasicMaterial({ color: 0x2E7D32, linewidth: 3 });
       scene.add(new THREE.Line(lineGeo, lineMat));
 
-      // También un piso "campus" tintado dentro del polígono
+      // Piso "campus" tintado dentro del polígono.
+      // OJO: usar p[1] (NO -p[1]) en el Shape porque rotateX(-PI/2)
+      // ya invierte el eje Y a Z negativo. El bug de "espejo" venía de aquí.
       const shape = new THREE.Shape();
       mapData.boundary.forEach((p, i) => {
-        if (i === 0) shape.moveTo(p[0], -p[1]);
-        else shape.lineTo(p[0], -p[1]);
+        if (i === 0) shape.moveTo(p[0], p[1]);
+        else shape.lineTo(p[0], p[1]);
       });
       const campusGeo = new THREE.ShapeGeometry(shape);
       const campusMat = new THREE.MeshStandardMaterial({
@@ -213,9 +260,10 @@ window.CampusMap = (function() {
       mapData.buildings.forEach(b => {
         if (!b.footprint || b.footprint.length < 3) return;
         const shape = new THREE.Shape();
+        // p[1] (no -p[1]) por la misma razón del campus floor
         b.footprint.forEach((p, i) => {
-          if (i === 0) shape.moveTo(p[0], -p[1]);
-          else shape.lineTo(p[0], -p[1]);
+          if (i === 0) shape.moveTo(p[0], p[1]);
+          else shape.lineTo(p[0], p[1]);
         });
         const h = b.height || 8;
         const extrudeSettings = { depth: h, bevelEnabled: false };
@@ -224,8 +272,6 @@ window.CampusMap = (function() {
         const mesh = new THREE.Mesh(geo, bldgMat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        mesh.position.y = h; // rotated, así que el "techo" queda en y=h
-        // mejor: dejar position en 0 y rotar correctamente
         mesh.position.y = 0;
         mesh.userData = { isBuilding: true, name: b.name, height: h };
         scene.add(mesh);
@@ -238,6 +284,54 @@ window.CampusMap = (function() {
         roof.position.y = h + 0.1;
         roof.receiveShadow = true;
         scene.add(roof);
+
+        // Label con nombre si lo tiene (sprite que mira a la cámara)
+        if (b.name && b.name.trim()) {
+          const centroid = _polyCentroid(b.footprint);
+          const sprite = _makeTextSprite(b.name, h);
+          // World coords: shape vertex (x, y, 0) → (x, 0, -y) tras rotateX(-PI/2)
+          sprite.position.set(centroid[0], h + 3, -centroid[1]);
+          scene.add(sprite);
+        }
+      });
+    }
+
+    // Canchas / áreas deportivas (leisure=pitch)
+    if (mapData.pitches && Array.isArray(mapData.pitches)) {
+      const pitchMat = new THREE.MeshStandardMaterial({
+        color: 0x6FA651, roughness: 0.85, transparent: true, opacity: 0.85,
+      });
+      mapData.pitches.forEach(p => {
+        if (!p.footprint || p.footprint.length < 3) return;
+        const shape = new THREE.Shape();
+        p.footprint.forEach((pt, i) => {
+          if (i === 0) shape.moveTo(pt[0], pt[1]);
+          else shape.lineTo(pt[0], pt[1]);
+        });
+        const geo = new THREE.ShapeGeometry(shape);
+        const mesh = new THREE.Mesh(geo, pitchMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 0.15;
+        scene.add(mesh);
+
+        if (p.name) {
+          const centroid = _polyCentroid(p.footprint);
+          const sprite = _makeTextSprite('⚽ ' + p.name, 4, '#fff', '#2e7d32');
+          sprite.position.set(centroid[0], 2, -centroid[1]);
+          scene.add(sprite);
+        }
+      });
+    }
+
+    // Calles / vialidades (highway=*) — líneas en el suelo
+    if (mapData.roads && Array.isArray(mapData.roads)) {
+      mapData.roads.forEach(r => {
+        if (!r.path || r.path.length < 2) return;
+        const pts = r.path.map(p => new THREE.Vector3(p[0], 0.2, -p[1]));
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        const color = r.kind === 'primary' || r.kind === 'secondary' ? 0x8B8378 : 0xA9A293;
+        const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75 });
+        scene.add(new THREE.Line(lineGeo, lineMat));
       });
     }
 
