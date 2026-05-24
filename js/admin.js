@@ -1205,11 +1205,16 @@ async function editAdminTree(treeId) {
   const { data: tree } = await sb.from('trees_catalog').select('*').eq('id', treeId).single();
   if (!tree) return;
 
-  const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
-  const gardenOpts = '<option value="">— Sin jardín —</option>' +
-    (gardens || []).map(g =>
-      `<option value="${g.id}" ${tree.garden_id === g.id ? 'selected' : ''}>${escapeHtml(g.name)} (${escapeHtml(g.campus || '—')})</option>`
-    ).join('');
+  // Jardines SOLO existen en Iztacala. Solo cargar+mostrar dropdown si el árbol es de Iztacala.
+  const showGardens = (tree.campus === 'Iztacala');
+  let gardenOpts = '';
+  if (showGardens) {
+    const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
+    gardenOpts = '<option value="">— Sin jardín —</option>' +
+      (gardens || []).map(g =>
+        `<option value="${g.id}" ${tree.garden_id === g.id ? 'selected' : ''}>${escapeHtml(g.name)} (${escapeHtml(g.campus || '—')})</option>`
+      ).join('');
+  }
 
   const statusOpts = TREE_STATUS_VALUES.map(s =>
     `<option value="${s}" ${tree.status === s ? 'selected' : ''}>${TREE_STATUS_LABELS[s]}</option>`).join('');
@@ -1267,9 +1272,9 @@ async function editAdminTree(treeId) {
         <div class="form-group"><label>Tipo</label><select id="edit-tree-type" style="width:100%;padding:0.5rem;">${typeOpts}</select></div>
         <div class="form-group"><label>Tamaño</label><select id="edit-tree-size" style="width:100%;padding:0.5rem;">${sizeOpts}</select></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem;">
+      <div style="display:grid;grid-template-columns:${showGardens ? '1fr 1fr' : '1fr'};gap:0.5rem;margin-bottom:0.75rem;">
         <div class="form-group"><label>Campus</label><select id="edit-tree-campus" style="width:100%;padding:0.5rem;">${campusOpts}</select></div>
-        <div class="form-group"><label>Jardín</label><select id="edit-tree-garden" style="width:100%;padding:0.5rem;">${gardenOpts}</select></div>
+        ${showGardens ? `<div class="form-group"><label>Jardín</label><select id="edit-tree-garden" style="width:100%;padding:0.5rem;">${gardenOpts}</select></div>` : ''}
       </div>
       <div class="form-group" style="margin-bottom:0.75rem;">
         <label>Ubicación (lat/lng)</label>
@@ -1328,7 +1333,7 @@ async function editAdminTree(treeId) {
       tree_type: document.getElementById('edit-tree-type').value,
       size: document.getElementById('edit-tree-size').value,
       campus: document.getElementById('edit-tree-campus').value,
-      garden_id: document.getElementById('edit-tree-garden').value || null,
+      garden_id: document.getElementById('edit-tree-garden')?.value || null,
       location_lat: parseFloat(document.getElementById('edit-tree-lat').value) || null,
       location_lng: parseFloat(document.getElementById('edit-tree-lng').value) || null,
       health_score: parseInt(document.getElementById('edit-tree-health').value) || 0,

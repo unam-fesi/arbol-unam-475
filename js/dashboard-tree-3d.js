@@ -423,8 +423,16 @@
     const hit = pickTree(e.clientX, e.clientY);
     if (hit) {
       const t = hit.object.userData.tree;
-      if (t && t.id != null && typeof editAdminTree === 'function') {
-        editAdminTree(parseInt(t.id, 10));
+      if (!t || t.id == null) return;
+      const treeId = parseInt(t.id, 10);
+      // Para responsables: abrir VISTA DE SEGUIMIENTOS (su trabajo es seguir, no editar)
+      // Para admins/specialist: abrir EDITOR del árbol
+      if (typeof window.isResponsableRole === 'function' && window.isResponsableRole()) {
+        if (typeof window.viewTreeMeasurementsAdmin === 'function') {
+          window.viewTreeMeasurementsAdmin(treeId);
+        }
+      } else if (typeof editAdminTree === 'function') {
+        editAdminTree(treeId);
       }
     }
   }
