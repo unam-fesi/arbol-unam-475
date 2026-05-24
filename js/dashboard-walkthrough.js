@@ -366,10 +366,15 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     avatar.position.y = 0;
     scene.add(avatar);
 
-    // Detectar huesos de brazo (para corregir el "se está tocando" durante el baile).
-    // Tu rig se llama Hips/Spine/Chest/LeftShoulder/LeftArm/LeftForeArm/LeftHand (estilo Mixamo).
-    // "LeftArm" = upper arm. Lo detectamos excluyendo ForeArm/Hand/Shoulder.
-    avatar.userData.armBones = { leftShoulder: null, rightShoulder: null, leftUpper: null, rightUpper: null };
+    // Detectar TODOS los huesos del brazo (shoulder, upper, forearm, hand)
+    // para poder controlarlos durante el baile y evitar que la animación
+    // los doble hacia el cuerpo.
+    avatar.userData.armBones = {
+      leftShoulder: null, rightShoulder: null,
+      leftUpper: null,    rightUpper: null,
+      leftFore: null,     rightFore: null,
+      leftHand: null,     rightHand: null,
+    };
     const allBoneNames = [];
     avatar.traverse(o => {
       if (!o.isBone) return;
@@ -377,21 +382,25 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       const n = (o.name || '').toLowerCase();
       const isL = /^left|\.l$|_l$|izq/i.test(n);
       const isR = /^right|\.r$|_r$|der/i.test(n);
-      const isShoulder = /shoulder|clavicle|hombro/.test(n);
-      // Upper arm: contiene "arm" o "brazo" o "humerus", PERO NO "forearm/lowerarm/shoulder/hand".
-      // OJO: NO usar \b porque "leftarm" no tiene word boundary entre "left" y "arm".
-      const isUpperArm = /arm|brazo|humerus/.test(n)
-                          && !/forearm|lowerarm|shoulder|hand|mano|armature/.test(n);
-      if (isShoulder && isL) avatar.userData.armBones.leftShoulder = o;
-      if (isShoulder && isR) avatar.userData.armBones.rightShoulder = o;
-      if (isUpperArm && isL && !avatar.userData.armBones.leftUpper)  avatar.userData.armBones.leftUpper  = o;
-      if (isUpperArm && isR && !avatar.userData.armBones.rightUpper) avatar.userData.armBones.rightUpper = o;
+      const ab = avatar.userData.armBones;
+      if (/shoulder|clavicle|hombro/.test(n)) {
+        if (isL) ab.leftShoulder = o;
+        if (isR) ab.rightShoulder = o;
+      } else if (/forearm|lowerarm|antebrazo/.test(n)) {
+        if (isL) ab.leftFore = o;
+        if (isR) ab.rightFore = o;
+      } else if (/hand|mano/.test(n)) {
+        if (isL) ab.leftHand = o;
+        if (isR) ab.rightHand = o;
+      } else if (/arm|brazo|humerus/.test(n) && !/armature/.test(n)) {
+        if (isL) ab.leftUpper = o;
+        if (isR) ab.rightUpper = o;
+      }
     });
     console.log('🦴 Bones del puma:', allBoneNames.join(', '));
-    console.log('  → leftShoulder:',  avatar.userData.armBones.leftShoulder?.name  || 'no detectado');
-    console.log('  → rightShoulder:', avatar.userData.armBones.rightShoulder?.name || 'no detectado');
-    console.log('  → leftUpper:',     avatar.userData.armBones.leftUpper?.name     || 'no detectado');
-    console.log('  → rightUpper:',    avatar.userData.armBones.rightUpper?.name    || 'no detectado');
+    const ab = avatar.userData.armBones;
+    console.log('  → L: shoulder=' + (ab.leftShoulder?.name || '-') + ', upper=' + (ab.leftUpper?.name || '-') + ', fore=' + (ab.leftFore?.name || '-') + ', hand=' + (ab.leftHand?.name || '-'));
+    console.log('  → R: shoulder=' + (ab.rightShoulder?.name || '-') + ', upper=' + (ab.rightUpper?.name || '-') + ', fore=' + (ab.rightFore?.name || '-') + ', hand=' + (ab.rightHand?.name || '-'));
 
     // Si el GLB trae animaciones, configurar el mixer + acciones nombradas
     if (gltf.animations && gltf.animations.length > 0) {
@@ -1019,28 +1028,27 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           if (danceToggled) desired = 'dance';
           else if (isWalking) desired = running ? 'run' : 'walk';
 
-          // FIX: durante baile, SOBRESCRIBIR la rotación de los brazos para que
-          // estén abiertos a los lados pero NO arriba de la cabeza. Reducimos
-          // mucho el offset porque el Mixamo rig ya parte de T-pose horizontal:
-          // un pequeño Z extra basta. También limpiamos Y para evitar twist raro.
+          // FIX: durante baile, SOBRESCRIBIR la rotación de TODOS los huesos
+          // del brazo (shoulder/upper/forearm/hand) para que queden abiertos
+          // y rectos sin "pliegues" hacia el cuerpo.
           if (desired === 'dance' && avatar?.userData?.armBones) {
             const t = Date.now() * 0.003;
-            const swing = Math.sin(t) * 0.12;        // mecida sutil ±7°
-            const baseOut = 0.35;                     // ~20° abrir hacia afuera (no levantar)
+            const swing = Math.sin(t) * 0.15;        // mecida ±9°
+            const baseOut = 0.45;                    // ~26° apertura del upper arm hacia afuera
             const ab = avatar.userData.armBones;
-            if (ab.leftUpper)  {
-              ab.leftUpper.rotation.z  =  (baseOut + swing);
-              ab.leftUpper.rotation.x  = 0;
-              ab.leftUpper.rotation.y  = 0;
-            }
-            if (ab.rightUpper) {
-              ab.rightUpper.rotation.z = -(baseOut + swing);
-              ab.rightUpper.rotation.x = 0;
-              ab.rightUpper.rotation.y = 0;
-            }
-            // Hombros: ligero abrir
-            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  = 0.1;
-            if (ab.rightShoulder) ab.rightShoulder.rotation.z = -0.1;
+            // Upper arm — abrir lateral (Z axis) con signos opuestos para cada lado
+            //   set(x, y, z): x=swing/lift, y=twist, z=lateral
+            if (ab.leftUpper)  ab.leftUpper.rotation.set(0,  0,  baseOut + swing);
+            if (ab.rightUpper) ab.rightUpper.rotation.set(0, 0, -(baseOut + swing));
+            // Forearm — RECTO (rotation 0,0,0) para que no se pliegue hacia el cuerpo
+            if (ab.leftFore)   ab.leftFore.rotation.set(0, 0, 0);
+            if (ab.rightFore)  ab.rightFore.rotation.set(0, 0, 0);
+            // Mano — relajada
+            if (ab.leftHand)   ab.leftHand.rotation.set(0, 0, 0);
+            if (ab.rightHand)  ab.rightHand.rotation.set(0, 0, 0);
+            // Hombros — sin rotación (la animación los movía y arrastraba el brazo)
+            if (ab.leftShoulder)  ab.leftShoulder.rotation.set(0, 0, 0);
+            if (ab.rightShoulder) ab.rightShoulder.rotation.set(0, 0, 0);
           }
           // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
 
