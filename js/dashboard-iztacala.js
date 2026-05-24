@@ -199,6 +199,12 @@ window.IztacalaMap = (function() {
     // ---- Cargar árboles desde Supabase ----
     await loadTrees();
 
+    // ---- Cargar Barda Caída (escultura icónica) ----
+    if (window.IztacalaSculpture && scene) {
+      try { await window.IztacalaSculpture.addTo(scene); }
+      catch (e) { console.warn('No se pudo agregar la escultura:', e); }
+    }
+
     animate();
   }
 

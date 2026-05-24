@@ -175,6 +175,11 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       console.log('🏛️  Campus GLB cargado');
     }).catch((e) => console.warn('iztacala_campus.glb no cargó:', e?.message || e));
 
+    // Escultura "Barda Caída" — icónica de Iztacala
+    if (window.IztacalaSculpture) {
+      window.IztacalaSculpture.addTo(scene).catch(e => console.warn('Barda Caída no cargó:', e));
+    }
+
     // Pre-cargar TODOS los modelos GLB de las especies para que vayan
     // calentando el cache antes de que se rendericen los árboles.
     // Luego fetch + plot. Cada _addTree obtiene su modelo específico.
