@@ -50,10 +50,14 @@ window.CampusMap = (function() {
   // INIT
   // ============================================================================
   async function init(containerSel, campusName) {
+    console.warn(`[CampusMap v103] init('${containerSel}', '${campusName}')`);
     containerEl = typeof containerSel === 'string'
       ? document.querySelector(containerSel)
       : containerSel;
-    if (!containerEl) return;
+    if (!containerEl) {
+      console.error('[CampusMap] container no encontrado:', containerSel);
+      return;
+    }
 
     // Si cambia de campus, destruir escena previa
     if (currentCampus && currentCampus !== campusName) {
@@ -73,18 +77,28 @@ window.CampusMap = (function() {
       </div>`;
 
     // Cargar JSON
-    const campus = window.CampusBounds.get(campusName);
+    const campus = window.CampusBounds?.get(campusName);
+    if (!campus) {
+      console.error('[CampusMap] CampusBounds no disponible o campus desconocido:', campusName);
+      _renderUnderConstruction(campusName);
+      return;
+    }
     const jsonPath = campus.json;
+    console.warn(`[CampusMap] JSON path: ${jsonPath}`);
     if (!jsonPath) {
+      console.warn('[CampusMap] campus sin JSON definido:', campusName);
       _renderUnderConstruction(campusName);
       return;
     }
 
     try {
       const res = await fetch(jsonPath);
+      console.warn(`[CampusMap] fetch ${jsonPath} → status ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       mapData = await res.json();
+      console.warn(`[CampusMap] JSON cargado: ${mapData.buildings?.length || 0} edificios, centro (${mapData.center_lat}, ${mapData.center_lon})`);
     } catch (e) {
-      console.warn('No se pudo cargar JSON del campus:', e);
+      console.error('[CampusMap] No se pudo cargar JSON del campus:', e);
       _renderUnderConstruction(campusName);
       return;
     }

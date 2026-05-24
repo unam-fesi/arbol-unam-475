@@ -84,6 +84,46 @@ function switchAdminTab(tabName) {
   });
 }
 
+// ============================================================================
+// CAMPUS THEMES — tinte de color del panel admin según el campus activo
+// para que el usuario vea inmediatamente en cuál está parado.
+// ============================================================================
+const CAMPUS_THEMES = {
+  'Iztacala':   { color: '#d4a574', name: 'durazno' },
+  'Acatlan':    { color: '#95b86c', name: 'verde hoja' },
+  'Aragon':     { color: '#5b8b7d', name: 'azul-verde' },
+  'Cuautitlan': { color: '#8b6f47', name: 'marrón claro' },
+  'Zaragoza':   { color: '#b54f3a', name: 'terracota' },
+  'CU':         { color: '#4a7c2a', name: 'verde primario' },
+};
+
+function _applyCampusTheme() {
+  // Para admin principal sin filtro → durazno (Iztacala default).
+  // Para admin principal CON filtro → el color del campus filtrado.
+  // Para admin-campus / responsable → siempre el color de SU campus.
+  let cf = effectiveCampusFilter();
+  if (!cf && (isAdminCampusRole() || isResponsableRole())) cf = _userCampus();
+  if (!cf) cf = 'Iztacala';
+  const theme = CAMPUS_THEMES[cf] || CAMPUS_THEMES['Iztacala'];
+
+  const panel = document.querySelector('.admin-panel');
+  if (panel) {
+    // Gradiente sutil que tinta el panel sin dominar la lectura
+    panel.style.background = `linear-gradient(135deg, ${theme.color}33, ${theme.color}11 40%, rgba(255,253,247,0.85) 70%)`;
+    panel.style.borderLeft = `6px solid ${theme.color}`;
+    panel.style.transition = 'background 0.4s ease, border-color 0.4s ease';
+  }
+
+  // También colorear el banner del campus (cuando es admin-campus/responsable)
+  const banner = document.getElementById('admin-campus-banner');
+  if (banner && banner.style.display !== 'none') {
+    banner.style.background = `${theme.color}1f`;
+    banner.style.borderColor = `${theme.color}66`;
+    banner.style.color = theme.color;
+  }
+}
+window._applyCampusTheme = _applyCampusTheme;
+
 // Aplicar restricciones UI según rol cuando se monta el panel admin
 function applyRoleBasedUIRestrictions() {
   // PASO 0 — RESETEAR todas las tabs a visibles (necesario porque la función
@@ -131,6 +171,9 @@ function applyRoleBasedUIRestrictions() {
       banner.style.display = 'none';
     }
   }
+
+  // ---- Aplicar tinte de color del panel según campus activo ----
+  _applyCampusTheme();
 
   // ---- Limitar dropdowns de campus en forms (usuarios y árboles) ----
   // admin-campus/responsable solo ven SU campus en los selects de creación.
@@ -241,8 +284,10 @@ window.applyRoleBasedUIRestrictions = applyRoleBasedUIRestrictions;
 // Cambio del dropdown global de campus (solo admin principal)
 function onAdminCampusFilterChange(value) {
   _globalCampusFilter = value || '';
-  // Re-aplicar restricciones de UI (oculta jardines fuera de Iztacala, ajusta título 3D)
+  // Re-aplicar restricciones de UI (oculta jardines fuera de Iztacala, ajusta título 3D, tinte panel)
   if (typeof applyRoleBasedUIRestrictions === 'function') applyRoleBasedUIRestrictions();
+  // Aplicar el tinte del campus inmediatamente (sin esperar el reload de la tab activa)
+  if (typeof _applyCampusTheme === 'function') _applyCampusTheme();
   // Re-cargar lo que esté visible actualmente
   const activePane = document.querySelector('.tab-pane.active');
   if (!activePane) return;
@@ -3821,11 +3866,8 @@ function switchVisTab(which) {
       } else if (which === 'heatmap' && window.DashboardHeatmap) {
         window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
       } else if (which === 'iztacala') {
-        // Tab "Campus 3D" — router por campus activo:
-        //   Iztacala → modelo GLB de Blender (alta fidelidad)
-        //   Acatlán/Aragón → footprints OSM via dashboard-campus.js
-        //   Otros (CU/Cuautitlan/Zaragoza) → mensaje en construcción hasta tener JSON
         const cf = campusFilter || 'Iztacala';
+        console.warn(`[switchVisTab] tab="iztacala" campusFilter="${cf}" hasCampusMap=${!!window.CampusMap} hasIztacalaMap=${!!window.IztacalaMap}`);
         if (cf === 'Iztacala' && window.IztacalaMap) {
           window.IztacalaMap.init('#dashboard-iztacala-vis');
         } else if ((cf === 'Acatlan' || cf === 'Aragon') && window.CampusMap) {
