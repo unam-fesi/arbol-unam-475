@@ -106,10 +106,11 @@
   // Override de color de hojas por especie cuando los GLBs fueron exportados con
   // textura genérica verde (Blender NormalTree_Leaves). Esto pinta las hojas
   // del color correcto basándose solo en el nombre de archivo del GLB.
-  // - Hex color, o null/undefined = no override
+  // - color: hex del MeshStandardMaterial.color
+  // - emissive: hex del MeshStandardMaterial.emissive (mantiene el color en sombra)
   const SPECIES_LEAF_COLOR = {
-    'jacaranda.glb': 0x8E5BB7,   // morado/lavanda (flores de jacaranda)
-    'pirul.glb':     0xC8A37A,   // marrón claro (bayas rosadas + hojas verdes)
+    'jacaranda.glb': { color: 0xA75DD9, emissive: 0x5A2A88, emissiveIntensity: 0.35 },  // morado/lavanda vivo
+    'pirul.glb':     { color: 0xD9A66B, emissive: 0x7A4A20, emissiveIntensity: 0.15 },  // marrón claro/dorado
     // los demás: textura original
   };
 
@@ -117,10 +118,11 @@
   // Detecta el material por nombre ("leaves", "leaf", "follaje", "canopy").
   function _applyLeafColorOverride(scene, path) {
     const fileName = (path || '').split('/').pop();
-    const overrideHex = SPECIES_LEAF_COLOR[fileName];
-    if (!overrideHex || !scene) return;
+    const cfg = SPECIES_LEAF_COLOR[fileName];
+    if (!cfg || !scene) return;
     if (typeof THREE === 'undefined') return;
-    const target = new THREE.Color(overrideHex);
+    const targetColor = new THREE.Color(cfg.color);
+    const targetEmissive = cfg.emissive != null ? new THREE.Color(cfg.emissive) : null;
     let recolored = 0;
     scene.traverse(o => {
       if (!o.isMesh || !o.material) return;
@@ -131,9 +133,12 @@
       if (!isLeaf) return;
       // Clonar material para no mutar el template compartido inadvertidamente
       o.material = o.material.clone();
-      o.material.color = target.clone();
+      o.material.color = targetColor.clone();
+      if (targetEmissive) {
+        o.material.emissive = targetEmissive.clone();
+        o.material.emissiveIntensity = cfg.emissiveIntensity != null ? cfg.emissiveIntensity : 0.3;
+      }
       // Quitar la textura verde para que el color override sea el que se vea
-      // (las hojas se ven como blobs de color sólido, pero del color correcto)
       if (o.material.map) {
         o.material.map = null;
         o.material.needsUpdate = true;

@@ -86,6 +86,13 @@ function switchAdminTab(tabName) {
 
 // Aplicar restricciones UI según rol cuando se monta el panel admin
 function applyRoleBasedUIRestrictions() {
+  // PASO 0 — RESETEAR todas las tabs a visibles (necesario porque la función
+  // solo OCULTA; si un responsable se loguea y luego se loguea un admin en la
+  // misma página, las tabs quedarían escondidas del paso anterior).
+  document.querySelectorAll('.admin-tab').forEach(t => {
+    t.style.display = '';
+  });
+
   // Ocultar tabs prohibidas para admin-campus
   if (isAdminCampusRole()) {
     document.querySelectorAll('.admin-tab').forEach(t => {
