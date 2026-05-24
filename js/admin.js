@@ -2074,10 +2074,11 @@ async function sendNotification(e) {
 // ---- ASSIGNMENTS TAB ----
 async function loadAssignments() {
   try {
-    // Populate dropdowns
-    const { data: users } = await sb.from('user_profiles').select('id, full_name').order('full_name');
-    const { data: groups } = await sb.from('user_groups').select('id, name').order('name');
-    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species').order('tree_code');
+    // Populate dropdowns — INCLUIR campus en el SELECT para que el filtro client-side
+    // por campus en populateAssignTarget / assign-tree funcione correctamente.
+    const { data: users } = await sb.from('user_profiles').select('id, full_name, campus, role').order('full_name');
+    const { data: groups } = await sb.from('user_groups').select('id, name, campus').order('name');
+    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, campus').order('tree_code');
     const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
 
     // Tree assignment target dropdown

@@ -199,29 +199,24 @@
     });
 
     const totalReal = all.length;
-    const minSlots = 30;
-    const totalSlots = Math.max(minSlots, totalReal);
-    const radius = Math.max(5.5, Math.sqrt(totalSlots) * 0.85);
+    // Sin árboles reales → bosque vacío (no placeholders fantasma).
+    // El mensaje "no hay árboles" lo muestra el contenedor padre como overlay.
+    if (totalReal === 0) return forest;
+
+    // Renderizar EXACTAMENTE los árboles reales, sin slots fantasma.
+    const totalSlots = totalReal;
+    const radius = Math.max(5.5, Math.sqrt(Math.max(totalSlots, 12)) * 0.85);
     const innerRadius = 0.5;
 
-    // Resolver los templates de TODOS los slots en paralelo. Para slots
-    // vacíos (i >= totalReal), usamos el genérico. TreeModels cachea, así
-    // que slots con la misma especie comparten la misma promesa.
-    const templatePromises = [];
-    for (let i = 0; i < totalSlots; i++) {
-      const tree = i < totalReal ? all[i] : null;
-      if (tree && window.TreeModels) {
-        templatePromises.push(window.TreeModels.getModelForTree(tree));
-      } else if (window.TreeModels) {
-        templatePromises.push(window.TreeModels.getTreeModel(window.TreeModels.GENERIC_GLB));
-      } else {
-        templatePromises.push(getTreeModelFor(tree));
-      }
-    }
+    // Resolver templates de todos los árboles en paralelo
+    const templatePromises = all.map(tree => {
+      if (window.TreeModels) return window.TreeModels.getModelForTree(tree);
+      return getTreeModelFor(tree);
+    });
     const templates = await Promise.all(templatePromises);
 
     for (let i = 0; i < totalSlots; i++) {
-      const assignedTree = i < totalReal ? all[i] : null;
+      const assignedTree = all[i];
       const template = templates[i];
 
       const t = (i + 0.5) / totalSlots;
@@ -491,9 +486,24 @@
     if (!container) return false;
 
     destroy();
+    // Si no hay árboles, mostrar mensaje en vez de bosque vacío
+    if (!trees || trees.length === 0) {
+      container.innerHTML = `
+        <div style="height:100%;min-height:400px;display:flex;align-items:center;justify-content:center;
+                    background:linear-gradient(135deg,#e8f5e9,#c8e6c9);border-radius:12px;padding:2rem;">
+          <div style="text-align:center;max-width:480px;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🌱</div>
+            <h3 style="margin:0 0 0.6rem;color:#1b5e20;">Aún no hay árboles registrados</h3>
+            <p style="color:#444;line-height:1.5;">
+              Agrega árboles en el tab <strong>Árboles</strong> y aparecerán aquí en el Bosque 3D.
+            </p>
+          </div>
+        </div>`;
+      return true;
+    }
     // Mostrar loading mientras carga el GLB
     container.innerHTML = '<div style="padding:3rem;text-align:center;color:#888;"><i class="fas fa-spinner fa-spin"></i> Plantando bosque…</div>';
-    await setupScene(container, trees || []);
+    await setupScene(container, trees);
     animate();
     return true;
   }
