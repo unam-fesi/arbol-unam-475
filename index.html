@@ -314,6 +314,7 @@
                             <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
                     <button class="admin-tab" data-tab="assignments" onclick="switchAdminTab(\'assignments\')"><i class="fas fa-link"></i> Asignaciones</button>
                             <button class="admin-tab" data-tab="dashboard" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
+                            <button class="admin-tab" data-tab="kpis" onclick="switchAdminTab('kpis')"><i class="fas fa-chart-line"></i> KPIs Multi-Campus</button>
                             <button class="admin-tab" data-tab="reports" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
                             <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditor&iacute;a</button>
                         </div>
@@ -1289,6 +1290,15 @@
                                     Reportes enviados por usuarios v&iacute;a QR. Cambia su estado a medida que los atiendes.
                                 </p>
                                 <div id="citizen-reports-container">Cargando...</div>
+                            </div>
+
+                            <!-- KPIs MULTI-CAMPUS TAB (solo admin principal) -->
+                            <div id="kpisTab" class="tab-pane">
+                                <h4 style="margin-bottom:0.5rem;"><i class="fas fa-chart-line"></i> KPIs Multi-Campus</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    Indicadores comparativos de todos los campus FES. Solo visible para admin principal.
+                                </p>
+                                <div id="kpis-container">Cargando KPIs...</div>
                             </div>
 
                             <!-- AUDIT LOG TAB -->
