@@ -616,6 +616,13 @@ async function editAdminUser(userId) {
     const { data: user, error } = await sb.from('user_profiles').select('*').eq('id', userId).single();
     if (error) throw error;
 
+    // Traer el email desde auth.users vía Edge Function (admin no tiene acceso directo a auth.users)
+    let currentEmail = '';
+    try {
+      const { data: emailData } = await sb.functions.invoke('get-user-email', { body: { userId } });
+      currentEmail = emailData?.email || '';
+    } catch (_) { /* opcional — si no existe la función, solo no precarga */ }
+
     const statusOptions = ['alumno','exalumno','egresado','pasante','tesista','becario','postgrado','profesor','profesora'];
     const statusSelect = statusOptions.map(s =>
       `<option value="${s}" ${user.academic_status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
@@ -626,23 +633,40 @@ async function editAdminUser(userId) {
       `<option value="${c}" ${user.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`
     ).join('');
 
+    // Restricciones por rol del CALLER (no del usuario editado):
+    // admin-campus no puede ver opción "admin principal" y no puede cambiar el campus
+    const callerIsAdminPrincipal = isAdminRole();
+    const callerIsAdminCampus = isAdminCampusRole();
+    const showAdminRoleOption = callerIsAdminPrincipal;
+    const campusReadOnly = !callerIsAdminPrincipal; // admin-campus no puede cambiar campus de un usuario
+
     const isSpec = user.role === 'specialist';
     showModal('Editar Usuario', `
       <form id="edit-user-form">
         <div class="form-group" style="margin-bottom:1rem;"><label>Nombre</label><input type="text" id="edit-user-name" value="${escapeHtml(user.full_name || '')}" style="width:100%;padding:0.5rem;"></div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label>Email <small style="color:#888;">(cambia el correo de acceso)</small></label>
+          <input type="email" id="edit-user-email" value="${escapeHtml(currentEmail)}" placeholder="correo@unam.mx" style="width:100%;padding:0.5rem;">
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label>Nueva contraseña <small style="color:#888;">(deja vacío para no cambiar)</small></label>
+          <input type="password" id="edit-user-password" value="" placeholder="Mínimo 8 caracteres" style="width:100%;padding:0.5rem;" autocomplete="new-password">
+        </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Rol</label>
           <select id="edit-user-role" style="width:100%;padding:0.5rem;" onchange="document.getElementById('edit-spec-fields').style.display = this.value === 'specialist' ? 'block':'none';">
             <option value="user" ${user.role === 'user' ? 'selected' : ''}>Usuario</option>
+            <option value="responsable" ${user.role === 'responsable' ? 'selected' : ''}>Responsable</option>
             <option value="specialist" ${user.role === 'specialist' ? 'selected' : ''}>Especialista</option>
-            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador</option>
+            <option value="admin-campus" ${user.role === 'admin-campus' ? 'selected' : ''}>Admin de campus</option>
+            ${showAdminRoleOption ? `<option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador principal</option>` : ''}
           </select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Estatus Académico</label>
           <select id="edit-user-status" style="width:100%;padding:0.5rem;">${statusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>No. Cuenta</label><input type="text" id="edit-user-cuenta" value="${escapeHtml(user.account_number || '')}" style="width:100%;padding:0.5rem;"></div>
-        <div class="form-group" style="margin-bottom:1rem;"><label>Campus</label>
-          <select id="edit-user-campus" style="width:100%;padding:0.5rem;">${campusSelect}</select>
+        <div class="form-group" style="margin-bottom:1rem;"><label>Campus${campusReadOnly ? ' <small style="color:#888;">(no editable)</small>' : ''}</label>
+          <select id="edit-user-campus" style="width:100%;padding:0.5rem;" ${campusReadOnly ? 'disabled' : ''}>${campusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Telegram Chat ID</label><input type="text" id="edit-user-telegram" value="${escapeHtml(user.telegram_chat_id || '')}" style="width:100%;padding:0.5rem;" placeholder="123456789"></div>
         <div id="edit-spec-fields" style="display:${isSpec?'block':'none'};border-left:3px solid var(--primary);padding:0.75rem;margin-bottom:1rem;background:#f9fdf9;border-radius:6px;">
@@ -657,22 +681,52 @@ async function editAdminUser(userId) {
 
     document.getElementById('edit-user-form').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const { error: updateError } = await sb.from('user_profiles').update({
+      const newEmail = document.getElementById('edit-user-email').value.trim();
+      const newPassword = document.getElementById('edit-user-password').value.trim();
+      const profileUpdates = {
         full_name: document.getElementById('edit-user-name').value.trim(),
         role: document.getElementById('edit-user-role').value,
         academic_status: document.getElementById('edit-user-status').value,
         account_number: document.getElementById('edit-user-cuenta').value.trim() || null,
-        campus: document.getElementById('edit-user-campus').value,
         telegram_chat_id: document.getElementById('edit-user-telegram').value.trim() || null,
         specialty: document.getElementById('edit-user-specialty')?.value.trim() || null,
         department: document.getElementById('edit-user-department')?.value.trim() || null,
         contact_info: document.getElementById('edit-user-contact')?.value.trim() || null,
         updated_at: new Date().toISOString()
-      }).eq('id', userId);
-      if (updateError) { showToast('Error: ' + updateError.message, 'error'); return; }
-      showToast('Usuario actualizado', 'success');
-      closeModal();
-      loadAdminUsers();
+      };
+      if (!campusReadOnly) {
+        profileUpdates.campus = document.getElementById('edit-user-campus').value;
+      }
+
+      try {
+        // Si cambia email o password → llamar Edge Function update-user (requiere service_role)
+        const emailChanged = newEmail && newEmail !== currentEmail;
+        const passwordChanged = !!newPassword;
+        if (emailChanged || passwordChanged) {
+          if (passwordChanged && newPassword.length < 8) {
+            showToast('La contraseña debe tener al menos 8 caracteres', 'error'); return;
+          }
+          const { data, error: efErr } = await sb.functions.invoke('update-user', {
+            body: {
+              userId,
+              email: emailChanged ? newEmail : undefined,
+              password: passwordChanged ? newPassword : undefined,
+              profile: profileUpdates,
+            }
+          });
+          if (efErr) throw efErr;
+          if (data?.error) throw new Error(data.error);
+        } else {
+          // Solo cambios al perfil — update directo
+          const { error: updateError } = await sb.from('user_profiles').update(profileUpdates).eq('id', userId);
+          if (updateError) throw updateError;
+        }
+        showToast('Usuario actualizado', 'success');
+        closeModal();
+        loadAdminUsers();
+      } catch (err) {
+        showToast('Error: ' + (err.message || err), 'error');
+      }
     });
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
