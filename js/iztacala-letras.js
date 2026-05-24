@@ -22,7 +22,7 @@ window.IztacalaLetras = (function() {
     // asfalto y paralelas al pasillo principal. Cara blanca "Iztacala" al frente.
     position: { x: 186.37, y: 0, z: -55 },
     rotationX: -Math.PI / 2,    // Z-up → Y-up (letras paradas verticalmente)
-    rotationY: Math.PI / 2,     // 90° limpio — paralelas al pasillo, "Iztacala" al frente
+    rotationY: -Math.PI / 2,    // 90° limpio — paralelas al pasillo, cara blanca "Iztacala" hacia el campus
     targetWidth: 22,
     castShadow: true,
   };

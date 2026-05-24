@@ -24,7 +24,7 @@ window.IztacalaAhuehuete475 = (function() {
     glbPath: 'data/Ahuehuete475.glb',
     position: { x: 165, y: 0, z: -55 },
     rotationX: 0,                   // 0 = el GLB ya viene Y-up parado. Si sale acostado, prueba -Math.PI/2
-    rotationY: Math.PI / 2,         // mismo orient que las letras
+    rotationY: -Math.PI / 2,        // mismo orient que las letras
     targetHeight: 18,               // ~18m de altura — "en grande"
     castShadow: true,
   };
