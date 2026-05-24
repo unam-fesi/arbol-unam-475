@@ -25,7 +25,7 @@ window.IztacalaMariposas = (function() {
     maxY: 7.0,
     minSpeed: 0.4,
     maxSpeed: 1.2,
-    targetSize: 0.8,         // tamaño visual ~80cm (más grande que real para visibilidad)
+    targetSize: 3.0,         // tamaño visual ~3m (XL — sacrificamos proporción por visibilidad)
   };
 
   let _templatePromise = null;
