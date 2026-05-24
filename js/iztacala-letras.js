@@ -20,7 +20,7 @@ window.IztacalaLetras = (function() {
     glbPath: 'data/letras_fesi.glb',
     // Posición sobre el prado al norte de Unidad de Seminarios, alejadas del
     // asfalto y paralelas al pasillo principal. Cara blanca "Iztacala" al frente.
-    position: { x: 186.37, y: 0, z: -55 },
+    position: { x: 160, y: 0, z: -55 },
     rotationX: -Math.PI / 2,    // Z-up → Y-up (letras paradas verticalmente)
     rotationY: -Math.PI / 2,    // 90° limpio — paralelas al pasillo, cara blanca "Iztacala" hacia el campus
     targetWidth: 22,
@@ -66,24 +66,35 @@ window.IztacalaLetras = (function() {
           const scale = config.targetWidth / maxDim;
           root.scale.setScalar(scale);
 
-          // Asegurar sombras + FIX: empujar el texto blanco "Iztacala" hacia adelante
-          // para que sobresalga claramente del cartel azul (sino se ve oculto)
+          // FIX CRÍTICO: el GLB tiene IZTACALA (placa azul + texto blanco) en
+          // la cara OPUESTA al FES UNAM dorado/azul. Específicamente:
+          //   FES_gold / UNAM_blue:   local Y centro = +0.05  (cara FRONTAL)
+          //   IZTACALA_blue_sign_board: local Y centro = -0.34 (cara TRASERA)
+          //   IZTACALA_white_raised_text: local Y centro = -0.19 (atrás)
+          // Por eso al mirar el letrero desde FES UNAM, IZTACALA está atrás.
+          // Movemos placa + texto al mismo lado que FES UNAM (sumamos 0.68 en Y local).
+          // Adicionalmente, el texto blanco sobresale 0.20 más para destacar
+          // de la placa azul.
           root.traverse(o => {
             if (o.isMesh) {
               if (config.castShadow) o.castShadow = true;
               o.receiveShadow = true;
-              // Texto blanco "Iztacala" — sobresalir 0.15m
-              if (o.name && /IZTACALA.*white|white.*raised|iztacala.*text/i.test(o.name)) {
-                o.position.y += 0.15;   // local Y = profundidad antes de rotación
-                // También hacer el material doble-cara y emisivo sutil para
-                // que sea más visible desde distintos ángulos.
+              const name = o.name || '';
+              // Placa azul "Iztacala": del Y=-0.34 → +0.34 (mismo lado que FES)
+              if (/IZTACALA.*blue.*sign|iztacala.*board/i.test(name)) {
+                o.position.y += 0.68;
+                console.warn(`[Letras]   ↳ placa "Iztacala" movida +0.68 al frente (Y opuesto)`);
+              }
+              // Texto blanco "Iztacala": del Y=-0.19 → +0.49 (placa +0.20 al frente)
+              else if (/IZTACALA.*white|white.*raised|iztacala.*text/i.test(name)) {
+                o.position.y += 0.68 + 0.20;
                 if (o.material) {
                   o.material = o.material.clone();
                   o.material.side = THREE.DoubleSide;
                   o.material.emissive = new THREE.Color(0xffffff);
-                  o.material.emissiveIntensity = 0.15;
+                  o.material.emissiveIntensity = 0.2;
                 }
-                console.warn(`[Letras]   ↳ texto "Iztacala" empujado +0.15 al frente y con emissive`);
+                console.warn(`[Letras]   ↳ texto "Iztacala" movido +0.88 al frente y con emissive`);
               }
             }
           });
