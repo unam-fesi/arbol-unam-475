@@ -103,6 +103,48 @@
     return GENERIC_GLB;
   }
 
+  // Override de color de hojas por especie cuando los GLBs fueron exportados con
+  // textura genérica verde (Blender NormalTree_Leaves). Esto pinta las hojas
+  // del color correcto basándose solo en el nombre de archivo del GLB.
+  // - Hex color, o null/undefined = no override
+  const SPECIES_LEAF_COLOR = {
+    'jacaranda.glb': 0x8E5BB7,   // morado/lavanda (flores de jacaranda)
+    'pirul.glb':     0xC8A37A,   // marrón claro (bayas rosadas + hojas verdes)
+    // los demás: textura original
+  };
+
+  // Aplica el color override a los materiales de hoja del modelo cargado.
+  // Detecta el material por nombre ("leaves", "leaf", "follaje", "canopy").
+  function _applyLeafColorOverride(scene, path) {
+    const fileName = (path || '').split('/').pop();
+    const overrideHex = SPECIES_LEAF_COLOR[fileName];
+    if (!overrideHex || !scene) return;
+    if (typeof THREE === 'undefined') return;
+    const target = new THREE.Color(overrideHex);
+    let recolored = 0;
+    scene.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      const matName = (o.material.name || '').toLowerCase();
+      const isLeaf = matName.includes('leaves') || matName.includes('leaf') ||
+                     matName.includes('follaje') || matName.includes('canopy') ||
+                     matName.includes('foliage');
+      if (!isLeaf) return;
+      // Clonar material para no mutar el template compartido inadvertidamente
+      o.material = o.material.clone();
+      o.material.color = target.clone();
+      // Quitar la textura verde para que el color override sea el que se vea
+      // (las hojas se ven como blobs de color sólido, pero del color correcto)
+      if (o.material.map) {
+        o.material.map = null;
+        o.material.needsUpdate = true;
+      }
+      recolored++;
+    });
+    if (recolored > 0) {
+      console.warn(`[TreeModels]   ↳ aplicado override de color a ${recolored} material(es) de hoja en ${fileName}`);
+    }
+  }
+
   // Carga un GLB y devuelve la promesa cacheada de su scene.
   // Si falla, cae al genérico. Si el genérico falla, resuelve a null.
   function getTreeModel(path) {
@@ -118,6 +160,11 @@
       loader.load(path,
         (gltf) => {
           console.warn(`[TreeModels] ✓ cargado ${path}`);
+          // Aplicar tinte de color de hojas por especie ANTES de cachear,
+          // así todas las copias del template comparten el color correcto.
+          try { _applyLeafColorOverride(gltf.scene, path); } catch (e) {
+            console.warn('leaf color override failed:', e);
+          }
           resolve(gltf.scene);
         },
         undefined,
