@@ -1458,5 +1458,29 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     Object.keys(keys).forEach(k => delete keys[k]);
   }
 
-  window.DashboardWalkthrough = { init, destroy };
+  window.DashboardWalkthrough = {
+    init, destroy,
+    // Helpers de debug — útil para encontrar coords y reposicionar elementos
+    debug: {
+      getPos: () => playerPos ? { x: +playerPos.x.toFixed(1), y: +playerPos.y.toFixed(1), z: +playerPos.z.toFixed(1) } : null,
+      getYaw: () => yaw,
+      // Snapshot rápido — imprime y devuelve coords
+      pos: () => {
+        if (!playerPos) { console.log('No hay walkthrough activo.'); return null; }
+        const p = { x: +playerPos.x.toFixed(1), y: +playerPos.y.toFixed(1), z: +playerPos.z.toFixed(1), yaw: +yaw.toFixed(2) };
+        console.log('📍 Mi posición:', p);
+        console.log('   Para usar en letras: window.IztacalaLetras.config.position = {x:' + p.x + ', y:0, z:' + p.z + '}');
+        return p;
+      },
+      // Mover las letras a donde está el colibrí en este momento
+      moveLetrasHere: (extraRotY = 0) => {
+        if (!playerPos || !window.IztacalaLetras) return null;
+        window.IztacalaLetras.config.position = { x: playerPos.x, y: 0, z: playerPos.z };
+        window.IztacalaLetras.config.rotationY = yaw + Math.PI + extraRotY;  // que miren hacia donde mira el colibrí
+        console.log('🅵 Letras movidas a', window.IztacalaLetras.config.position, 'rotY=', window.IztacalaLetras.config.rotationY);
+        console.log('   Recarga la tab "FES Iztacala 3D" para ver el cambio.');
+        return window.IztacalaLetras.config;
+      },
+    }
+  };
 })();
