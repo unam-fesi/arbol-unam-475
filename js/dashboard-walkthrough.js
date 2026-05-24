@@ -196,6 +196,10 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     if (window.IztacalaLetras) {
       window.IztacalaLetras.addTo(scene).catch(e => console.warn('Letras FES no cargaron:', e));
     }
+    // Logo "Ahuehuete 475" al lado de las letras
+    if (window.IztacalaAhuehuete475) {
+      window.IztacalaAhuehuete475.addTo(scene).catch(e => console.warn('Logo Ahuehuete475 no cargó:', e));
+    }
     // 100 mariposas volando por el campus
     if (window.IztacalaMariposas) {
       window.IztacalaMariposas.spawn(scene, 100).catch(e => console.warn('Mariposas no cargaron:', e));
@@ -1517,6 +1521,23 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         console.log('   rotY:', rotY.toFixed(3), `(orientation: ${orientation})`);
         console.log('   Recarga la tab "FES Iztacala 3D" para ver el cambio.');
         return window.IztacalaLetras.config;
+      },
+      // Mover el logo Ahuehuete475 a la posición del colibrí (mismo patrón que letras).
+      moveAhuehueteHere: (orientation = 'front') => {
+        if (!playerPos || !window.IztacalaAhuehuete475) return null;
+        window.IztacalaAhuehuete475.config.position = { x: playerPos.x, y: 0, z: playerPos.z };
+        let rotY = 0;
+        if (orientation === 'front')      rotY = yaw;
+        else if (orientation === 'back')  rotY = yaw + Math.PI;
+        else if (orientation === 'left')  rotY = yaw + Math.PI / 2;
+        else if (orientation === 'right') rotY = yaw - Math.PI / 2;
+        else if (typeof orientation === 'number') rotY = orientation;
+        window.IztacalaAhuehuete475.config.rotationY = rotY;
+        console.log('🟢 Logo Ahuehuete475 movido:');
+        console.log('   pos:', window.IztacalaAhuehuete475.config.position);
+        console.log('   rotY:', rotY.toFixed(3), `(orientation: ${orientation})`);
+        console.log('   Recarga la tab "FES Iztacala 3D" para ver el cambio.');
+        return window.IztacalaAhuehuete475.config;
       },
     }
   };

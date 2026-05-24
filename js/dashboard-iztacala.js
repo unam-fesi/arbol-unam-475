@@ -211,6 +211,12 @@ window.IztacalaMap = (function() {
       catch (e) { console.warn('No se pudo agregar las letras:', e); }
     }
 
+    // ---- Cargar Logo "Ahuehuete 475" al lado de las letras ----
+    if (window.IztacalaAhuehuete475 && scene) {
+      try { await window.IztacalaAhuehuete475.addTo(scene); }
+      catch (e) { console.warn('No se pudo agregar el logo Ahuehuete475:', e); }
+    }
+
     // ---- Spawn 100 mariposas volando dentro del campus ----
     if (window.IztacalaMariposas && scene) {
       try { await window.IztacalaMariposas.spawn(scene, 100); }
