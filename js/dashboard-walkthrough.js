@@ -378,9 +378,10 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       const isL = /^left|\.l$|_l$|izq/i.test(n);
       const isR = /^right|\.r$|_r$|der/i.test(n);
       const isShoulder = /shoulder|clavicle|hombro/.test(n);
-      // Upper arm: contiene "arm" o "brazo" o "humerus", PERO NO "forearm/lowerarm/shoulder/hand"
-      const isUpperArm = /\barm\b|upperarm|brazo|humerus/.test(n)
-                          && !/forearm|lowerarm|shoulder|hand|mano/.test(n);
+      // Upper arm: contiene "arm" o "brazo" o "humerus", PERO NO "forearm/lowerarm/shoulder/hand".
+      // OJO: NO usar \b porque "leftarm" no tiene word boundary entre "left" y "arm".
+      const isUpperArm = /arm|brazo|humerus/.test(n)
+                          && !/forearm|lowerarm|shoulder|hand|mano|armature/.test(n);
       if (isShoulder && isL) avatar.userData.armBones.leftShoulder = o;
       if (isShoulder && isR) avatar.userData.armBones.rightShoulder = o;
       if (isUpperArm && isL && !avatar.userData.armBones.leftUpper)  avatar.userData.armBones.leftUpper  = o;
