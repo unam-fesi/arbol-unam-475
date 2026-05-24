@@ -366,6 +366,32 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     avatar.position.y = 0;
     scene.add(avatar);
 
+    // Detectar huesos de brazo (para corregir el "se está tocando" durante el baile).
+    // Buscamos por nombre — soporta múltiples convenciones (mixamo, blender humanoid,
+    // español, etc.). Loguea los bones encontrados para debug.
+    avatar.userData.armBones = { leftShoulder: null, rightShoulder: null, leftUpper: null, rightUpper: null };
+    const allBoneNames = [];
+    avatar.traverse(o => {
+      if (!o.isBone) return;
+      allBoneNames.push(o.name);
+      const n = (o.name || '').toLowerCase();
+      // Detectar lado (left/right, L/R, izq/der)
+      const isL = /\.l$|_l$|left|izq/i.test(n);
+      const isR = /\.r$|_r$|right|der/i.test(n);
+      // Detectar parte del brazo
+      const isShoulder = /shoulder|clavicle|hombro/.test(n);
+      const isUpperArm = /upper.?arm|arm[._]?[lr]|brazo|humerus/.test(n) && !/lower|fore/.test(n);
+      if (isShoulder && isL) avatar.userData.armBones.leftShoulder = o;
+      if (isShoulder && isR) avatar.userData.armBones.rightShoulder = o;
+      if (isUpperArm && isL && !avatar.userData.armBones.leftUpper)  avatar.userData.armBones.leftUpper  = o;
+      if (isUpperArm && isR && !avatar.userData.armBones.rightUpper) avatar.userData.armBones.rightUpper = o;
+    });
+    console.log('🦴 Bones del puma:', allBoneNames.join(', '));
+    console.log('  → leftShoulder:',  avatar.userData.armBones.leftShoulder?.name  || 'no detectado');
+    console.log('  → rightShoulder:', avatar.userData.armBones.rightShoulder?.name || 'no detectado');
+    console.log('  → leftUpper:',     avatar.userData.armBones.leftUpper?.name     || 'no detectado');
+    console.log('  → rightUpper:',    avatar.userData.armBones.rightUpper?.name    || 'no detectado');
+
     // Si el GLB trae animaciones, configurar el mixer + acciones nombradas
     if (gltf.animations && gltf.animations.length > 0) {
       pumaMixer = new THREE.AnimationMixer(newPuma);
@@ -991,6 +1017,22 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           let desired = 'idle';
           if (danceToggled) desired = 'dance';
           else if (isWalking) desired = running ? 'run' : 'walk';
+
+          // FIX: durante baile, forzar brazos hacia afuera para que no se peguen al cuerpo
+          // (la animación del GLB tiene los brazos demasiado pegados — "parece que se toca").
+          // Aplicamos rotación adicional en Z después del mixer.update.
+          if (desired === 'dance' && avatar?.userData?.armBones) {
+            const t = Date.now() * 0.003;
+            const swing = Math.sin(t) * 0.25;        // movimiento sutil arriba/abajo
+            const baseOut = 0.9;                      // ~52° hacia afuera
+            const ab = avatar.userData.armBones;
+            // Z positivo = abrir hacia la izquierda; Z negativo = abrir hacia la derecha
+            // Si el rig usa el eje contrario, invertir los signos (probar)
+            if (ab.leftUpper)     ab.leftUpper.rotation.z     += baseOut + swing;
+            if (ab.rightUpper)    ab.rightUpper.rotation.z    -= baseOut + swing;
+            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  += 0.3;
+            if (ab.rightShoulder) ab.rightShoulder.rotation.z -= 0.3;
+          }
           // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
 
           // Crossfade hacia el estado deseado
