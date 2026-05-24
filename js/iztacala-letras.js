@@ -20,9 +20,9 @@ window.IztacalaLetras = (function() {
     glbPath: 'data/letras_fesi.glb',
     // Posición sobre el prado al norte de Unidad de Seminarios, alejadas del
     // asfalto y paralelas al pasillo principal. Cara blanca "Iztacala" al frente.
-    position: { x: 160, y: 0, z: -55 },
+    position: { x: 173.5, y: 0, z: -66 },   // calibrado por el user
     rotationX: -Math.PI / 2,    // Z-up → Y-up (letras paradas verticalmente)
-    rotationY: -Math.PI / 2,    // 90° limpio — paralelas al pasillo, cara blanca "Iztacala" hacia el campus
+    rotationY: -1.4835,         // -85° calibrado por el user (prueba +π/2 si "Iztacala" sigue atrás)
     targetWidth: 22,
     castShadow: true,
   };
@@ -158,7 +158,18 @@ window.IztacalaLetras = (function() {
     config.rotationY = rad;
     if (_lastInstance) _lastInstance.rotation.y = rad;
   }
+  function setRotationX(rad) {
+    config.rotationX = rad;
+    if (_lastInstance && _lastInstance.children[0]) {
+      _lastInstance.children[0].rotation.x = rad;
+      _lastInstance.position.y = 0;
+      _lastInstance.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(_lastInstance);
+      _liftY = -b.min.y;
+      _lastInstance.position.y = config.position.y + _liftY;
+    }
+  }
   function getInstance() { return _lastInstance; }
 
-  return { config, addTo, _loadTemplate, setPosition, setRotationY, getInstance };
+  return { config, addTo, _loadTemplate, setPosition, setRotationY, setRotationX, getInstance };
 })();

@@ -43,6 +43,8 @@ window.IztacalaCalibrator = (function() {
         <input type="range" id="iz-cal-lz" min="-300" max="300" step="0.5" value="${L.position.z}" style="width:100%;">
         <label style="display:block;font-size:11px;color:#555;margin-top:4px;">RotY: <span id="iz-cal-lr-v">${_rad2deg(L.rotationY||0)}°</span></label>
         <input type="range" id="iz-cal-lr" min="-180" max="180" step="1" value="${_rad2deg(L.rotationY||0)}" style="width:100%;">
+        <label style="display:block;font-size:11px;color:#555;margin-top:4px;">RotX: <span id="iz-cal-lrx-v">${_rad2deg(L.rotationX||0)}°</span></label>
+        <input type="range" id="iz-cal-lrx" min="-180" max="180" step="5" value="${_rad2deg(L.rotationX||0)}" style="width:100%;">
       </fieldset>
       ` : '<div style="color:#888;font-size:11px;">Letras no cargadas</div>'}
 
@@ -55,6 +57,8 @@ window.IztacalaCalibrator = (function() {
         <input type="range" id="iz-cal-az" min="-300" max="300" step="0.5" value="${A.position.z}" style="width:100%;">
         <label style="display:block;font-size:11px;color:#555;margin-top:4px;">RotY: <span id="iz-cal-ar-v">${_rad2deg(A.rotationY||0)}°</span></label>
         <input type="range" id="iz-cal-ar" min="-180" max="180" step="1" value="${_rad2deg(A.rotationY||0)}" style="width:100%;">
+        <label style="display:block;font-size:11px;color:#555;margin-top:4px;">RotX (voltear si está de cabeza): <span id="iz-cal-arx-v">${_rad2deg(A.rotationX||0)}°</span></label>
+        <input type="range" id="iz-cal-arx" min="-180" max="180" step="5" value="${_rad2deg(A.rotationX||0)}" style="width:100%;">
       </fieldset>
       ` : '<div style="color:#888;font-size:11px;">Logo no cargado (revisar 404)</div>'}
 

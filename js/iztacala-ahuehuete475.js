@@ -25,9 +25,9 @@ window.IztacalaAhuehuete475 = (function() {
     // Centro del prado al lado oeste de las letras, mismo Z para alineación.
     // Las letras tienen targetWidth 22 → ocupan X de ~175 a ~197.
     // El logo va más a la izquierda (X menor) para no superponerse.
-    position: { x: 150, y: 0, z: -55 },
-    rotationX: 0,                   // auto-detect Z-up dentro de _loadTemplate puede pisarlo
-    rotationY: -Math.PI / 2,        // mismo orient que las letras
+    position: { x: 184, y: 0, z: -96 },
+    rotationX: Math.PI,             // 180° around X — volteado para que no salga de cabeza
+    rotationY: -Math.PI / 2,        // mismo orient que las letras (el user calibra)
     targetHeight: 15,               // ~15m — bajé un poco por si el prado es chico
     castShadow: true,
   };
@@ -64,21 +64,12 @@ window.IztacalaAhuehuete475 = (function() {
           root.traverse(o => { if (o.isCamera) toRemove.push(o); });
           toRemove.forEach(o => o.parent && o.parent.remove(o));
 
-          // Normalizar escala a targetHeight usando la DIM MÁS GRANDE del bbox
-          // (robusto contra GLBs Z-up donde "altura" está en Z, no Y).
+          // Normalizar escala usando la dim más grande del bbox (robusto)
           const box = new THREE.Box3().setFromObject(root);
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.y, size.z, 0.01);
           const scale = config.targetHeight / maxDim;
           root.scale.setScalar(scale);
-          // Auto-detectar Z-up: si la dim Z es la más grande, el modelo está
-          // acostado y necesita rotationX = -π/2 para pararse. El user puede
-          // forzar manualmente en config.rotationX.
-          const isZup = size.z > size.x && size.z > size.y;
-          if (isZup && (config.rotationX === undefined || config.rotationX === null || config.rotationX === 0)) {
-            console.warn(`[Ahuehuete475] auto-detect: GLB parece Z-up (size.z=${size.z.toFixed(1)} > size.y=${size.y.toFixed(1)}). Aplicando rotationX = -π/2`);
-            config.rotationX = -Math.PI / 2;
-          }
 
           // Asegurar sombras
           root.traverse(o => {
@@ -138,7 +129,19 @@ window.IztacalaAhuehuete475 = (function() {
     config.rotationY = rad;
     if (_lastInstance) _lastInstance.rotation.y = rad;
   }
+  function setRotationX(rad) {
+    config.rotationX = rad;
+    if (_lastInstance && _lastInstance.children[0]) {
+      _lastInstance.children[0].rotation.x = rad;
+      // Recalcular liftY: bajar el outer a y=0 temporalmente, medir bbox, ajustar
+      _lastInstance.position.y = 0;
+      _lastInstance.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(_lastInstance);
+      _liftY = -b.min.y;
+      _lastInstance.position.y = config.position.y + _liftY;
+    }
+  }
   function getInstance() { return _lastInstance; }
 
-  return { config, addTo, _loadTemplate, setPosition, setRotationY, getInstance };
+  return { config, addTo, _loadTemplate, setPosition, setRotationY, setRotationX, getInstance };
 })();
