@@ -33,6 +33,8 @@ window.IztacalaAhuehuete475 = (function() {
   };
 
   let _templatePromise = null;
+  let _lastInstance = null;
+  let _liftY = 0;
 
   function _makeLoader() {
     const loader = new THREE.GLTFLoader();
@@ -116,16 +118,27 @@ window.IztacalaAhuehuete475 = (function() {
 
     outer.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(outer);
-    const liftY = -box.min.y;
+    _liftY = -box.min.y;
     outer.position.set(
       config.position.x,
-      config.position.y + liftY,
+      config.position.y + _liftY,
       config.position.z
     );
     scene.add(outer);
-    console.warn(`🟢 Logo Ahuehuete475 en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rotX=${(config.rotationX||0).toFixed(2)} rotY=${(config.rotationY||0).toFixed(2)}  bbox-post=${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m  YRange[${box.min.y.toFixed(2)},${box.max.y.toFixed(2)}]`);
+    _lastInstance = outer;
+    console.warn(`🟢 Logo Ahuehuete475 en (${config.position.x}, ${(config.position.y + _liftY).toFixed(2)}, ${config.position.z}) rotX=${(config.rotationX||0).toFixed(2)} rotY=${(config.rotationY||0).toFixed(2)}  bbox-post=${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m  YRange[${box.min.y.toFixed(2)},${box.max.y.toFixed(2)}]`);
     return outer;
   }
 
-  return { config, addTo, _loadTemplate };
+  function setPosition(x, z) {
+    config.position.x = x; config.position.z = z;
+    if (_lastInstance) _lastInstance.position.set(x, config.position.y + _liftY, z);
+  }
+  function setRotationY(rad) {
+    config.rotationY = rad;
+    if (_lastInstance) _lastInstance.rotation.y = rad;
+  }
+  function getInstance() { return _lastInstance; }
+
+  return { config, addTo, _loadTemplate, setPosition, setRotationY, getInstance };
 })();

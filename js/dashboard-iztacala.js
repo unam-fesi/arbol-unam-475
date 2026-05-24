@@ -223,6 +223,12 @@ window.IztacalaMap = (function() {
       catch (e) { console.warn('No se pudieron spawnear mariposas:', e); }
     }
 
+    // ---- UI de calibración de letras + logo (botón flotante 🎯 Calibrar) ----
+    // Cuando termines de calibrar, comenta esta línea o llama IztacalaCalibrator.disable()
+    if (window.IztacalaCalibrator) {
+      window.IztacalaCalibrator.mount(containerEl);
+    }
+
     animate();
   }
 

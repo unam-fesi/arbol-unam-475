@@ -28,6 +28,8 @@ window.IztacalaLetras = (function() {
   };
 
   let _templatePromise = null;
+  let _lastInstance = null;    // ref al outer Group activo (para calibrar/mover en vivo)
+  let _liftY = 0;              // offset Y aplicado para que la base toque el piso
 
   function _makeLoader() {
     const loader = new THREE.GLTFLoader();
@@ -131,12 +133,13 @@ window.IztacalaLetras = (function() {
     // Calcular bbox YA con la rotación final aplicada
     outer.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(outer);
-    const liftY = -box.min.y;
+    _liftY = -box.min.y;
     outer.position.set(
       config.position.x,
-      config.position.y + liftY,
+      config.position.y + _liftY,
       config.position.z
     );
+    _lastInstance = outer;
     scene.add(outer);
 
     console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rotX(inner)=${(config.rotationX||0).toFixed(2)} rotY(outer)=${(config.rotationY||0).toFixed(2)}  size: ${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m`);
@@ -146,5 +149,16 @@ window.IztacalaLetras = (function() {
     return outer;
   }
 
-  return { config, addTo, _loadTemplate };
+  // ── Helpers para mover/rotar en vivo (sin recargar la escena) ──
+  function setPosition(x, z) {
+    config.position.x = x; config.position.z = z;
+    if (_lastInstance) _lastInstance.position.set(x, config.position.y + _liftY, z);
+  }
+  function setRotationY(rad) {
+    config.rotationY = rad;
+    if (_lastInstance) _lastInstance.rotation.y = rad;
+  }
+  function getInstance() { return _lastInstance; }
+
+  return { config, addTo, _loadTemplate, setPosition, setRotationY, getInstance };
 })();
