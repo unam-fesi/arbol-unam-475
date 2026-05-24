@@ -22,10 +22,13 @@ window.IztacalaAhuehuete475 = (function() {
   // letrero (X menor) — dentro del mismo prado, paralelo al letrero.
   const config = {
     glbPath: 'data/Ahuehuete475.glb',
-    position: { x: 165, y: 0, z: -55 },
-    rotationX: 0,                   // 0 = el GLB ya viene Y-up parado. Si sale acostado, prueba -Math.PI/2
+    // Centro del prado al lado oeste de las letras, mismo Z para alineación.
+    // Las letras tienen targetWidth 22 → ocupan X de ~175 a ~197.
+    // El logo va más a la izquierda (X menor) para no superponerse.
+    position: { x: 150, y: 0, z: -55 },
+    rotationX: 0,                   // auto-detect Z-up dentro de _loadTemplate puede pisarlo
     rotationY: -Math.PI / 2,        // mismo orient que las letras
-    targetHeight: 18,               // ~18m de altura — "en grande"
+    targetHeight: 15,               // ~15m — bajé un poco por si el prado es chico
     castShadow: true,
   };
 
@@ -59,12 +62,21 @@ window.IztacalaAhuehuete475 = (function() {
           root.traverse(o => { if (o.isCamera) toRemove.push(o); });
           toRemove.forEach(o => o.parent && o.parent.remove(o));
 
-          // Normalizar escala a targetHeight
+          // Normalizar escala a targetHeight usando la DIM MÁS GRANDE del bbox
+          // (robusto contra GLBs Z-up donde "altura" está en Z, no Y).
           const box = new THREE.Box3().setFromObject(root);
           const size = box.getSize(new THREE.Vector3());
-          const heightDim = Math.max(size.y, 0.01);
-          const scale = config.targetHeight / heightDim;
+          const maxDim = Math.max(size.x, size.y, size.z, 0.01);
+          const scale = config.targetHeight / maxDim;
           root.scale.setScalar(scale);
+          // Auto-detectar Z-up: si la dim Z es la más grande, el modelo está
+          // acostado y necesita rotationX = -π/2 para pararse. El user puede
+          // forzar manualmente en config.rotationX.
+          const isZup = size.z > size.x && size.z > size.y;
+          if (isZup && (config.rotationX === undefined || config.rotationX === null || config.rotationX === 0)) {
+            console.warn(`[Ahuehuete475] auto-detect: GLB parece Z-up (size.z=${size.z.toFixed(1)} > size.y=${size.y.toFixed(1)}). Aplicando rotationX = -π/2`);
+            config.rotationX = -Math.PI / 2;
+          }
 
           // Asegurar sombras
           root.traverse(o => {
@@ -111,7 +123,7 @@ window.IztacalaAhuehuete475 = (function() {
       config.position.z
     );
     scene.add(outer);
-    console.warn(`🟢 Logo Ahuehuete475 en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rotY=${(config.rotationY||0).toFixed(2)}  size=${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m`);
+    console.warn(`🟢 Logo Ahuehuete475 en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rotX=${(config.rotationX||0).toFixed(2)} rotY=${(config.rotationY||0).toFixed(2)}  bbox-post=${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m  YRange[${box.min.y.toFixed(2)},${box.max.y.toFixed(2)}]`);
     return outer;
   }
 
