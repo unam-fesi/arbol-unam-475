@@ -18,10 +18,11 @@ window.IztacalaLetras = (function() {
 
   const config = {
     glbPath: 'data/letras_fesi.glb',
-    // Posición: al sur del edificio "Unidad de seminarios" (id 412815203).
-    position: { x: 165, y: 0, z: 10 },
+    // Posición CAPTURADA desde el walkthrough (DashboardWalkthrough.debug.moveLetrasHere)
+    position: { x: 201.7, y: 0, z: -67.8 },
     rotationX: -Math.PI / 2,    // Z-up → Y-up
-    rotationY: Math.PI,         // Letras se leen al revés (dan la espalda al observador del norte)
+    // yaw del observador = 1.52 rad. Letras dan la espalda → +π = 4.66 rad
+    rotationY: 1.52 + Math.PI,
     targetWidth: 22,
     castShadow: true,
   };
