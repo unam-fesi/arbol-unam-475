@@ -1481,12 +1481,24 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         console.log('   Para usar en letras: window.IztacalaLetras.config.position = {x:' + p.x + ', y:0, z:' + p.z + '}');
         return p;
       },
-      // Mover las letras a donde está el colibrí en este momento
-      moveLetrasHere: (extraRotY = 0) => {
+      // Mover las letras a donde está el colibrí en este momento.
+      // rotacion: una de "front" | "back" | "left" | "right" | número (rad)
+      //   "front" → letras orientadas hacia DONDE MIRA el colibrí (te dan el frente)
+      //   "back"  → te dan la espalda (cara visible mira al otro lado)
+      //   "left"  → letras orientadas al lado izquierdo del colibrí
+      moveLetrasHere: (orientation = 'front') => {
         if (!playerPos || !window.IztacalaLetras) return null;
         window.IztacalaLetras.config.position = { x: playerPos.x, y: 0, z: playerPos.z };
-        window.IztacalaLetras.config.rotationY = yaw + Math.PI + extraRotY;  // que miren hacia donde mira el colibrí
-        console.log('🅵 Letras movidas a', window.IztacalaLetras.config.position, 'rotY=', window.IztacalaLetras.config.rotationY);
+        let rotY = 0;
+        if (orientation === 'front')      rotY = yaw;
+        else if (orientation === 'back')  rotY = yaw + Math.PI;
+        else if (orientation === 'left')  rotY = yaw + Math.PI / 2;
+        else if (orientation === 'right') rotY = yaw - Math.PI / 2;
+        else if (typeof orientation === 'number') rotY = orientation;
+        window.IztacalaLetras.config.rotationY = rotY;
+        console.log('🅵 Letras movidas:');
+        console.log('   pos:', window.IztacalaLetras.config.position);
+        console.log('   rotY:', rotY.toFixed(3), `(orientation: ${orientation})`);
         console.log('   Recarga la tab "FES Iztacala 3D" para ver el cambio.');
         return window.IztacalaLetras.config;
       },
