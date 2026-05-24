@@ -51,8 +51,14 @@ def overpass_query(query):
     )
     return json.loads(res.stdout)
 
-def build_campus(campus_name, way_id, output_dir):
+def build_campus(campus_name, way_id, output_dir, extra_building_ways=None):
+    """
+    extra_building_ways: lista opcional de OSM way IDs adicionales para incluir
+    como edificios del campus aunque caigan FUERA del polígono principal.
+    Útil para subsedes/clínicas que están en otro polígono pero "pertenecen" al campus.
+    """
     print(f"📍 Construyendo {campus_name} (way {way_id})...")
+    extra_building_ways = extra_building_ways or []
 
     # 1) Obtener polígono del campus + edificios cercanos en bbox
     # Primero el polígono solo para obtener su bbox
@@ -124,6 +130,19 @@ out geom;
     def project(lat, lon):
         return ((lon - center_lon) * M_PER_LON, (lat - center_lat) * M_PER_LAT)
 
+    # 4d) Si hay extra_building_ways, fetcharlos individualmente y agregarlos
+    extra_buildings_raw = []
+    if extra_building_ways:
+        ids_str = ','.join(str(i) for i in extra_building_ways)
+        extra_query = f"""[out:json][timeout:30];
+way(id:{ids_str});
+out geom;
+"""
+        extra_data = overpass_query(extra_query)
+        extra_buildings_raw = [e for e in extra_data['elements']
+                                if e.get('type') == 'way' and 'geometry' in e]
+        print(f"  Extra buildings fetcheados: {len(extra_buildings_raw)}")
+
     buildings = []
     for b in buildings_raw:
         geom = b.get('geometry', [])
@@ -146,6 +165,27 @@ out geom;
             'name': tags.get('name', ''),
             'height': round(height, 1),
             'footprint': footprint,
+        })
+
+    # Agregar extra buildings (sin filtro de polígono — son externos a propósito)
+    for b in extra_buildings_raw:
+        geom = b.get('geometry', [])
+        if len(geom) < 3: continue
+        footprint = [[round(x,2), round(y,2)] for x,y in (project(p['lat'], p['lon']) for p in geom)]
+        tags = b.get('tags', {})
+        height = 8.0
+        if tags.get('height'):
+            try: height = float(tags['height'].replace('m','').strip())
+            except: pass
+        elif tags.get('building:levels'):
+            try: height = float(tags['building:levels']) * 3.0
+            except: pass
+        buildings.append({
+            'id': b['id'],
+            'name': tags.get('name', ''),
+            'height': round(height, 1),
+            'footprint': footprint,
+            'extra': True,  # marker: edificio externo agregado manualmente
         })
 
     # 4b) Filtrar canchas dentro del polígono del campus
@@ -233,10 +273,16 @@ out geom;
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print(__doc__)
+        print("\nUso con edificios extra:")
+        print("  python3 scripts/build_campus_json.py Acatlan 31962082 --extra 1174486577 891131412")
         sys.exit(1)
     campus = sys.argv[1]
     way_id = int(sys.argv[2])
-    # output_dir relativo al script: ../data
+    # Soporte para --extra <ids...>
+    extra_ways = []
+    if '--extra' in sys.argv:
+        idx = sys.argv.index('--extra')
+        extra_ways = [int(x) for x in sys.argv[idx+1:]]
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.normpath(os.path.join(script_dir, '..', 'data'))
-    build_campus(campus, way_id, output_dir)
+    build_campus(campus, way_id, output_dir, extra_building_ways=extra_ways)

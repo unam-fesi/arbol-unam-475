@@ -182,10 +182,20 @@ window.CampusMap = (function() {
     scene.fog = new THREE.Fog(0xe8f0f5, 600, 2200);
 
     camera = new THREE.PerspectiveCamera(45, w / h, 1, 4000);
-    // Centrar la cámara para ver el bbox completo
-    const bbox = mapData.bbox || { min_x: -300, max_x: 300, min_y: -300, max_y: 300 };
+    // Centrar la cámara para ver el bbox COMPLETO — extender con extra buildings
+    let bbox = mapData.bbox || { min_x: -300, max_x: 300, min_y: -300, max_y: 300 };
+    if (mapData.buildings) {
+      mapData.buildings.forEach(b => {
+        (b.footprint || []).forEach(p => {
+          if (p[0] < bbox.min_x) bbox = { ...bbox, min_x: p[0] };
+          if (p[0] > bbox.max_x) bbox = { ...bbox, max_x: p[0] };
+          if (p[1] < bbox.min_y) bbox = { ...bbox, min_y: p[1] };
+          if (p[1] > bbox.max_y) bbox = { ...bbox, max_y: p[1] };
+        });
+      });
+    }
     const span = Math.max(bbox.max_x - bbox.min_x, bbox.max_y - bbox.min_y);
-    const camDist = span * 0.9;
+    const camDist = span * 0.95;
     camera.position.set(camDist * 0.5, camDist * 0.6, camDist * 0.7);
     camera.lookAt(0, 0, 0);
 
@@ -257,6 +267,10 @@ window.CampusMap = (function() {
       const roofMat = new THREE.MeshStandardMaterial({
         color: 0xC0392B, roughness: 0.7,
       });
+      // Edificios externos (subsedes/clínicas en otro polígono OSM) — techo distinto
+      const roofMatExtra = new THREE.MeshStandardMaterial({
+        color: 0x5B8B7D, roughness: 0.7,   // azul-verde, distintivo
+      });
       mapData.buildings.forEach(b => {
         if (!b.footprint || b.footprint.length < 3) return;
         const shape = new THREE.Shape();
@@ -277,9 +291,9 @@ window.CampusMap = (function() {
         scene.add(mesh);
         buildingMeshes.push(mesh);
 
-        // Techo coloreado encima
+        // Techo coloreado encima — distinto color para edificios "extra" (subsedes)
         const roofGeo = new THREE.ShapeGeometry(shape);
-        const roof = new THREE.Mesh(roofGeo, roofMat);
+        const roof = new THREE.Mesh(roofGeo, b.extra ? roofMatExtra : roofMat);
         roof.rotation.x = -Math.PI / 2;
         roof.position.y = h + 0.1;
         roof.receiveShadow = true;
