@@ -83,14 +83,19 @@
     const raw = [tree.tree_code, tree.common_name, tree.species]
       .filter(Boolean).join(' ');
     const text = _normalize(raw);
-    if (!text) return GENERIC_GLB;
+    if (!text) {
+      console.log('[TreeModels] tree sin texto → genérico', tree);
+      return GENERIC_GLB;
+    }
     for (const entry of TREE_GLB_MAP) {
       for (const kw of entry.keywords) {
         if (text.includes(_normalize(kw))) {
+          console.log(`[TreeModels] match "${kw}" → ${entry.glb}  (text="${text}")`);
           return 'data/trees/' + entry.glb;
         }
       }
     }
+    console.log(`[TreeModels] sin match → genérico  (text="${text}")`);
     return GENERIC_GLB;
   }
 
@@ -105,12 +110,17 @@
         return resolve(null);
       }
       const loader = _makeLoader();
+      console.log(`[TreeModels] ⏳ cargando ${path} …`);
       loader.load(path,
-        (gltf) => resolve(gltf.scene),
+        (gltf) => {
+          console.log(`[TreeModels] ✓ cargado ${path}`);
+          resolve(gltf.scene);
+        },
         undefined,
         (err) => {
-          console.warn(`TreeModels: falló cargar ${path}:`, err?.message || err);
+          console.warn(`[TreeModels] ✗ falló cargar ${path}:`, err?.message || err, err);
           if (path !== GENERIC_GLB) {
+            console.log(`[TreeModels]   → fallback al genérico para ${path}`);
             // Reintentar con el genérico (también se cachea)
             getTreeModel(GENERIC_GLB).then(resolve);
           } else {
