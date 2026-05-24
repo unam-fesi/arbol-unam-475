@@ -63,6 +63,7 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   // Audio de canto del colibrí (loop while flying)
   let colibriSong = null;
   let colibriSongStarted = false;
+  let _visibilityHandler = null;   // listener para pausar audio cuando se oculta la pestaña
   // Estado lógico (cuál animación queremos activa)
   let pumaState = 'idle';     // 'idle' | 'walk' | 'run' | 'jump' | 'dance'
   let danceToggled = false;   // toggle B
@@ -433,6 +434,16 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           colibriSong.preload = 'auto';
           console.log('🎵 Canto del colibrí precargado');
         } catch (e) { console.warn('No se pudo cargar canto:', e); }
+      }
+      // Pausar el canto cuando la pestaña pierde foco (cambias de tab del
+      // navegador, minimizas) — se reanuda cuando vuelves
+      if (!_visibilityHandler) {
+        _visibilityHandler = () => {
+          if (!colibriSong) return;
+          if (document.hidden) { try { colibriSong.pause(); } catch(_) {} }
+          else if (colibriSongStarted) { try { colibriSong.play(); } catch(_) {} }
+        };
+        document.addEventListener('visibilitychange', _visibilityHandler);
       }
     }
 
@@ -1414,8 +1425,13 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     animId = null;
     // Detener canto del colibrí al salir del walkthrough
     if (colibriSong) {
-      try { colibriSong.pause(); colibriSong.currentTime = 0; } catch(_) {}
+      try { colibriSong.pause(); colibriSong.currentTime = 0; colibriSong.src = ''; } catch(_) {}
       colibriSongStarted = false;
+      colibriSong = null;
+    }
+    if (_visibilityHandler) {
+      document.removeEventListener('visibilitychange', _visibilityHandler);
+      _visibilityHandler = null;
     }
     if (resizeHandler) window.removeEventListener('resize', resizeHandler);
     resizeHandler = null;

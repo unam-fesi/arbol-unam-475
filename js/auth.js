@@ -284,6 +284,11 @@ async function handleLogin(e) {
 
 async function handleLogout() {
   try {
+    // Detener Walkthrough (canto del colibrí, animation loop) si está activo —
+    // si no se hace, el audio sigue sonando incluso después del logout
+    if (window.DashboardWalkthrough && typeof window.DashboardWalkthrough.destroy === 'function') {
+      try { window.DashboardWalkthrough.destroy(); } catch (_) {}
+    }
     await sb.auth.signOut();
     currentUser = null;
     currentUserProfile = null;

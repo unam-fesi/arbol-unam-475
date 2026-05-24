@@ -28,6 +28,13 @@ function showSection(sectionId) {
     s.style.display = 'none';
   });
 
+  // Cleanup del Walkthrough si el user sale de la sección — detiene el canto
+  // del colibrí, el animationFrame y libera pointer lock. Idempotente y barato:
+  // si el módulo no estaba activo no hace nada.
+  if (window.DashboardWalkthrough && typeof window.DashboardWalkthrough.destroy === 'function') {
+    try { window.DashboardWalkthrough.destroy(); } catch (_) {}
+  }
+
   // Update active nav link
   document.querySelectorAll('#navbarNav .nav-link').forEach(link => {
     link.classList.remove('active');
