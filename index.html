@@ -310,6 +310,7 @@
                             <button class="admin-tab" data-tab="trees" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Árboles</button>
                             <button class="admin-tab" data-tab="gardens" onclick="switchAdminTab('gardens')"><i class="fas fa-leaf"></i> Jardines</button>
                             <button class="admin-tab" data-tab="groups" onclick="switchAdminTab('groups')"><i class="fas fa-layer-group"></i> Grupos</button>
+                            <button class="admin-tab" data-tab="coordinacion" onclick="switchAdminTab('coordinacion')"><i class="fas fa-user-friends"></i> Coordinaci&oacute;n</button>
                             <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
                     <button class="admin-tab" data-tab="assignments" onclick="switchAdminTab(\'assignments\')"><i class="fas fa-link"></i> Asignaciones</button>
                             <button class="admin-tab" data-tab="dashboard" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
@@ -908,6 +909,14 @@
                                         <!-- Dynamically filled by JS -->
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <!-- COORDINACION TAB -->
+                            <div id="coordinacionTab" class="tab-pane">
+                                <div id="coordinacion-content">
+                                    <!-- Renderizado dinámicamente por loadCoordinacion() según el rol del usuario -->
+                                    <p class="text-muted" style="padding:2rem;text-align:center;">Cargando…</p>
+                                </div>
                             </div>
 
                             <!-- NOTIFICATIONS TAB -->

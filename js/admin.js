@@ -15,9 +15,10 @@ function isAdminRole()         { return _userRole() === 'admin'; }
 function isAdminCampusRole()   { return _userRole() === 'admin-campus'; }
 function isResponsableRole()   { return _userRole() === 'responsable'; }
 function isSpecialistRole()    { return _userRole() === 'specialist'; }
-// Cualquier "admin" (principal o de campus) puede entrar al panel admin.
+// admin, admin-campus y responsable pueden entrar al panel admin
+// (cada uno con tabs diferentes — el responsable solo ve "Coordinación")
 function canAccessAdminPanel() {
-  return isAdminRole() || isAdminCampusRole();
+  return isAdminRole() || isAdminCampusRole() || isResponsableRole();
 }
 // Solo el admin PRINCIPAL puede gestionar jardines, configuración global y auditoría completa.
 function canManageGardens()    { return isAdminRole(); }
@@ -70,6 +71,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'trees') loadAdminTrees();
     else if (tabName === 'gardens') loadAdminGardens();
     else if (tabName === 'groups') loadAdminGroups();
+    else if (tabName === 'coordinacion') loadCoordinacion();
     else if (tabName === 'notifications') loadAdminNotifications();
     else if (tabName === 'assignments') loadAssignments();
     else if (tabName === 'dashboard') { loadAdminDashboard(true); loadWeatherWidget(); }
@@ -91,6 +93,21 @@ function applyRoleBasedUIRestrictions() {
         t.style.display = 'none';
       }
     });
+  }
+  // El responsable solo ve la tab "Coordinación"
+  if (isResponsableRole()) {
+    document.querySelectorAll('.admin-tab').forEach(t => {
+      if (t.dataset.tab !== 'coordinacion') {
+        t.style.display = 'none';
+      }
+    });
+    // Forzar landing en coordinacion si está en otra tab
+    setTimeout(() => {
+      const active = document.querySelector('.admin-tab.active');
+      if (!active || active.dataset.tab !== 'coordinacion') {
+        switchAdminTab('coordinacion');
+      }
+    }, 100);
   }
   // Mostrar/ocultar selector global de campus
   const sel = document.getElementById('admin-campus-filter');
@@ -3956,3 +3973,280 @@ function bindBosqueLeafEvents() {
 }
 
 window.renderDashboardTree = renderDashboardTree;
+
+// ============================================================================
+// COORDINACIÓN — gestión de responsables ↔ estudiantes coordinados
+// 1 tab que sirve 2 vistas según rol:
+//   - admin / admin-campus → ven y gestionan TODOS los responsables del campus
+//   - responsable → ve solo SUS estudiantes coordinados
+// La seguridad real vive en RLS de responsable_assignments — la UI es solo UX.
+// ============================================================================
+
+async function loadCoordinacion() {
+  const wrap = document.getElementById('coordinacion-content');
+  if (!wrap) return;
+
+  if (isResponsableRole()) {
+    return _loadCoordinacionResponsable(wrap);
+  }
+  if (isAdminRole() || isAdminCampusRole()) {
+    return _loadCoordinacionAdmin(wrap);
+  }
+  wrap.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;">Sin permiso para ver esta sección.</p>';
+}
+
+// ---- Vista del ADMIN / ADMIN-CAMPUS ----
+async function _loadCoordinacionAdmin(wrap) {
+  wrap.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;"><i class="fas fa-spinner fa-spin"></i> Cargando responsables…</p>';
+  try {
+    const campusFilter = effectiveCampusFilter();
+
+    // 1) Traer todos los responsables (filtrados por campus si aplica)
+    let qResp = sb.from('user_profiles')
+      .select('id, full_name, account_number, campus, academic_status')
+      .eq('role', 'responsable')
+      .order('full_name');
+    if (campusFilter) qResp = qResp.eq('campus', campusFilter);
+    const { data: responsables, error: errR } = await qResp;
+    if (errR) throw errR;
+
+    // 2) Contar estudiantes por responsable
+    const { data: assigns } = await sb.from('responsable_assignments')
+      .select('responsable_id, user_id');
+    const studentsCount = {};
+    (assigns || []).forEach(a => {
+      studentsCount[a.responsable_id] = (studentsCount[a.responsable_id] || 0) + 1;
+    });
+
+    if (!responsables || responsables.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:2rem;text-align:center;color:#888;">
+          <div style="font-size:3rem;margin-bottom:0.8rem;">👥</div>
+          <h3 style="margin:0 0 0.6rem;color:#1b5e20;">No hay responsables en este campus</h3>
+          <p>Asigna el rol <strong>responsable</strong> a algún usuario desde la tab <strong>Usuarios</strong> y aparecerá aquí para coordinar estudiantes.</p>
+        </div>`;
+      return;
+    }
+
+    const rows = responsables.map(r => {
+      const count = studentsCount[r.id] || 0;
+      return `
+        <tr>
+          <td>${escapeHtml(r.full_name || '-')}</td>
+          <td>${escapeHtml(r.account_number || '-')}</td>
+          <td>${escapeHtml(r.campus || '-')}</td>
+          <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:10px;font-weight:600;">${count}</span></td>
+          <td><button class="btn btn-sm btn-primary" onclick="manageResponsableStudents('${r.id}','${escapeHtml(r.full_name)}','${escapeHtml(r.campus)}')">Gestionar estudiantes</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    wrap.innerHTML = `
+      <h3 style="margin:0 0 1rem;">Coordinación de estudiantes</h3>
+      <p class="text-muted" style="margin-bottom:1rem;">Asigna estudiantes a cada responsable para que los coordine. Los estudiantes solo pueden ser asignados a un responsable a la vez.</p>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Responsable</th>
+            <th>No. Cuenta</th>
+            <th>Campus</th>
+            <th>Estudiantes</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch (err) {
+    console.error('loadCoordinacionAdmin error:', err);
+    wrap.innerHTML = `<p style="color:#c62828;padding:1rem;">Error: ${escapeHtml(err.message || err)}</p>`;
+  }
+}
+
+// ---- Vista del RESPONSABLE ----
+async function _loadCoordinacionResponsable(wrap) {
+  wrap.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;"><i class="fas fa-spinner fa-spin"></i> Cargando tus estudiantes…</p>';
+  try {
+    const myId = currentUser?.id;
+    if (!myId) {
+      wrap.innerHTML = '<p style="color:#c62828;">No estás autenticado.</p>';
+      return;
+    }
+
+    // 1) Mis asignaciones
+    const { data: assigns, error: errA } = await sb.from('responsable_assignments')
+      .select('user_id, campus, assigned_at, notes')
+      .eq('responsable_id', myId)
+      .order('assigned_at', { ascending: false });
+    if (errA) throw errA;
+
+    if (!assigns || assigns.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:2rem;text-align:center;color:#888;">
+          <div style="font-size:3rem;margin-bottom:0.8rem;">🎓</div>
+          <h3 style="margin:0 0 0.6rem;color:#1b5e20;">Aún no tienes estudiantes asignados</h3>
+          <p>Un administrador del campus debe asignarte estudiantes para coordinar. En cuanto te asignen alguno, aparecerá aquí.</p>
+        </div>`;
+      return;
+    }
+
+    // 2) Datos de los estudiantes
+    const userIds = assigns.map(a => a.user_id);
+    const { data: students } = await sb.from('user_profiles')
+      .select('id, full_name, account_number, academic_status, campus')
+      .in('id', userIds);
+    const studentMap = {};
+    (students || []).forEach(s => { studentMap[s.id] = s; });
+
+    // 3) Asignaciones de árboles (para contar árboles asignados)
+    const { data: treeAssigns } = await sb.from('tree_assignments')
+      .select('user_id, tree_id')
+      .in('user_id', userIds);
+    const treesCount = {};
+    (treeAssigns || []).forEach(t => {
+      treesCount[t.user_id] = (treesCount[t.user_id] || 0) + 1;
+    });
+
+    // 4) Últimos seguimientos para mostrar actividad
+    const { data: lastMeas } = await sb.from('tree_measurements')
+      .select('user_id, measurement_date')
+      .in('user_id', userIds)
+      .order('measurement_date', { ascending: false });
+    const lastActivity = {};
+    (lastMeas || []).forEach(m => {
+      if (!lastActivity[m.user_id]) lastActivity[m.user_id] = m.measurement_date;
+    });
+
+    const cards = assigns.map(a => {
+      const s = studentMap[a.user_id];
+      if (!s) return ''; // perfil borrado
+      const trees = treesCount[a.user_id] || 0;
+      const last = lastActivity[a.user_id];
+      const lastStr = last ? new Date(last).toLocaleDateString('es-MX', { year:'numeric', month:'short', day:'numeric' }) : 'Sin actividad';
+      const lastColor = last && (Date.now() - new Date(last).getTime()) < 30*24*3600*1000 ? '#2e7d32' : '#c62828';
+      const notes = (a.notes || '').trim();
+      return `
+        <div style="background:white;border:1px solid #e0e0e0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:0.8rem;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+            <div style="flex:1;min-width:0;">
+              <h4 style="margin:0 0 0.3rem;color:#1b5e20;">${escapeHtml(s.full_name)}</h4>
+              <div style="font-size:0.85rem;color:#666;">
+                <span>${escapeHtml(s.account_number || 'Sin cuenta')}</span> ·
+                <span>${escapeHtml(s.academic_status || '-')}</span>
+              </div>
+              ${notes ? `<p style="margin:0.5rem 0 0;font-size:0.82rem;color:#777;font-style:italic;"><i class="fas fa-sticky-note"></i> ${escapeHtml(notes)}</p>` : ''}
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:0.78rem;color:#888;">Árboles</div>
+              <div style="font-size:1.5rem;font-weight:700;color:#2e7d32;">${trees}</div>
+              <div style="font-size:0.72rem;color:${lastColor};margin-top:0.3rem;">Último seguimiento:<br>${lastStr}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    wrap.innerHTML = `
+      <h3 style="margin:0 0 0.6rem;">Mis estudiantes coordinados</h3>
+      <p class="text-muted" style="margin-bottom:1rem;">Coordinas <strong>${assigns.length}</strong> estudiante${assigns.length !== 1 ? 's' : ''} en el campus <strong>${escapeHtml(_userCampus())}</strong>.</p>
+      ${cards}
+    `;
+  } catch (err) {
+    console.error('loadCoordinacionResponsable error:', err);
+    wrap.innerHTML = `<p style="color:#c62828;padding:1rem;">Error: ${escapeHtml(err.message || err)}</p>`;
+  }
+}
+
+// ---- MODAL: gestionar estudiantes de un responsable ----
+async function manageResponsableStudents(responsableId, responsableName, responsableCampus) {
+  try {
+    // 1) Estudiantes ya asignados a este responsable
+    const { data: currentAssigns } = await sb.from('responsable_assignments')
+      .select('user_id, notes')
+      .eq('responsable_id', responsableId);
+    const assignedIds = new Set((currentAssigns || []).map(a => a.user_id));
+
+    // 2) Candidatos: users del MISMO campus que el responsable, rol 'user' o 'responsable' (no admins)
+    const { data: candidates } = await sb.from('user_profiles')
+      .select('id, full_name, account_number, role, campus')
+      .eq('campus', responsableCampus)
+      .in('role', ['user', 'responsable'])
+      .neq('id', responsableId)  // no asignarse a sí mismo
+      .order('full_name');
+
+    const candidatesList = (candidates || []).map(u => {
+      const isAssigned = assignedIds.has(u.id);
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.8rem;border-bottom:1px solid #f0f0f0;${isAssigned?'background:rgba(46,125,50,0.05);':''}">
+          <div style="flex:1;min-width:0;">
+            <strong>${escapeHtml(u.full_name)}</strong>
+            <span style="color:#888;font-size:0.78rem;">· ${escapeHtml(u.account_number || 'sin cuenta')}</span>
+            ${u.role === 'responsable' ? '<span style="background:#fff7e6;color:#7a5a2a;font-size:0.7rem;padding:1px 6px;border-radius:6px;margin-left:6px;">responsable</span>' : ''}
+          </div>
+          ${isAssigned
+            ? `<button class="btn btn-sm btn-danger" onclick="unassignStudentFromResponsable('${responsableId}','${u.id}',this)">Quitar</button>`
+            : `<button class="btn btn-sm btn-primary" onclick="assignStudentToResponsable('${responsableId}','${u.id}','${responsableCampus}',this)">Asignar</button>`
+          }
+        </div>
+      `;
+    }).join('');
+
+    showModal(`Estudiantes de ${responsableName}`, `
+      <p class="text-muted" style="margin:0 0 0.8rem;">Selecciona usuarios del campus <strong>${escapeHtml(responsableCampus)}</strong> para asignarlos a este responsable.</p>
+      <div style="max-height:60vh;overflow-y:auto;border:1px solid #eee;border-radius:10px;">
+        ${candidatesList || '<p class="text-muted" style="padding:1.5rem;text-align:center;">No hay candidatos en este campus.</p>'}
+      </div>
+      <div style="margin-top:1rem;text-align:right;">
+        <button class="btn btn-secondary" onclick="closeModal(); loadCoordinacion();">Cerrar</button>
+      </div>
+    `);
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+  }
+}
+
+async function assignStudentToResponsable(responsableId, userId, campus, btn) {
+  try {
+    const { error } = await sb.from('responsable_assignments').insert([{
+      responsable_id: responsableId,
+      user_id: userId,
+      campus: campus,
+      assigned_by: currentUser?.id
+    }]);
+    if (error) throw error;
+    // Cambiar el botón inmediatamente
+    if (btn) {
+      const row = btn.closest('div').parentElement;
+      btn.outerHTML = `<button class="btn btn-sm btn-danger" onclick="unassignStudentFromResponsable('${responsableId}','${userId}',this)">Quitar</button>`;
+      if (row) row.style.background = 'rgba(46,125,50,0.05)';
+    }
+    showToast('Estudiante asignado', 'success');
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+  }
+}
+
+async function unassignStudentFromResponsable(responsableId, userId, btn) {
+  if (!confirm('¿Quitar este estudiante de la coordinación?')) return;
+  try {
+    const { error } = await sb.from('responsable_assignments').delete()
+      .eq('responsable_id', responsableId)
+      .eq('user_id', userId);
+    if (error) throw error;
+    if (btn) {
+      // Encontrar el campus desde el contexto (busca en la lista) — fallback simple: refrescar modal
+      const parentDiv = btn.closest('div')?.parentElement;
+      const campus = '';  // dejamos vacío, el handler re-fetchea al recrear
+      btn.outerHTML = `<button class="btn btn-sm btn-primary" onclick="manageResponsableStudents_refresh('${responsableId}')">Recargar</button>`;
+      if (parentDiv) parentDiv.style.background = '';
+    }
+    showToast('Estudiante quitado', 'success');
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+  }
+}
+
+window.loadCoordinacion = loadCoordinacion;
+window.manageResponsableStudents = manageResponsableStudents;
+window.assignStudentToResponsable = assignStudentToResponsable;
+window.unassignStudentFromResponsable = unassignStudentFromResponsable;
