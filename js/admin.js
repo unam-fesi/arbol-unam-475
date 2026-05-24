@@ -1225,7 +1225,45 @@ async function editAdminTree(treeId) {
   const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'].map(c =>
     `<option value="${c}" ${tree.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
 
+  // ---- Última foto: del seguimiento más reciente; fallback a la del alta ----
+  let latestPhotoSrc = null;
+  let latestPhotoLabel = '';
+  try {
+    const { data: latestMeas } = await sb.from('tree_measurements')
+      .select('photo_url, measurement_date')
+      .eq('tree_id', treeId)
+      .not('photo_url', 'is', null)
+      .order('measurement_date', { ascending: false })
+      .limit(1);
+    if (latestMeas && latestMeas.length > 0 && latestMeas[0].photo_url) {
+      latestPhotoSrc = await _resolveStoragePhoto(latestMeas[0].photo_url, 'tree-photos');
+      const dt = new Date(latestMeas[0].measurement_date);
+      latestPhotoLabel = dt.toLocaleDateString('es-MX', { day:'2-digit', month:'short', year:'numeric' });
+    }
+    if (!latestPhotoSrc && tree.photo_url) {
+      latestPhotoSrc = await _resolveStoragePhoto(tree.photo_url, 'tree-photos');
+      latestPhotoLabel = 'Inicial';
+    }
+  } catch (_) { /* sin foto = no se muestra thumbnail */ }
+
+  const latestPhotoThumb = latestPhotoSrc
+    ? `<div style="flex-shrink:0;text-align:center;">
+         <img src="${escapeHtml(latestPhotoSrc)}"
+              onclick="window.open('${escapeHtml(latestPhotoSrc)}','_blank')"
+              title="Última foto — click para ver completa"
+              style="width:80px;height:80px;object-fit:cover;border-radius:10px;cursor:zoom-in;border:2px solid #2E7D32;box-shadow:0 2px 8px rgba(0,0,0,0.15);"
+              onerror="this.style.display='none'">
+         <div style="font-size:0.65rem;color:#888;margin-top:3px;">📸 ${escapeHtml(latestPhotoLabel)}</div>
+       </div>`
+    : '';
+
   showModal('Editar Árbol', `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.7rem;">
+      <div style="flex:1;color:#666;font-size:0.85rem;">
+        <strong>${escapeHtml(tree.tree_code || '')}</strong> · <em>${escapeHtml(tree.common_name || tree.species || '')}</em>
+      </div>
+      ${latestPhotoThumb}
+    </div>
     <form id="edit-tree-form">
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Código</label><input type="text" id="edit-tree-code" value="${escapeHtml(tree.tree_code || '')}" style="width:100%;padding:0.5rem;"></div>
       <div class="form-group" style="margin-bottom:0.75rem;"><label>Especie</label><input type="text" id="edit-tree-species" value="${escapeHtml(tree.species || '')}" style="width:100%;padding:0.5rem;"></div>
