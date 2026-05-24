@@ -25,10 +25,11 @@ window.IztacalaAhuehuete475 = (function() {
     // Centro del prado al lado oeste de las letras, mismo Z para alineación.
     // Las letras tienen targetWidth 22 → ocupan X de ~175 a ~197.
     // El logo va más a la izquierda (X menor) para no superponerse.
-    position: { x: 184, y: 0, z: -96 },
+    position: { x: 184, y: 0, z: -96 },     // calibrado por el user
     rotationX: Math.PI,             // 180° around X — volteado para que no salga de cabeza
-    rotationY: -Math.PI / 2,        // mismo orient que las letras (el user calibra)
-    targetHeight: 15,               // ~15m — bajé un poco por si el prado es chico
+    rotationY: 1.8326,              // 105° calibrado por el user
+    targetHeight: 15,
+    mirrorX: true,                  // mirror horizontal — el GLB original viene en espejo
     castShadow: true,
   };
 
@@ -70,6 +71,18 @@ window.IztacalaAhuehuete475 = (function() {
           const maxDim = Math.max(size.x, size.y, size.z, 0.01);
           const scale = config.targetHeight / maxDim;
           root.scale.setScalar(scale);
+          // Mirror horizontal si está espejado en el export. Forzamos DoubleSide
+          // en los materiales para que el winding inversa no oculte caras.
+          if (config.mirrorX) {
+            root.scale.x = -scale;
+            root.traverse(o => {
+              if (o.isMesh && o.material) {
+                o.material = o.material.clone();
+                o.material.side = THREE.DoubleSide;
+              }
+            });
+            console.warn(`[Ahuehuete475]   ↳ mirror X aplicado (scale.x=${root.scale.x.toFixed(3)})`);
+          }
 
           // Asegurar sombras
           root.traverse(o => {

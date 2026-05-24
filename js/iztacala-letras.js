@@ -20,9 +20,9 @@ window.IztacalaLetras = (function() {
     glbPath: 'data/letras_fesi.glb',
     // Posición sobre el prado al norte de Unidad de Seminarios, alejadas del
     // asfalto y paralelas al pasillo principal. Cara blanca "Iztacala" al frente.
-    position: { x: 173.5, y: 0, z: -66 },   // calibrado por el user
+    position: { x: 177, y: 0, z: -66 },     // calibrado por el user
     rotationX: -Math.PI / 2,    // Z-up → Y-up (letras paradas verticalmente)
-    rotationY: -1.4835,         // -85° calibrado por el user (prueba +π/2 si "Iztacala" sigue atrás)
+    rotationY: -1.5533,         // -89° calibrado por el user
     targetWidth: 22,
     castShadow: true,
   };
@@ -69,34 +69,31 @@ window.IztacalaLetras = (function() {
           root.scale.setScalar(scale);
 
           // FIX CRÍTICO: el GLB tiene IZTACALA (placa azul + texto blanco) en
-          // la cara OPUESTA al FES UNAM dorado/azul. Específicamente:
-          //   FES_gold / UNAM_blue:   local Y centro = +0.05  (cara FRONTAL)
-          //   IZTACALA_blue_sign_board: local Y centro = -0.34 (cara TRASERA)
-          //   IZTACALA_white_raised_text: local Y centro = -0.19 (atrás)
-          // Por eso al mirar el letrero desde FES UNAM, IZTACALA está atrás.
-          // Movemos placa + texto al mismo lado que FES UNAM (sumamos 0.68 en Y local).
-          // Adicionalmente, el texto blanco sobresale 0.20 más para destacar
-          // de la placa azul.
+          // la cara OPUESTA al FES UNAM dorado/azul. Mover el mesh con
+          // position.y solo desplaza los vértices pero las normales siguen
+          // apuntando al lado equivocado, así que NO se ve.
+          // Solución: scale.y = -1 ESPEJA respecto Y=0 — invierte las normales
+          // y trae el mesh al lado opuesto. El texto se mantiene legible
+          // porque solo invierte la profundidad (Y), no la forma (XZ).
+          // Material doble-cara por seguridad (winding queda invertido).
           root.traverse(o => {
             if (o.isMesh) {
               if (config.castShadow) o.castShadow = true;
               o.receiveShadow = true;
               const name = o.name || '';
-              // Placa azul "Iztacala": del Y=-0.34 → +0.34 (mismo lado que FES)
-              if (/IZTACALA.*blue.*sign|iztacala.*board/i.test(name)) {
-                o.position.y += 0.68;
-                console.warn(`[Letras]   ↳ placa "Iztacala" movida +0.68 al frente (Y opuesto)`);
-              }
-              // Texto blanco "Iztacala": del Y=-0.19 → +0.49 (placa +0.20 al frente)
-              else if (/IZTACALA.*white|white.*raised|iztacala.*text/i.test(name)) {
-                o.position.y += 0.68 + 0.20;
+              const isIztBoard = /IZTACALA.*blue.*sign|iztacala.*board/i.test(name);
+              const isIztText  = /IZTACALA.*white|white.*raised|iztacala.*text/i.test(name);
+              if (isIztBoard || isIztText) {
+                o.scale.y = -1;   // mirror respecto Y=0 → cara frontal pasa al lado correcto
                 if (o.material) {
                   o.material = o.material.clone();
                   o.material.side = THREE.DoubleSide;
-                  o.material.emissive = new THREE.Color(0xffffff);
-                  o.material.emissiveIntensity = 0.2;
+                  if (isIztText) {
+                    o.material.emissive = new THREE.Color(0xffffff);
+                    o.material.emissiveIntensity = 0.25;
+                  }
                 }
-                console.warn(`[Letras]   ↳ texto "Iztacala" movido +0.88 al frente y con emissive`);
+                console.warn(`[Letras]   ↳ "${name}" espejado en Y (scale.y=-1) para que la cara mire al frente`);
               }
             }
           });
