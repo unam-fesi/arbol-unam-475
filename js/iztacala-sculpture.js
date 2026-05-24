@@ -19,7 +19,8 @@ window.IztacalaSculpture = (function() {
     // En Three.js: world.x = json.x, world.z = -json.y
     position: { x: -12.5, y: 0, z: 79.5 },
     rotationY: 0,
-    targetWidth: 18,               // ancho en metros (más grande que la versión inicial)
+    targetWidth: 22,               // ancho en metros (un poco más grande)
+    mirror: true,                  // espejo horizontal (palo levantado queda a la izquierda)
     castShadow: true,
   };
 
@@ -53,15 +54,23 @@ window.IztacalaSculpture = (function() {
           const size = box.getSize(new THREE.Vector3());
           const maxDim = Math.max(size.x, size.z) || 1;
           const scale = config.targetWidth / maxDim;
-          root.scale.setScalar(scale);
-          // Sombras
+          // Mirror horizontal vía scale.x negativo (el "palo levantado" cambia de lado).
+          // Al usar scale negativo, el winding order de los triángulos se invierte
+          // y Three.js los ve como "back faces" — fix: DoubleSide en materiales.
+          root.scale.set(config.mirror ? -scale : scale, scale, scale);
+          // Sombras + DoubleSide para evitar caras invisibles tras el mirror
           root.traverse(o => {
             if (o.isMesh) {
               if (config.castShadow) o.castShadow = true;
               o.receiveShadow = true;
+              if (config.mirror && o.material) {
+                // Clonar material para no mutar el template compartido
+                o.material = o.material.clone();
+                o.material.side = THREE.DoubleSide;
+              }
             }
           });
-          console.warn(`[Sculpture] ✓ cargado (escala ${scale.toFixed(3)}, bbox original X=${size.x.toFixed(2)} Y=${size.y.toFixed(2)} Z=${size.z.toFixed(2)})`);
+          console.warn(`[Sculpture] ✓ cargado (escala ${scale.toFixed(3)}, mirror=${!!config.mirror}, bbox X=${size.x.toFixed(2)} Y=${size.y.toFixed(2)} Z=${size.z.toFixed(2)})`);
           resolve(root);
         },
         undefined,
