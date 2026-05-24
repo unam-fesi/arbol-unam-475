@@ -50,7 +50,9 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   let pumaYawTarget = 0;   // dirección a la que se está girando suavemente
   let pumaMixer = null;    // AnimationMixer si el GLB trae clips embebidos
   // Acciones que detectamos por nombre del clip (Mixamo / Blender NLA names)
-  const pumaActions = { idle: null, walk: null, run: null, jump: null, dance: null };
+  const pumaActions = { idle: null, walk: null, run: null, jump: null, dance: null,
+                        flap: null, headScan: null };
+  let avatar_isColibri = false;  // true si el GLB cargado es colibri.glb
   // Estado lógico (cuál animación queremos activa)
   let pumaState = 'idle';     // 'idle' | 'walk' | 'run' | 'jump' | 'dance'
   let danceToggled = false;   // toggle B
@@ -312,14 +314,13 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   }
 
   // ---- Cargar GLB del puma si existe -------------------------------------
-  // Intenta data/pumita.glb y data/puma.glb (en ese orden). Si carga, sustituye
-  // el avatar procedural. Si trae clips de animación (idle, walk, run...) los
-  // configura en un AnimationMixer para reproducirlos según el estado.
+  // Intenta data/colibri.glb (puma como fallback histórico).
+  // El colibrí tiene 2 animaciones: ANIM_rapid_wing_flap_approx_4Hz_loop +
+  // ANIM_head_direction_scan_yaw_loop. Forward axis = +Z (Three.js convention).
   function _tryLoadPumaGLB() {
     const candidates = [
-      'data/pumita.glb',
-      'data/puma.glb',
-      'data/trees/pumita.glb',
+      'data/colibri.glb',
+      'data/pumita.glb',     // fallback si alguien quita el colibrí
     ];
     const tryNext = (i) => {
       if (i >= candidates.length || !scene) return;
@@ -339,20 +340,44 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
 
   function _setupPumaFromGLB(gltf) {
     const newPuma = gltf.scene;
-    // Normalizar altura: 1.85m porque la botarga del Puma UNAM es humanoide
-    // (cabeza + cuerpo + pantalón + tenis), no cuadrúpedo.
+    // Detectar si es colibrí (tiene WING_L_ANIM_flap_pivot_shoulder o similar)
+    let isColibri = false;
+    newPuma.traverse(o => {
+      if (o.name && /COLIBRI_ROOT|WING_[LR]_ANIM/i.test(o.name)) isColibri = true;
+    });
+    avatar_isColibri = isColibri;
+
+    // Normalizar tamaño:
+    //   Puma humanoide → 1.85m de alto (pies a cabeza)
+    //   Colibrí → ~1.2m de largo (de pico a cola — más visible en 3ra persona)
     const box = new THREE.Box3().setFromObject(newPuma);
     const size = box.getSize(new THREE.Vector3());
-    const targetHeight = 1.85;
-    const scale = targetHeight / Math.max(size.y, 0.01);
+    let scale;
+    if (isColibri) {
+      // Para el colibrí, normalizar al tamaño total (max de las 3 dims)
+      const targetSize = 1.2;
+      scale = targetSize / Math.max(size.x, size.y, size.z, 0.01);
+    } else {
+      const targetHeight = 1.85;
+      scale = targetHeight / Math.max(size.y, 0.01);
+    }
     newPuma.scale.setScalar(scale);
-    // Centrar horizontalmente y poner los pies en y=0
+    // Centrar horizontalmente
     const newBox = new THREE.Box3().setFromObject(newPuma);
-    newPuma.position.y = -newBox.min.y;
-    // Centro X y Z al origen del avatar (por si el GLB viene descentrado)
-    const center = newBox.getCenter(new THREE.Vector3());
-    newPuma.position.x = -center.x;
-    newPuma.position.z = -center.z;
+    if (isColibri) {
+      // Para el colibrí, centramos COMPLETO (X, Y, Z) al origen del grupo avatar.
+      // El "playerY" será controlado por el grupo padre, no por la posición del modelo.
+      const center = newBox.getCenter(new THREE.Vector3());
+      newPuma.position.x = -center.x;
+      newPuma.position.y = -center.y;
+      newPuma.position.z = -center.z;
+    } else {
+      // Puma: pies en y=0
+      newPuma.position.y = -newBox.min.y;
+      const center = newBox.getCenter(new THREE.Vector3());
+      newPuma.position.x = -center.x;
+      newPuma.position.z = -center.z;
+    }
 
     // Sombras
     newPuma.traverse(o => {
@@ -415,30 +440,50 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     if (gltf.animations && gltf.animations.length > 0) {
       pumaMixer = new THREE.AnimationMixer(newPuma);
       const findClip = (regex) => gltf.animations.find(c => regex.test(c.name || ''));
-      const map = {
-        idle:  findClip(/^idle$|^stand|^rest/i),
-        walk:  findClip(/^walk$|^trot/i),
-        run:   findClip(/^run$|^sprint|^jog/i),
-        jump:  findClip(/^jump|^leap/i),
-        dance: findClip(/^dance|^party/i),
-      };
-      // Si no hay clip específico, fallback a walk/genérico
-      if (!map.idle && gltf.animations.length > 0) map.idle = gltf.animations[0];
-      if (!map.walk && map.idle) map.walk = map.idle;
 
-      for (const [name, clip] of Object.entries(map)) {
-        if (!clip) continue;
-        const action = pumaMixer.clipAction(clip);
-        // Loop config — jump no es loop, los demás sí
-        action.loop = (name === 'jump') ? THREE.LoopOnce : THREE.LoopRepeat;
-        if (name === 'jump') action.clampWhenFinished = true;
-        action.setEffectiveWeight(name === 'idle' ? 1 : 0);
-        action.play();
-        pumaActions[name] = action;
+      if (isColibri) {
+        // Colibrí: aleteo permanente + head scan en idle
+        const flapClip = findClip(/wing.*flap|flap.*wing|aletea/i) || gltf.animations[0];
+        const headClip = findClip(/head.*direction|head.*scan|head.*yaw/i);
+        if (flapClip) {
+          const a = pumaMixer.clipAction(flapClip);
+          a.loop = THREE.LoopRepeat;
+          a.setEffectiveWeight(1);
+          a.play();
+          pumaActions.flap = a;
+        }
+        if (headClip) {
+          const a = pumaMixer.clipAction(headClip);
+          a.loop = THREE.LoopRepeat;
+          a.setEffectiveWeight(1);
+          a.play();
+          pumaActions.headScan = a;
+        }
+        console.log(`🐦 ${gltf.animations.length} animaciones del colibrí:`,
+          gltf.animations.map(c => c.name).join(', '));
+      } else {
+        // Puma: idle/walk/run/jump/dance
+        const map = {
+          idle:  findClip(/^idle$|^stand|^rest/i),
+          walk:  findClip(/^walk$|^trot/i),
+          run:   findClip(/^run$|^sprint|^jog/i),
+          jump:  findClip(/^jump|^leap/i),
+          dance: findClip(/^dance|^party/i),
+        };
+        if (!map.idle && gltf.animations.length > 0) map.idle = gltf.animations[0];
+        if (!map.walk && map.idle) map.walk = map.idle;
+        for (const [name, clip] of Object.entries(map)) {
+          if (!clip) continue;
+          const action = pumaMixer.clipAction(clip);
+          action.loop = (name === 'jump') ? THREE.LoopOnce : THREE.LoopRepeat;
+          if (name === 'jump') action.clampWhenFinished = true;
+          action.setEffectiveWeight(name === 'idle' ? 1 : 0);
+          action.play();
+          pumaActions[name] = action;
+        }
+        console.log(`🎬 ${gltf.animations.length} animaciones del puma:`,
+          gltf.animations.map(c => c.name).join(', '));
       }
-      console.log(`🎬 ${gltf.animations.length} animaciones del puma cargadas:`,
-        gltf.animations.map(c => c.name).join(', '),
-        '· mapeo:', Object.fromEntries(Object.entries(map).map(([k,v]) => [k, v?.name || null])));
     }
   }
 
@@ -633,7 +678,7 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     hudEl.innerHTML = isTouch
       ? `<div><strong>Joystick</strong> caminar · <strong>Arrastra</strong> mirar · <strong>Pinch</strong> zoom · <strong>↑</strong> saltar · <strong>🔍</strong> inspeccionar</div>`
-      : `<div><strong>Click</strong> entrar · <strong>WASD</strong> caminar · <strong>Shift</strong> correr · <strong>Espacio</strong> saltar · <strong>B</strong> bailar · <strong>Rueda</strong> zoom · <strong>V</strong> 1ª/3ª · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>`;
+      : `<div><strong>Click</strong> entrar · <strong>WASD</strong> volar · <strong>Espacio</strong> subir · <strong>Shift</strong> bajar · <strong>Rueda</strong> zoom · <strong>V</strong> 1ª/3ª · <strong>E</strong> inspeccionar · <strong>ESC</strong> salir</div>`;
     containerEl.appendChild(hudEl);
   }
 
@@ -681,14 +726,17 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       if (e.code === 'KeyV') {
         cameraDistance = cameraDistance > 0.05 ? 0 : 6;
       }
-      if (e.code === 'Space' && onGround && isLocked) {
-        velY = JUMP_SPEED;
-        onGround = false;
-        // Trigger jump animation (no loop, vuelve solo al terminar)
-        if (pumaActions.jump) {
-          pumaActions.jump.reset();
-          pumaActions.jump.fadeIn(0.15);
-          pumaActions.jump.play();
+      if (e.code === 'Space' && isLocked) {
+        if (avatar_isColibri) {
+          // Colibrí: Space mantiene velocidad ascendente — se procesa en el loop
+        } else if (onGround) {
+          velY = JUMP_SPEED;
+          onGround = false;
+          if (pumaActions.jump) {
+            pumaActions.jump.reset();
+            pumaActions.jump.fadeIn(0.15);
+            pumaActions.jump.play();
+          }
         }
         e.preventDefault();
       }
@@ -730,6 +778,7 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     touchState = {
       active: true,
       joystick: { x: 0, y: 0 },
+      elevate: 0,                  // +1 subir, -1 bajar (botones de vuelo)
       lookTouchId: null,
       lookStartX: 0, lookStartY: 0,
       pinchStartDist: 0, pinchStartCamDist: 0
@@ -795,6 +844,50 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       z-index:5;`;
     eBtn.addEventListener('touchstart', (e) => { e.preventDefault(); _inspectFront(); }, { passive: false });
     containerEl.appendChild(eBtn);
+
+    // Botones de VUELO (solo aparecen si el avatar es colibrí; se muestran después)
+    const flyUp = document.createElement('button');
+    flyUp.textContent = '⬆️';
+    flyUp.style.cssText = `
+      position:absolute;right:18px;bottom:170px;width:64px;height:64px;
+      background:rgba(255,255,255,0.85);color:#1b5e20;border:2px solid #4a7c2a;
+      border-radius:50%;font-size:1.6rem;font-weight:700;cursor:pointer;
+      touch-action:manipulation;box-shadow:0 4px 12px rgba(0,0,0,0.25);
+      z-index:5;display:none;`;
+    flyUp.id = 'walk-fly-up';
+    containerEl.appendChild(flyUp);
+
+    const flyDown = document.createElement('button');
+    flyDown.textContent = '⬇️';
+    flyDown.style.cssText = `
+      position:absolute;right:18px;bottom:100px;width:64px;height:64px;
+      background:rgba(255,255,255,0.85);color:#1b5e20;border:2px solid #4a7c2a;
+      border-radius:50%;font-size:1.6rem;font-weight:700;cursor:pointer;
+      touch-action:manipulation;box-shadow:0 4px 12px rgba(0,0,0,0.25);
+      z-index:5;display:none;`;
+    flyDown.id = 'walk-fly-down';
+    containerEl.appendChild(flyDown);
+
+    const startUp   = (e) => { e.preventDefault(); touchState.elevate =  1; };
+    const startDown = (e) => { e.preventDefault(); touchState.elevate = -1; };
+    const stop      = (e) => { e.preventDefault(); touchState.elevate =  0; };
+    flyUp.addEventListener('touchstart', startUp,   { passive: false });
+    flyUp.addEventListener('touchend',   stop,      { passive: false });
+    flyUp.addEventListener('touchcancel',stop,      { passive: false });
+    flyDown.addEventListener('touchstart', startDown,{ passive: false });
+    flyDown.addEventListener('touchend',   stop,    { passive: false });
+    flyDown.addEventListener('touchcancel',stop,    { passive: false });
+
+    // Mostrar/ocultar según rol del avatar (se revisa en cada animation frame
+    // porque el GLB carga async; al ser colibrí, se hacen visibles).
+    const _toggleFlyButtons = () => {
+      const display = avatar_isColibri ? 'block' : 'none';
+      flyUp.style.display = display;
+      flyDown.style.display = display;
+    };
+    // Hook: revisar cada 500ms si ya cargó el colibrí
+    const interval = setInterval(_toggleFlyButtons, 500);
+    setTimeout(() => clearInterval(interval), 15000);  // dejar de chequear tras 15s
 
     // Botón "↕" saltar
     const jumpBtn = document.createElement('button');
@@ -967,7 +1060,10 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       if (move.lengthSq() > 0) {
         isWalking = true;
         move.normalize();
-        const speed = WALK_SPEED * (keys['ShiftLeft'] || keys['ShiftRight'] ? RUN_FACTOR : 1) * dt;
+        // Colibrí: vuelo más ágil (1.6×) sin "running" via Shift (Shift = bajar)
+        const sprintBoost = (!avatar_isColibri && (keys['ShiftLeft'] || keys['ShiftRight'])) ? RUN_FACTOR : 1;
+        const flightBoost = avatar_isColibri ? 1.6 : 1;
+        const speed = WALK_SPEED * sprintBoost * flightBoost * dt;
         // Caminar en dirección a donde MIRA la cámara (Roblox-style).
         // Sacamos el forward horizontal de la cámara y derivamos el right.
         camera.getWorldDirection(_camFwd);
@@ -983,22 +1079,50 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         }
       }
 
-      // ---- Gravedad / salto del jugador ----
-      if (!onGround || velY > 0) {
-        velY -= GRAVITY * dt;
-        playerPos.y += velY;
-        if (playerPos.y <= EYE_HEIGHT) {
-          playerPos.y = EYE_HEIGHT;
-          velY = 0;
-          onGround = true;
+      // ---- Vuelo (colibrí) vs gravedad (puma) ----
+      if (avatar_isColibri) {
+        // Vuelo libre: Space = sube, ShiftLeft/Right = baja, sin gravedad.
+        // Velocidad ascensional aplicada directamente sin gravedad.
+        const FLY_SPEED = 0.18;
+        const MIN_FLY_Y = 2.0;    // no bajar del suelo
+        const MAX_FLY_Y = 80;     // techo del campus
+        let flyDir = 0;
+        if (keys['Space']) flyDir += 1;
+        if (keys['ShiftLeft'] || keys['ShiftRight']) flyDir -= 1;
+        // Joystick vertical de elevación (móvil)
+        if (touchState && typeof touchState.elevate === 'number') {
+          flyDir += touchState.elevate;
         }
+        playerPos.y += flyDir * FLY_SPEED * dt;
+        // Clamp altura
+        if (playerPos.y < MIN_FLY_Y) playerPos.y = MIN_FLY_Y;
+        if (playerPos.y > MAX_FLY_Y) playerPos.y = MAX_FLY_Y;
+        velY = 0;
+        onGround = false;
       } else {
-        playerPos.y = EYE_HEIGHT;
+        // Puma: gravedad + salto
+        if (!onGround || velY > 0) {
+          velY -= GRAVITY * dt;
+          playerPos.y += velY;
+          if (playerPos.y <= EYE_HEIGHT) {
+            playerPos.y = EYE_HEIGHT;
+            velY = 0;
+            onGround = true;
+          }
+        } else {
+          playerPos.y = EYE_HEIGHT;
+        }
       }
 
       // ---- Avatar (puma): orientación INDEPENDIENTE de la cámara ----
       if (avatar) {
-        avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
+        // Puma: avatar pega su Y=0 (pies) al suelo (playerPos.y - EYE_HEIGHT).
+        // Colibrí: avatar centrado en playerPos.y (flota a la altura del player).
+        if (avatar_isColibri) {
+          avatar.position.set(playerPos.x, playerPos.y, playerPos.z);
+        } else {
+          avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
+        }
 
         // Cuando el puma CAMINA, gira para mirar la dirección hacia donde
         // apunta la cámara (no donde estoy moviendo). Así caminar S no le
