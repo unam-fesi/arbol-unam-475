@@ -20,6 +20,10 @@
 (function () {
   'use strict';
 
+  // BANNER de versión — si ves esto en consola, el archivo v85 SÍ se cargó.
+  // Si NO lo ves, es problema de caché (haz Application → Storage → "Clear site data").
+  console.warn('[TreeModels v85] módulo cargado — matching accent-insensitive activo');
+
   // ⚠ Orden importa: más específico arriba.
   const TREE_GLB_MAP = [
     // Especies con palabra única bien identificable
@@ -84,18 +88,18 @@
       .filter(Boolean).join(' ');
     const text = _normalize(raw);
     if (!text) {
-      console.log('[TreeModels] tree sin texto → genérico', tree);
+      console.warn('[TreeModels] tree sin texto → genérico', tree);
       return GENERIC_GLB;
     }
     for (const entry of TREE_GLB_MAP) {
       for (const kw of entry.keywords) {
         if (text.includes(_normalize(kw))) {
-          console.log(`[TreeModels] match "${kw}" → ${entry.glb}  (text="${text}")`);
+          console.warn(`[TreeModels] match "${kw}" → ${entry.glb}  (text="${text}")`);
           return 'data/trees/' + entry.glb;
         }
       }
     }
-    console.log(`[TreeModels] sin match → genérico  (text="${text}")`);
+    console.warn(`[TreeModels] sin match → genérico  (text="${text}")`);
     return GENERIC_GLB;
   }
 
@@ -110,17 +114,17 @@
         return resolve(null);
       }
       const loader = _makeLoader();
-      console.log(`[TreeModels] ⏳ cargando ${path} …`);
+      console.warn(`[TreeModels] ⏳ cargando ${path} …`);
       loader.load(path,
         (gltf) => {
-          console.log(`[TreeModels] ✓ cargado ${path}`);
+          console.warn(`[TreeModels] ✓ cargado ${path}`);
           resolve(gltf.scene);
         },
         undefined,
         (err) => {
-          console.warn(`[TreeModels] ✗ falló cargar ${path}:`, err?.message || err, err);
+          console.error(`[TreeModels] ✗ falló cargar ${path}:`, err?.message || err, err);
           if (path !== GENERIC_GLB) {
-            console.log(`[TreeModels]   → fallback al genérico para ${path}`);
+            console.warn(`[TreeModels]   → fallback al genérico para ${path}`);
             // Reintentar con el genérico (también se cachea)
             getTreeModel(GENERIC_GLB).then(resolve);
           } else {
