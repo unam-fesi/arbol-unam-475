@@ -3821,12 +3821,21 @@ function switchVisTab(which) {
       } else if (which === 'heatmap' && window.DashboardHeatmap) {
         window.DashboardHeatmap.init('#dashboard-heatmap-vis', trees);
       } else if (which === 'iztacala') {
-        if (isIzta && window.IztacalaMap) {
+        // Tab "Campus 3D" — router por campus activo:
+        //   Iztacala → modelo GLB de Blender (alta fidelidad)
+        //   Acatlán/Aragón → footprints OSM via dashboard-campus.js
+        //   Otros (CU/Cuautitlan/Zaragoza) → mensaje en construcción hasta tener JSON
+        const cf = campusFilter || 'Iztacala';
+        if (cf === 'Iztacala' && window.IztacalaMap) {
           window.IztacalaMap.init('#dashboard-iztacala-vis');
+        } else if ((cf === 'Acatlan' || cf === 'Aragon') && window.CampusMap) {
+          window.CampusMap.init('#dashboard-iztacala-vis', cf);
         } else {
-          _showCampusUnderConstruction('#dashboard-iztacala-vis', campusFilter);
+          _showCampusUnderConstruction('#dashboard-iztacala-vis', cf);
         }
       } else if (which === 'walkthrough') {
+        // Walkthrough sigue siendo solo Iztacala por ahora (necesita GLB del campus
+        // para collisions + ground). Cuando los otros campus tengan GLB, se generaliza.
         if (isIzta && window.DashboardWalkthrough) {
           window.DashboardWalkthrough.init('#dashboard-walkthrough-vis');
         } else {

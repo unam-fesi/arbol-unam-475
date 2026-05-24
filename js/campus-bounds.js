@@ -1,45 +1,151 @@
 // js/campus-bounds.js
-// Polígono aproximado del campus FES Iztacala UNAM + helpers de clamp.
-// Lo usan dashboard-vis (heatmap) y dashboard-iztacala (3D) para que árboles
-// con GPS impreciso no se rendericen en la calle / fuera del polígono.
+// ============================================================================
+// Polígonos aproximados + centroides de TODOS los campus FES UNAM.
+// Lo usan dashboard-vis (heatmap), dashboard-campus (3D) y walkthrough para
+// proyectar lat/lng → coords del modelo y clampar árboles dentro del campus.
 //
-// El polígono fue derivado del modelo GLB del campus (iztacala_campus.glb)
-// reproyectado a lat/lng (centro 19.52552345, -99.1881276).
+// Iztacala: polígono REAL derivado del modelo GLB (alta precisión).
+// Otros campus: bounding boxes aproximados de OSM — refinar con polígonos
+// reales cuando estén los modelos Blender precisos.
+// ============================================================================
 
 (function () {
   'use strict';
 
-  // Polígono [lat, lng] siguiendo el contorno REAL del campus FES Iztacala
-  // (área amarilla de OSM con la etiqueta "Facultad de Estudios Superiores
-  // Iztacala"). Excluye calles perimetrales (Av. de los Barrios, San Carlos,
-  // Calle del Eucalipto) y el ferroviario al oriente.
-  const POLY = [
-    [19.52765, -99.18900],  // NW (esquina con Av. de los Barrios)
-    [19.52770, -99.18790],  // N (cerca de Calle San Carlos)
-    [19.52755, -99.18680],  // N-NE
-    [19.52720, -99.18590],  // NE-top
-    [19.52650, -99.18550],  // NE (antes del ferroviario)
-    [19.52550, -99.18540],  // E
-    [19.52450, -99.18560],  // E-SE
-    [19.52360, -99.18620],  // SE
-    [19.52300, -99.18720],  // S-SE
-    [19.52290, -99.18810],  // S
-    [19.52310, -99.18890],  // S-SW
-    [19.52380, -99.18960],  // SW
-    [19.52480, -99.18990],  // W-SW
-    [19.52590, -99.18980],  // W (sobre Av. de los Barrios)
-    [19.52680, -99.18950],  // NW-down
-    [19.52730, -99.18920]   // NW-back
+  // ============================================================================
+  // POLÍGONOS [lat, lng] por campus
+  // ============================================================================
+
+  // FES Iztacala — polígono real del GLB (excluye calles perimetrales)
+  const POLY_IZTACALA = [
+    [19.52765, -99.18900], [19.52770, -99.18790], [19.52755, -99.18680],
+    [19.52720, -99.18590], [19.52650, -99.18550], [19.52550, -99.18540],
+    [19.52450, -99.18560], [19.52360, -99.18620], [19.52300, -99.18720],
+    [19.52290, -99.18810], [19.52310, -99.18890], [19.52380, -99.18960],
+    [19.52480, -99.18990], [19.52590, -99.18980], [19.52680, -99.18950],
+    [19.52730, -99.18920]
   ];
 
-  // Centroide aproximado del campus (mismo que CENTER_LAT/LON en iztacala 3D)
-  const CENTROID = [19.52552345, -99.1881276];
+  // FES Acatlán — polígono REAL de OSM way 31962082
+  const POLY_ACATLAN = [
+    [19.48516, -99.25005], [19.48491, -99.24992], [19.48112, -99.24799],
+    [19.48066, -99.24773], [19.48082, -99.24723], [19.48101, -99.24686],
+    [19.48125, -99.24636], [19.48136, -99.24609], [19.48193, -99.24486],
+    [19.48196, -99.24479], [19.48205, -99.24444], [19.48210, -99.24400],
+    [19.48274, -99.24407], [19.48300, -99.24345], [19.48408, -99.24398],
+    [19.48580, -99.24493], [19.48718, -99.24560], [19.48703, -99.24604],
+    [19.48699, -99.24616], [19.48679, -99.24675], [19.48675, -99.24689],
+    [19.48666, -99.24715], [19.48662, -99.24730], [19.48670, -99.24770],
+    [19.48652, -99.24797], [19.48613, -99.24886], [19.48583, -99.24945],
+    [19.48555, -99.25002]
+  ];
 
-  function pointInPolygon(lat, lng) {
+  // FES Aragón — polígono REAL de OSM way 83589558
+  const POLY_ARAGON = [
+    [19.47749, -99.04648], [19.47640, -99.04674], [19.47638, -99.04674],
+    [19.47361, -99.04739], [19.47348, -99.04679], [19.47334, -99.04608],
+    [19.47289, -99.04390], [19.47211, -99.03995], [19.47591, -99.03910]
+  ];
+
+  // FES Cuautitlán Campus 1 (Jiménez Cantú) — bbox aproximado
+  const POLY_CUAUTITLAN = [
+    [19.68820, -99.19720], [19.68820, -99.18900],
+    [19.68150, -99.18900], [19.68150, -99.19720]
+  ];
+
+  // FES Zaragoza Campus 1 (Iztapalapa) — bbox aproximado
+  const POLY_ZARAGOZA = [
+    [19.38320, -99.04930], [19.38320, -99.04430],
+    [19.37800, -99.04430], [19.37800, -99.04930]
+  ];
+
+  // CU (Ciudad Universitaria) — bbox del campus principal
+  const POLY_CU = [
+    [19.34000, -99.19500], [19.34000, -99.17500],
+    [19.32500, -99.17500], [19.32500, -99.19500]
+  ];
+
+  // ============================================================================
+  // METADATA por campus
+  // ============================================================================
+  // - polygon: lista de [lat,lng]
+  // - centroid: [lat,lng]
+  // - hasRealModel: true si tiene GLB de Blender (Iztacala only por ahora)
+  // - glb: ruta del modelo GLB si existe (null = procedural)
+  // ============================================================================
+  const CAMPUSES = {
+    'Iztacala': {
+      polygon: POLY_IZTACALA,
+      centroid: [19.52552345, -99.1881276],
+      hasRealModel: true,
+      glb: 'data/iztacala_campus.glb',      // modelo GLB de Blender (alta fidelidad)
+      json: 'data/iztacala_campus.json',    // fallback geométrico
+      mPerLat: 110574.0,
+      mPerLon: 104918.28705381248,
+      displayName: 'FES Iztacala',
+    },
+    'Acatlan': {
+      polygon: POLY_ACATLAN,
+      centroid: [19.484270, -99.246783],   // real OSM centroid
+      hasRealModel: true,
+      glb: null,
+      json: 'data/acatlan_campus.json',    // edificios reales OSM
+      mPerLat: 110574.0,
+      mPerLon: 104945.05,
+      displayName: 'FES Acatlán',
+    },
+    'Aragon': {
+      polygon: POLY_ARAGON,
+      centroid: [19.474910, -99.044964],   // real OSM centroid
+      hasRealModel: true,
+      glb: null,
+      json: 'data/aragon_campus.json',
+      mPerLat: 110574.0,
+      mPerLon: 104951.11,
+      displayName: 'FES Aragón',
+    },
+    'Cuautitlan': {
+      polygon: POLY_CUAUTITLAN,
+      centroid: [19.6852, -99.1934],
+      hasRealModel: false,
+      glb: null,
+      mPerLat: 110574.0,
+      mPerLon: 103752.45,
+      displayName: 'FES Cuautitlán',
+    },
+    'Zaragoza': {
+      polygon: POLY_ZARAGOZA,
+      centroid: [19.3805, -99.0469],
+      hasRealModel: false,
+      glb: null,
+      mPerLat: 110574.0,
+      mPerLon: 104677.32,
+      displayName: 'FES Zaragoza',
+    },
+    'CU': {
+      polygon: POLY_CU,
+      centroid: [19.3326, -99.1842],
+      hasRealModel: false,
+      glb: null,
+      mPerLat: 110574.0,
+      mPerLon: 104825.10,
+      displayName: 'Ciudad Universitaria',
+    },
+  };
+
+  // ============================================================================
+  // HELPERS
+  // ============================================================================
+
+  function getCampus(name) {
+    return CAMPUSES[name] || CAMPUSES['Iztacala'];
+  }
+
+  function pointInPolygon(lat, lng, poly) {
     let inside = false;
-    for (let i = 0, j = POLY.length - 1; i < POLY.length; j = i++) {
-      const yi = POLY[i][0], xi = POLY[i][1];
-      const yj = POLY[j][0], xj = POLY[j][1];
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const yi = poly[i][0], xi = poly[i][1];
+      const yj = poly[j][0], xj = poly[j][1];
       const intersect = ((yi > lat) !== (yj > lat))
         && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
       if (intersect) inside = !inside;
@@ -47,7 +153,6 @@
     return inside;
   }
 
-  // Distancia (en unidades de grados) y punto más cercano sobre el segmento ab
   function _closestOnSegment(plat, plng, a, b) {
     const ay = a[0], ax = a[1];
     const by = b[0], bx = b[1];
@@ -58,41 +163,54 @@
     }
     let t = ((plng - ax) * dx + (plat - ay) * dy) / lenSq;
     t = Math.max(0, Math.min(1, t));
-    const cx = ax + t * dx;
-    const cy = ay + t * dy;
-    return { dist: Math.hypot(plng - cx, plat - cy), lat: cy, lng: cx };
+    return { dist: Math.hypot(plng - (ax + t * dx), plat - (ay + t * dy)),
+             lat: ay + t * dy, lng: ax + t * dx };
   }
 
-  // Si (lat,lng) está fuera del polígono, devuelve el punto más cercano dentro
-  // (con inset ~8m hacia el centroide para que no quede pegado al borde).
-  // Si está dentro, devuelve los mismos valores.
-  function clampToCampus(lat, lng) {
+  function clampToCampus(campusName, lat, lng) {
+    const c = getCampus(campusName);
     if (lat == null || lng == null || !isFinite(lat) || !isFinite(lng)) {
       return { lat, lng, clamped: false, distanceM: 0 };
     }
-    if (pointInPolygon(lat, lng)) {
+    if (pointInPolygon(lat, lng, c.polygon)) {
       return { lat, lng, clamped: false, distanceM: 0 };
     }
     let best = { dist: Infinity, lat, lng };
-    for (let i = 0, j = POLY.length - 1; i < POLY.length; j = i++) {
-      const r = _closestOnSegment(lat, lng, POLY[i], POLY[j]);
+    for (let i = 0, j = c.polygon.length - 1; i < c.polygon.length; j = i++) {
+      const r = _closestOnSegment(lat, lng, c.polygon[i], c.polygon[j]);
       if (r.dist < best.dist) best = r;
     }
-    // Inset ~5% hacia el centroide para no quedar pegados al borde
+    // Inset ~6% hacia el centroide para no quedar pegados al borde
     const t = 0.06;
-    const cLat = best.lat + (CENTROID[0] - best.lat) * t;
-    const cLng = best.lng + (CENTROID[1] - best.lng) * t;
-    // Distancia aproximada en metros (1° lat ≈ 110.5km, 1° lng ≈ 105km a 19.5°)
-    const dLat = (lat - cLat) * 110574;
-    const dLng = (lng - cLng) * 104918;
-    const distanceM = Math.hypot(dLat, dLng);
-    return { lat: cLat, lng: cLng, clamped: true, distanceM };
+    const cLat = best.lat + (c.centroid[0] - best.lat) * t;
+    const cLng = best.lng + (c.centroid[1] - best.lng) * t;
+    const dLat = (lat - cLat) * c.mPerLat;
+    const dLng = (lng - cLng) * c.mPerLon;
+    return { lat: cLat, lng: cLng, clamped: true, distanceM: Math.hypot(dLat, dLng) };
   }
 
+  // Proyectar lat/lng → coords del modelo (metros, origen en centroide del campus)
+  function latlonToModelXY(campusName, lat, lng) {
+    const c = getCampus(campusName);
+    return {
+      x: (lng - c.centroid[1]) * c.mPerLon,
+      y: (lat - c.centroid[0]) * c.mPerLat,
+    };
+  }
+
+  window.CampusBounds = {
+    campuses: CAMPUSES,
+    get: getCampus,
+    pointInPolygon: (lat, lng, name) => pointInPolygon(lat, lng, getCampus(name).polygon),
+    clampToCampus,
+    latlonToModelXY,
+  };
+
+  // BACKWARDS-COMPAT: mantener IztacalaCampus para código viejo
   window.IztacalaCampus = {
-    polygon: POLY,
-    centroid: CENTROID,
-    pointInPolygon,
-    clampToCampus
+    polygon: POLY_IZTACALA,
+    centroid: CAMPUSES.Iztacala.centroid,
+    pointInPolygon: (lat, lng) => pointInPolygon(lat, lng, POLY_IZTACALA),
+    clampToCampus: (lat, lng) => clampToCampus('Iztacala', lat, lng),
   };
 })();
