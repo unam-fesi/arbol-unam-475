@@ -18,7 +18,10 @@ window.IztacalaSculpture = (function() {
     // Punto medio entre edificios L4 (-1.6, -116.4) y A3 (-23.5, -42.6).
     // En Three.js: world.x = json.x, world.z = -json.y
     position: { x: -12.5, y: 0, z: 79.5 },
-    rotationY: 0,
+    // Rotación: pasar del 7 al 2 del reloj = 150° (vuelta corta = antihoraria visto desde arriba).
+    // Con mirror activo el sentido visual se invierte, así que el signo negativo da CCW visual.
+    // 5π/6 = 2.618 rad ≈ 150°
+    rotationY: -5 * Math.PI / 6,
     targetWidth: 22,               // ancho en metros (un poco más grande)
     mirror: true,                  // espejo horizontal (palo levantado queda a la izquierda)
     castShadow: true,
