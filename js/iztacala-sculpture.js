@@ -15,10 +15,11 @@ window.IztacalaSculpture = (function() {
   const config = {
     glbPath: 'data/barda_caida_v10.glb',
     // Posición en coords del modelo de Iztacala (metros).
-    // Estimación inicial: centro-sur del campus (cerca de la "manita" del screenshot).
-    position: { x: 80, y: 0, z: 100 },
-    rotationY: 0,                  // radianes; ajustar si la orientación no es la correcta
-    targetWidth: 12,               // ancho objetivo en metros (la barda caída original es ~10-15m)
+    // Punto medio entre edificios L4 (-1.6, -116.4) y A3 (-23.5, -42.6).
+    // En Three.js: world.x = json.x, world.z = -json.y
+    position: { x: -12.5, y: 0, z: 79.5 },
+    rotationY: 0,
+    targetWidth: 18,               // ancho en metros (más grande que la versión inicial)
     castShadow: true,
   };
 
