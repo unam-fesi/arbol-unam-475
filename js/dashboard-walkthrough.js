@@ -367,20 +367,20 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     scene.add(avatar);
 
     // Detectar huesos de brazo (para corregir el "se está tocando" durante el baile).
-    // Buscamos por nombre — soporta múltiples convenciones (mixamo, blender humanoid,
-    // español, etc.). Loguea los bones encontrados para debug.
+    // Tu rig se llama Hips/Spine/Chest/LeftShoulder/LeftArm/LeftForeArm/LeftHand (estilo Mixamo).
+    // "LeftArm" = upper arm. Lo detectamos excluyendo ForeArm/Hand/Shoulder.
     avatar.userData.armBones = { leftShoulder: null, rightShoulder: null, leftUpper: null, rightUpper: null };
     const allBoneNames = [];
     avatar.traverse(o => {
       if (!o.isBone) return;
       allBoneNames.push(o.name);
       const n = (o.name || '').toLowerCase();
-      // Detectar lado (left/right, L/R, izq/der)
-      const isL = /\.l$|_l$|left|izq/i.test(n);
-      const isR = /\.r$|_r$|right|der/i.test(n);
-      // Detectar parte del brazo
+      const isL = /^left|\.l$|_l$|izq/i.test(n);
+      const isR = /^right|\.r$|_r$|der/i.test(n);
       const isShoulder = /shoulder|clavicle|hombro/.test(n);
-      const isUpperArm = /upper.?arm|arm[._]?[lr]|brazo|humerus/.test(n) && !/lower|fore/.test(n);
+      // Upper arm: contiene "arm" o "brazo" o "humerus", PERO NO "forearm/lowerarm/shoulder/hand"
+      const isUpperArm = /\barm\b|upperarm|brazo|humerus/.test(n)
+                          && !/forearm|lowerarm|shoulder|hand|mano/.test(n);
       if (isShoulder && isL) avatar.userData.armBones.leftShoulder = o;
       if (isShoulder && isR) avatar.userData.armBones.rightShoulder = o;
       if (isUpperArm && isL && !avatar.userData.armBones.leftUpper)  avatar.userData.armBones.leftUpper  = o;
@@ -1018,20 +1018,22 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           if (danceToggled) desired = 'dance';
           else if (isWalking) desired = running ? 'run' : 'walk';
 
-          // FIX: durante baile, forzar brazos hacia afuera para que no se peguen al cuerpo
-          // (la animación del GLB tiene los brazos demasiado pegados — "parece que se toca").
-          // Aplicamos rotación adicional en Z después del mixer.update.
+          // FIX: durante baile, SOBRESCRIBIR la rotación de los brazos para que
+          // se mantengan abiertos hacia afuera. Antes sumaba a la animación y
+          // se multiplicaban los movimientos (manos volando). Ahora seteamos
+          // un valor fijo + un sine pequeño para que el baile tenga un poco de
+          // movimiento sutil sin que las manos se agiten en exceso.
           if (desired === 'dance' && avatar?.userData?.armBones) {
-            const t = Date.now() * 0.003;
-            const swing = Math.sin(t) * 0.25;        // movimiento sutil arriba/abajo
-            const baseOut = 0.9;                      // ~52° hacia afuera
+            const t = Date.now() * 0.0025;
+            const swing = Math.sin(t) * 0.15;        // mecida sutil ±8°
+            const baseOut = 1.1;                      // ~63° hacia afuera (brazos en "T")
             const ab = avatar.userData.armBones;
-            // Z positivo = abrir hacia la izquierda; Z negativo = abrir hacia la derecha
-            // Si el rig usa el eje contrario, invertir los signos (probar)
-            if (ab.leftUpper)     ab.leftUpper.rotation.z     += baseOut + swing;
-            if (ab.rightUpper)    ab.rightUpper.rotation.z    -= baseOut + swing;
-            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  += 0.3;
-            if (ab.rightShoulder) ab.rightShoulder.rotation.z -= 0.3;
+            // SET (no +=) — esto domina la animación bakeada y mantiene los brazos abiertos.
+            if (ab.leftUpper)  { ab.leftUpper.rotation.z  =  (baseOut + swing); ab.leftUpper.rotation.x  = 0; }
+            if (ab.rightUpper) { ab.rightUpper.rotation.z = -(baseOut + swing); ab.rightUpper.rotation.x = 0; }
+            // Los hombros sí los dejamos sumar suavemente para alinearse con el upper arm
+            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  = 0.15;
+            if (ab.rightShoulder) ab.rightShoulder.rotation.z = -0.15;
           }
           // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
 
