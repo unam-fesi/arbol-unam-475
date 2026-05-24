@@ -450,48 +450,47 @@
           placeholdersByPath.get(photoUrl).push(placeholder);
         }
 
-        // (b) Firmar URLs en BATCH apuntando al thumbnail pre-generado
+        // (b) Firmar URLs apuntando al thumbnail pre-generado.
         //   path original:  "424/123.jpg"
         //   thumbnail:      "424/123_thumb.jpg"
-        // El thumbnail ya viene a 400px ~25KB desde el upload, así no
-        // necesitamos pasarle "transform" a Supabase (free tier limita a 100).
-        // Si el thumb no existe (foto vieja antes de v49), caemos al original.
+        // NOTA: usamos createSignedUrl (SINGULAR) en paralelo en lugar de
+        // createSignedUrls (plural/batch) porque el endpoint batch del SDK 2.38
+        // devuelve "schema is invalid or incompatible" en algunos proyectos.
+        // El singular es estable. Para 100 fotos hace 100 requests pero
+        // Promise.all los lanza en paralelo — sigue siendo rápido.
         if (pathsToSign.length > 0) {
-          try {
-            // Mapeo path original → path thumb para firmar el thumb
-            const thumbPaths = pathsToSign.map(p =>
-              (typeof thumbPathFor === 'function') ? thumbPathFor(p) : p
-            );
-            // Una sola llamada batch firma todos los thumbs en un POST
-            const { data: signedList, error: signErr } = await sb.storage
-              .from('tree-photos')
-              .createSignedUrls(thumbPaths, 3600);
-            if (signErr) throw signErr;
-            // Reverse-map del thumb path al original para localizar el placeholder
-            const thumbToOriginal = {};
-            pathsToSign.forEach((orig, i) => { thumbToOriginal[thumbPaths[i]] = orig; });
-            (signedList || []).forEach(item => {
-              if (!item || !item.signedUrl) return;
-              const originalPath = thumbToOriginal[item.path] || item.path;
-              const phs = placeholdersByPath.get(originalPath);
-              if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = item.signedUrl; });
-            });
-          } catch (e) {
-            console.warn('Mosaico thumb sign falló, intentando con originales:', e);
-            // Fallback: firmar los originales (fotos sin thumb pre-generado)
-            try {
-              const { data: signedList } = await sb.storage
-                .from('tree-photos')
-                .createSignedUrls(pathsToSign, 3600);
-              (signedList || []).forEach(item => {
-                if (!item || !item.signedUrl) return;
-                const phs = placeholdersByPath.get(item.path);
-                if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = item.signedUrl; });
-              });
-            } catch (e2) {
-              console.warn('Fallback fallido también:', e2);
+          // Mapeo path original → path thumb
+          const thumbPaths = pathsToSign.map(p =>
+            (typeof thumbPathFor === 'function') ? thumbPathFor(p) : p
+          );
+          // Intentar firmar el THUMB primero (más rápido de cargar)
+          const thumbResults = await Promise.all(
+            thumbPaths.map(async (thumbPath) => {
+              try {
+                const { data, error } = await sb.storage
+                  .from('tree-photos')
+                  .createSignedUrl(thumbPath, 3600);
+                if (error || !data?.signedUrl) return null;
+                return { path: thumbPath, signedUrl: data.signedUrl };
+              } catch (_) { return null; }
+            })
+          );
+          // Para cada path original: usar el thumb si se firmó, si no firmar original
+          await Promise.all(pathsToSign.map(async (orig, i) => {
+            let signedUrl = thumbResults[i]?.signedUrl;
+            if (!signedUrl) {
+              // Fallback al original (foto vieja sin thumb pre-generado)
+              try {
+                const { data, error } = await sb.storage
+                  .from('tree-photos')
+                  .createSignedUrl(orig, 3600);
+                if (!error && data?.signedUrl) signedUrl = data.signedUrl;
+              } catch (_) {}
             }
-          }
+            if (!signedUrl) return;
+            const phs = placeholdersByPath.get(orig);
+            if (phs) phs.forEach(ph => { ph.userData.resolvedUrl = signedUrl; });
+          }));
         }
 
         // (c) Cargar texturas en paralelo desde los URLs ya resueltos
