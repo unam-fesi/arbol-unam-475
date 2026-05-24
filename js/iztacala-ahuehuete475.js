@@ -17,19 +17,14 @@
 window.IztacalaAhuehuete475 = (function() {
   'use strict';
 
-  // Posición de las letras = (186.37, 0, -63.35) con rotationY = -1.493.
-  // El logo va lateral (a la derecha del frente de las letras) a ~18m
-  // de offset, dentro del mismo prado de césped. El user puede recalibrar.
-  //
-  // Cálculo del offset lateral (derecha de las letras):
-  //   yaw_letras = -1.493
-  //   right = (cos(yaw), 0, -sin(yaw)) ≈ (0.077, 0, 0.997)
-  //   offset_18m = (186.37 + 18*0.077, 0, -63.35 + 18*0.997) ≈ (187.76, 0, -45.40)
+  // Letras en (186.37, 0, -55) con rotationY = π/2 (paralelas al pasillo).
+  // El logo va junto a las letras, mismo Z, alineado al lado izquierdo del
+  // letrero (X menor) — dentro del mismo prado, paralelo al letrero.
   const config = {
     glbPath: 'data/Ahuehuete475.glb',
-    position: { x: 187.76, y: 0, z: -45.40 },
+    position: { x: 165, y: 0, z: -55 },
     rotationX: 0,                   // 0 = el GLB ya viene Y-up parado. Si sale acostado, prueba -Math.PI/2
-    rotationY: -1.493 + Math.PI,    // mirando opuesto a las letras (hacia el campus) — el user calibra después
+    rotationY: Math.PI / 2,         // mismo orient que las letras
     targetHeight: 18,               // ~18m de altura — "en grande"
     castShadow: true,
   };
