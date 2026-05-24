@@ -2658,33 +2658,32 @@ async function loadKpis() {
   }
   wrap.innerHTML = '<p>Cargando métricas de todos los campus…</p>';
   try {
-    // Fetch en paralelo de todas las tablas relevantes
+    // Fetch en paralelo. Schema real verificado:
+    //   trees_catalog, gardens, user_profiles, user_groups,
+    //   tree_measurements (measurement_date), garden_visits (visit_date),
+    //   problem_reports (NO citizen_reports), tree_assignments, user_badges
     const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-    const [
-      treesRes, gardensRes, usersRes, groupsRes,
-      measRes, gvisitsRes, followupsRes, reportsRes
-    ] = await Promise.all([
-      sb.from('trees_catalog').select('id, campus, health_score, status, photo_url, location_lat, location_lng, created_at'),
-      sb.from('gardens').select('id, campus, name'),
-      sb.from('user_profiles').select('id, campus, role'),
-      sb.from('user_groups').select('id, campus, name'),
-      sb.from('tree_measurements').select('id, tree_id, measurement_date').gte('measurement_date', monthAgo).then(r => r).catch(() => ({ data: [] })),
-      sb.from('garden_visits').select('id, garden_id, visit_date').gte('visit_date', monthAgo).then(r => r).catch(() => ({ data: [] })),
-      sb.from('specialist_followups').select('id, tree_id, created_at').gte('created_at', monthAgo).then(r => r).catch(() => ({ data: [] })),
-      sb.from('citizen_reports').select('id, status, created_at').then(r => r).catch(() => ({ data: [] })),
+    const safe = async (promiseLike) => {
+      try { const r = await promiseLike; return r && r.data ? r.data : []; }
+      catch (_) { return []; }
+    };
+    const [trees, gardens, users, groups, meas, gvisits, followups, reports, treeAssigns, badges] = await Promise.all([
+      safe(sb.from('trees_catalog').select('id, campus, health_score, status, photo_url, location_lat, location_lng, created_at')),
+      safe(sb.from('gardens').select('id, campus, name')),
+      safe(sb.from('user_profiles').select('id, campus, role')),
+      safe(sb.from('user_groups').select('id, campus, name')),
+      safe(sb.from('tree_measurements').select('id, tree_id, measurement_date').gte('measurement_date', monthAgo)),
+      safe(sb.from('garden_visits').select('id, garden_id, visit_date').gte('visit_date', monthAgo)),
+      safe(sb.from('specialist_followups').select('id, tree_id, followup_date').gte('followup_date', monthAgo)),
+      safe(sb.from('problem_reports').select('id, status, urgency, created_at, tree_id')),
+      safe(sb.from('tree_assignments').select('id, tree_id, user_id, assigned_at')),
+      safe(sb.from('user_badges').select('id, user_id, badge_id, awarded_at')),
     ]);
-    const trees = treesRes.data || [];
-    const gardens = gardensRes.data || [];
-    const users = usersRes.data || [];
-    const groups = groupsRes.data || [];
-    const meas = (measRes && measRes.data) || [];
-    const gvisits = (gvisitsRes && gvisitsRes.data) || [];
-    const followups = (followupsRes && followupsRes.data) || [];
-    const reports = (reportsRes && reportsRes.data) || [];
 
     // Indexar árboles por id para resolver mediciones → campus
     const treeById = new Map(trees.map(t => [t.id, t]));
     const gardenById = new Map(gardens.map(g => [g.id, g]));
+    const userById = new Map(users.map(u => [u.id, u]));
 
     // Calcular KPIs por campus
     function emptyKpi() {
@@ -2694,6 +2693,7 @@ async function loadKpis() {
         healthBuena: 0, healthMedia: 0, healthMala: 0,
         gardens: 0, users: 0, students: 0, responsables: 0, adminCampus: 0, specialists: 0,
         groups: 0, measurements30d: 0, gardenVisits30d: 0, followups30d: 0,
+        treeAssignments: 0, badges: 0, problemsOpen: 0,
       };
     }
     const byCampus = Object.create(null);
@@ -2735,9 +2735,22 @@ async function loadKpis() {
       const t = treeById.get(f.tree_id);
       if (t && byCampus[t.campus]) byCampus[t.campus].followups30d++;
     });
+    treeAssigns.forEach(a => {
+      const t = treeById.get(a.tree_id);
+      if (t && byCampus[t.campus]) byCampus[t.campus].treeAssignments++;
+    });
+    badges.forEach(b => {
+      const u = userById.get(b.user_id);
+      if (u && byCampus[u.campus]) byCampus[u.campus].badges++;
+    });
+    reports.forEach(r => {
+      const t = treeById.get(r.tree_id);
+      const isOpen = !['resolved', 'closed'].includes((r.status || 'open').toLowerCase());
+      if (isOpen && t && byCampus[t.campus]) byCampus[t.campus].problemsOpen++;
+    });
 
     // Render
-    wrap.innerHTML = _renderKpisHtml(byCampus, { trees, gardens, users, groups, reports });
+    wrap.innerHTML = _renderKpisHtml(byCampus, { trees, gardens, users, groups, reports, treeAssigns, badges });
   } catch (err) {
     console.error('loadKpis error:', err);
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error cargando KPIs: ${err.message || err}</p>`;
@@ -2765,7 +2778,9 @@ function _renderKpisHtml(byCampus, raw) {
   const avgHealth = totals.healthCount > 0 ? (totals.healthSum / totals.healthCount) : null;
   const pctPhoto = totals.trees > 0 ? Math.round(100 * totals.treesWithPhoto / totals.trees) : 0;
   const pctGPS = totals.trees > 0 ? Math.round(100 * totals.treesWithGPS / totals.trees) : 0;
-  const openReports = (raw.reports || []).filter(r => (r.status || 'open') !== 'closed' && r.status !== 'resolved').length;
+  const openReports = (raw.reports || []).filter(r => !['resolved', 'closed'].includes((r.status || 'open').toLowerCase())).length;
+  const totalAssigns = (raw.treeAssigns || []).length;
+  const totalBadges = (raw.badges || []).length;
 
   // Theme colors per campus para barras
   const colorOf = (c) => (CAMPUS_THEMES[c] && CAMPUS_THEMES[c].color) || '#999';
@@ -2819,6 +2834,9 @@ function _renderKpisHtml(byCampus, raw) {
         <td style="text-align:right;">${avgH}</td>
         <td style="text-align:right;">${k.measurements30d}</td>
         <td style="text-align:right;">${k.gardenVisits30d}</td>
+        <td style="text-align:right;">${k.treeAssignments}</td>
+        <td style="text-align:right;">${k.badges}</td>
+        <td style="text-align:right;color:${k.problemsOpen>0?'#b54f3a':'#999'};">${k.problemsOpen}</td>
       </tr>`;
   }).join('');
 
@@ -2832,6 +2850,8 @@ function _renderKpisHtml(byCampus, raw) {
       ${card('% con foto', pctPhoto + '%', `${totals.treesWithPhoto}/${totals.trees}`, '📷', '#4a7c2a')}
       ${card('% con GPS', pctGPS + '%', `${totals.treesWithGPS}/${totals.trees}`, '📍', '#5b8b7d')}
       ${card('Mediciones 30d', totals.measurements30d, 'últimos 30 días', '📈', '#d4a574')}
+      ${card('Asignaciones', totalAssigns, 'árboles asignados', '🔗', '#5b8b7d')}
+      ${card('Badges otorgados', totalBadges, '', '🏅', '#4a7c2a')}
       ${card('Reportes abiertos', openReports, '', '🚨', openReports > 0 ? '#b54f3a' : '#999')}
     </div>
 
@@ -2861,6 +2881,9 @@ function _renderKpisHtml(byCampus, raw) {
             <th style="text-align:right;">Salud ø</th>
             <th style="text-align:right;">Med. 30d</th>
             <th style="text-align:right;">Visitas 30d</th>
+            <th style="text-align:right;">Asign.</th>
+            <th style="text-align:right;">Badges</th>
+            <th style="text-align:right;">Probl.</th>
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
