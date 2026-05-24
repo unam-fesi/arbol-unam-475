@@ -19,13 +19,9 @@ window.IztacalaLetras = (function() {
   const config = {
     glbPath: 'data/letras_fesi.glb',
     // Posición: al sur del edificio "Unidad de seminarios" (id 412815203).
-    // Si quieres moverlas, ajusta x (este+) z (sur+).
     position: { x: 165, y: 0, z: 10 },
-    // VERTICALES (paradas) — convierte Z-up del GLB a Y-up de Three.js.
-    rotationX: -Math.PI / 2,
-    // Empieza con frente hacia +Z (cara visible al observador del sur).
-    // Si las letras quedan invertidas para ti, prueba Math.PI.
-    rotationY: 0,
+    rotationX: -Math.PI / 2,    // Z-up → Y-up
+    rotationY: Math.PI,         // Letras se leen al revés (dan la espalda al observador del norte)
     targetWidth: 22,
     castShadow: true,
   };
@@ -69,11 +65,25 @@ window.IztacalaLetras = (function() {
           const scale = config.targetWidth / maxDim;
           root.scale.setScalar(scale);
 
-          // Asegurar sombras
+          // Asegurar sombras + FIX: empujar el texto blanco "Iztacala" hacia adelante
+          // para que sobresalga claramente del cartel azul (sino se ve oculto)
           root.traverse(o => {
             if (o.isMesh) {
               if (config.castShadow) o.castShadow = true;
               o.receiveShadow = true;
+              // Texto blanco "Iztacala" — sobresalir 0.15m
+              if (o.name && /IZTACALA.*white|white.*raised|iztacala.*text/i.test(o.name)) {
+                o.position.y += 0.15;   // local Y = profundidad antes de rotación
+                // También hacer el material doble-cara y emisivo sutil para
+                // que sea más visible desde distintos ángulos.
+                if (o.material) {
+                  o.material = o.material.clone();
+                  o.material.side = THREE.DoubleSide;
+                  o.material.emissive = new THREE.Color(0xffffff);
+                  o.material.emissiveIntensity = 0.15;
+                }
+                console.warn(`[Letras]   ↳ texto "Iztacala" empujado +0.15 al frente y con emissive`);
+              }
             }
           });
           console.warn(`[Letras] ✓ cargado (escala ${scale.toFixed(3)}, bbox ${size.x.toFixed(1)}×${size.y.toFixed(1)}×${size.z.toFixed(1)})`);
