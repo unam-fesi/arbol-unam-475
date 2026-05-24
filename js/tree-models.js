@@ -68,15 +68,25 @@
     return loader;
   }
 
+  // Normaliza: lowercase + remueve acentos/diacríticos
+  // ("Jacarandá" → "jacaranda", "níspero" → "nispero")
+  function _normalize(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+  }
+
   // Devuelve el path del GLB más adecuado para un árbol según su código/nombre/especie.
   function pickTreeGLBPath(tree) {
     if (!tree) return GENERIC_GLB;
-    const text = [tree.tree_code, tree.common_name, tree.species]
-      .filter(Boolean).join(' ').toLowerCase();
+    const raw = [tree.tree_code, tree.common_name, tree.species]
+      .filter(Boolean).join(' ');
+    const text = _normalize(raw);
     if (!text) return GENERIC_GLB;
     for (const entry of TREE_GLB_MAP) {
       for (const kw of entry.keywords) {
-        if (text.includes(kw.toLowerCase())) {
+        if (text.includes(_normalize(kw))) {
           return 'data/trees/' + entry.glb;
         }
       }

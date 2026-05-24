@@ -248,11 +248,11 @@
     scene.background = _makeSkyBackground();
     scene.fog = new THREE.Fog(0xcfe7ff, 60, 180);
 
-    // FOV 65° + cámara z=42 para acomodar las 3 zonas con sub-anillos
-    // bien separados (Sano arriba en y=+16, Crítico abajo en y=-16, sub-anillos
-    // de Sano se extienden 6 unidades más → llega a y=+22, necesita más z).
+    // FOV 65° + cámara más cerca para que las fotos no se vean diminutas
+    // (antes z=75 → muy lejos). Las 3 zonas están en y=+30 / 0 / -30,
+    // así que con z≈45 entran cómodamente con el FOV de 65°.
     const camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 700);
-    camera.position.set(0, 1, 75);
+    camera.position.set(0, 1, 45);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -542,9 +542,9 @@
     const autoSpeed = 0.0006;  // mitad de v39 — rotación muy contemplativa
     // Estado de cámara: pitch (vertical) + radio (zoom).
     // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
-    let camRadius = 75;            // valor actual (cambia con la rueda)
-    const CAM_RADIUS_MIN = 25;     // zoom in tope — fotos llenan pantalla
-    const CAM_RADIUS_MAX = 160;    // zoom out tope — vista panorámica
+    let camRadius = 45;            // valor inicial — más cerca para ver fotos al instante
+    const CAM_RADIUS_MIN = 18;     // zoom in tope — fotos llenan pantalla
+    const CAM_RADIUS_MAX = 130;    // zoom out tope — vista panorámica
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
     const PITCH_MIN = -0.55;  // ~31° hacia arriba
     const PITCH_MAX =  0.55;  // ~31° hacia abajo
