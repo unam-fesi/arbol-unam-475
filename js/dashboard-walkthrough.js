@@ -1020,21 +1020,27 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           else if (isWalking) desired = running ? 'run' : 'walk';
 
           // FIX: durante baile, SOBRESCRIBIR la rotación de los brazos para que
-          // se mantengan abiertos hacia afuera. Antes sumaba a la animación y
-          // se multiplicaban los movimientos (manos volando). Ahora seteamos
-          // un valor fijo + un sine pequeño para que el baile tenga un poco de
-          // movimiento sutil sin que las manos se agiten en exceso.
+          // estén abiertos a los lados pero NO arriba de la cabeza. Reducimos
+          // mucho el offset porque el Mixamo rig ya parte de T-pose horizontal:
+          // un pequeño Z extra basta. También limpiamos Y para evitar twist raro.
           if (desired === 'dance' && avatar?.userData?.armBones) {
-            const t = Date.now() * 0.0025;
-            const swing = Math.sin(t) * 0.15;        // mecida sutil ±8°
-            const baseOut = 1.1;                      // ~63° hacia afuera (brazos en "T")
+            const t = Date.now() * 0.003;
+            const swing = Math.sin(t) * 0.12;        // mecida sutil ±7°
+            const baseOut = 0.35;                     // ~20° abrir hacia afuera (no levantar)
             const ab = avatar.userData.armBones;
-            // SET (no +=) — esto domina la animación bakeada y mantiene los brazos abiertos.
-            if (ab.leftUpper)  { ab.leftUpper.rotation.z  =  (baseOut + swing); ab.leftUpper.rotation.x  = 0; }
-            if (ab.rightUpper) { ab.rightUpper.rotation.z = -(baseOut + swing); ab.rightUpper.rotation.x = 0; }
-            // Los hombros sí los dejamos sumar suavemente para alinearse con el upper arm
-            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  = 0.15;
-            if (ab.rightShoulder) ab.rightShoulder.rotation.z = -0.15;
+            if (ab.leftUpper)  {
+              ab.leftUpper.rotation.z  =  (baseOut + swing);
+              ab.leftUpper.rotation.x  = 0;
+              ab.leftUpper.rotation.y  = 0;
+            }
+            if (ab.rightUpper) {
+              ab.rightUpper.rotation.z = -(baseOut + swing);
+              ab.rightUpper.rotation.x = 0;
+              ab.rightUpper.rotation.y = 0;
+            }
+            // Hombros: ligero abrir
+            if (ab.leftShoulder)  ab.leftShoulder.rotation.z  = 0.1;
+            if (ab.rightShoulder) ab.rightShoulder.rotation.z = -0.1;
           }
           // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
 
