@@ -18,16 +18,16 @@ window.IztacalaLetras = (function() {
 
   const config = {
     glbPath: 'data/letras_fesi.glb',
-    // Posición: al sur del edificio "Unidad de seminarios" (id 412815203,
-    // centroide en (165.6, 41.1) JSON). Frente al edificio en zona de pasto.
-    // En Three.js: world.x = json.x, world.z = -json.y
-    //   json (165, -10) → world (165, 0, 10)
+    // Posición: al sur del edificio "Unidad de seminarios" (id 412815203).
     position: { x: 165, y: 0, z: 10 },
-    // Rotación 180° = letras dando la espalda al observador del norte.
-    // Como el GLB tiene F a la izquierda en local, tras rotar PI queda a la
-    // derecha del observador. ✓
+    // El GLB viene con eje Z como altura (convención Blender Z-up).
+    // Three.js usa Y up → necesitamos -90° X para pararlo. Sin esto se
+    // veían las letras acostadas en el piso.
+    rotationX: -Math.PI / 2,
+    // Después de pararlo, rotar 180° en Y para que las letras den la espalda
+    // al observador (con la F quedando a la derecha del observador).
     rotationY: Math.PI,
-    targetWidth: 22,               // mismo tamaño que la Barda Caída
+    targetWidth: 22,
     castShadow: true,
   };
 
@@ -94,9 +94,10 @@ window.IztacalaLetras = (function() {
     if (!template) return null;
     const instance = template.clone(true);
     instance.position.set(config.position.x, config.position.y, config.position.z);
-    instance.rotation.y = config.rotationY;
+    // Aplicar las 3 rotaciones (orden Three.js default = XYZ)
+    instance.rotation.set(config.rotationX || 0, config.rotationY || 0, 0);
     scene.add(instance);
-    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${config.position.y}, ${config.position.z})`);
+    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${config.position.y}, ${config.position.z}) rot=(${(config.rotationX||0).toFixed(2)}, ${(config.rotationY||0).toFixed(2)})`);
     return instance;
   }
 
