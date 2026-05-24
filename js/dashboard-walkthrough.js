@@ -53,12 +53,16 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   const pumaActions = { idle: null, walk: null, run: null, jump: null, dance: null,
                         flap: null, headScan: null };
   let avatar_isColibri = false;  // true si el GLB cargado es colibri.glb
+  let avatar_innerModel = null;  // referencia al mesh INTERIOR del colibrí (para tilt local)
   // Estado de "posarse en árbol" para el colibrí
   //   null  → vuelo normal
   //   { phase:'flying_to', t, fromPos, treePos, tree, treeObj }   ← acercándose
   //   { phase:'perched',  treePos, tree }                          ← quieto en la rama (modal abierto)
   //   { phase:'flying_back', t, fromPos, returnPos }               ← regresando
   let perchState = null;
+  // Audio de canto del colibrí (loop while flying)
+  let colibriSong = null;
+  let colibriSongStarted = false;
   // Estado lógico (cuál animación queremos activa)
   let pumaState = 'idle';     // 'idle' | 'walk' | 'run' | 'jump' | 'dance'
   let danceToggled = false;   // toggle B
@@ -412,8 +416,20 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     avatar.userData.shadowMesh = shadow;
 
     // Si es colibrí, ponemos el player a una altura de vuelo inicial decente
+    // y guardamos referencia al modelo interno (para tilt / bobbing fino)
     if (isColibri) {
       playerPos.y = 8;
+      avatar_innerModel = newPuma;
+      // Cargar canto del colibrí
+      if (!colibriSong) {
+        try {
+          colibriSong = new Audio('data/canto.wav');
+          colibriSong.loop = true;
+          colibriSong.volume = 0.35;
+          colibriSong.preload = 'auto';
+          console.log('🎵 Canto del colibrí precargado');
+        } catch (e) { console.warn('No se pudo cargar canto:', e); }
+      }
     }
 
     // Detectar TODOS los huesos del brazo (shoulder, upper, forearm, hand)
@@ -1222,9 +1238,34 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
 
       if (avatar) {
         // Puma: avatar pega su Y=0 (pies) al suelo (playerPos.y - EYE_HEIGHT).
-        // Colibrí: avatar centrado en playerPos.y (flota a la altura del player).
+        // Colibrí: avatar centrado en playerPos.y (flota a la altura del player)
+        // + BOBBING vertical sutil para realismo (oscilación natural del vuelo).
         if (avatar_isColibri) {
-          avatar.position.set(playerPos.x, playerPos.y, playerPos.z);
+          // Bobbing: oscilación ±10cm a ~4Hz (sincronizada con el aleteo)
+          const isPerched = perchState && perchState.phase === 'perched';
+          const bob = isPerched ? 0 : Math.sin(now * 0.012) * 0.10;
+          avatar.position.set(playerPos.x, playerPos.y + bob, playerPos.z);
+
+          // TILT del cuerpo según movimiento (más realista)
+          if (avatar_innerModel) {
+            const targetTiltX = isWalking && !isPerched ? -0.20 : 0;     // pitch hacia adelante al volar
+            const targetTiltZ = isPerched ? 0 : (touchState?.joystick?.x || 0) * -0.15;  // roll lateral en strafe
+            // Suavizado exponencial
+            avatar_innerModel.rotation.x += (targetTiltX - avatar_innerModel.rotation.x) * 0.1 * dt;
+            avatar_innerModel.rotation.z += (targetTiltZ - avatar_innerModel.rotation.z) * 0.1 * dt;
+          }
+
+          // Iniciar canto la PRIMERA vez que el user interactúa (autoplay policy
+          // requiere gesto de usuario antes de play). Una vez iniciado, sigue.
+          if (colibriSong && !colibriSongStarted && isLocked) {
+            colibriSong.play().then(() => {
+              colibriSongStarted = true;
+              console.log('🎵 Canto del colibrí iniciado');
+            }).catch(err => {
+              // Probablemente bloqueado por autoplay policy — reintentar al
+              // siguiente click del user. No log noise.
+            });
+          }
         } else {
           avatar.position.set(playerPos.x, playerPos.y - EYE_HEIGHT, playerPos.z);
         }
@@ -1362,6 +1403,11 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   function destroy() {
     if (animId) cancelAnimationFrame(animId);
     animId = null;
+    // Detener canto del colibrí al salir del walkthrough
+    if (colibriSong) {
+      try { colibriSong.pause(); colibriSong.currentTime = 0; } catch(_) {}
+      colibriSongStarted = false;
+    }
     if (resizeHandler) window.removeEventListener('resize', resizeHandler);
     resizeHandler = null;
     if (pointerHandlers) {

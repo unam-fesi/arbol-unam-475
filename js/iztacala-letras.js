@@ -19,14 +19,13 @@ window.IztacalaLetras = (function() {
   const config = {
     glbPath: 'data/letras_fesi.glb',
     // Posición: al sur del edificio "Unidad de seminarios" (id 412815203).
+    // Si quieres moverlas, ajusta x (este+) z (sur+).
     position: { x: 165, y: 0, z: 10 },
-    // El GLB viene con eje Z como altura (convención Blender Z-up).
-    // Three.js usa Y up → necesitamos -90° X para pararlo. Sin esto se
-    // veían las letras acostadas en el piso.
+    // VERTICALES (paradas) — convierte Z-up del GLB a Y-up de Three.js.
     rotationX: -Math.PI / 2,
-    // Después de pararlo, rotar 180° en Y para que las letras den la espalda
-    // al observador (con la F quedando a la derecha del observador).
-    rotationY: Math.PI,
+    // Empieza con frente hacia +Z (cara visible al observador del sur).
+    // Si las letras quedan invertidas para ti, prueba Math.PI.
+    rotationY: 0,
     targetWidth: 22,
     castShadow: true,
   };
@@ -93,11 +92,24 @@ window.IztacalaLetras = (function() {
     const template = await _loadTemplate();
     if (!template) return null;
     const instance = template.clone(true);
-    instance.position.set(config.position.x, config.position.y, config.position.z);
-    // Aplicar las 3 rotaciones (orden Three.js default = XYZ)
+    // Aplicar rotación PRIMERO en una posición temporal para calcular el bbox real
     instance.rotation.set(config.rotationX || 0, config.rotationY || 0, 0);
+    instance.position.set(0, 0, 0);
+    instance.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(instance);
+    // Subir el modelo para que su bottom (min Y) quede en config.position.y
+    const liftY = -box.min.y;
+    instance.position.set(
+      config.position.x,
+      config.position.y + liftY,
+      config.position.z
+    );
     scene.add(instance);
-    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${config.position.y}, ${config.position.z}) rot=(${(config.rotationX||0).toFixed(2)}, ${(config.rotationY||0).toFixed(2)})`);
+    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rot=(${(config.rotationX||0).toFixed(2)}, ${(config.rotationY||0).toFixed(2)})  bbox YZ post-rot: Y[${box.min.y.toFixed(2)}, ${box.max.y.toFixed(2)}]  size: ${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m`);
+    // Listar los meshes hijos para confirmar que cargaron las letras
+    let meshNames = [];
+    instance.traverse(o => { if (o.isMesh) meshNames.push(o.name || '?'); });
+    console.warn(`🅵 Meshes en escena: ${meshNames.join(', ')}`);
     return instance;
   }
 
