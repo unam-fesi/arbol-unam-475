@@ -491,38 +491,16 @@ window._filterUsers = _filterUsers;
 window._clearUsersFilters = _clearUsersFilters;
 
 async function deleteAdminUser(userId, userName) {
-  if (!confirm(`¿Borrar al usuario "${userName}"?\n\n⚠ Se eliminarán TAMBIÉN:\n• Sus asignaciones de árboles y jardines\n• Sus mediciones/seguimientos (la foto queda en storage)\n• Sus reportes\n• Su perfil completo\n\nLa cuenta de auth también se elimina y NO se puede recuperar.`)) return;
+  if (!confirm(`¿Borrar al usuario "${userName}"?\n\n⚠ Se eliminarán TAMBIÉN:\n• Sus asignaciones de árboles y jardines\n• Sus mediciones/seguimientos\n• Sus reportes\n• Su perfil completo\n• La cuenta de auth\n\nNo se puede recuperar.`)) return;
 
   try {
-    // Limpieza de dependencias (algunas tienen FK con ON DELETE CASCADE o son SET NULL)
-    // No-throw individual para no abortar si una tabla no existe
-    const tables = [
-      { t: 'tree_assignments',     col: 'user_id' },
-      { t: 'garden_assignments',   col: 'user_id' },
-      { t: 'tree_measurements',    col: 'user_id' },
-      { t: 'garden_visits',        col: 'user_id' },
-      { t: 'problem_reports',      col: 'reporter_id' },
-      { t: 'specialist_followups', col: 'specialist_id' },
-      { t: 'group_members',        col: 'user_id' },
-    ];
-    for (const { t, col } of tables) {
-      const { error } = await sb.from(t).delete().eq(col, userId);
-      if (error && !/relation .* does not exist/.test(error.message)) {
-        console.warn(`Cleanup ${t}.${col} warning:`, error.message);
-      }
-    }
-
-    // Borrar el perfil del usuario
-    const { error: profErr } = await sb.from('user_profiles').delete().eq('id', userId);
-    if (profErr) throw profErr;
-
-    // Intentar borrar la cuenta de auth via Edge Function (delete-user) si existe
-    try {
-      const { error: edgeErr } = await sb.functions.invoke('delete-user', { body: { userId } });
-      if (edgeErr) console.warn('delete-user edge function:', edgeErr.message || edgeErr);
-    } catch (e) {
-      console.warn('Edge function delete-user no disponible (la cuenta auth permanece — se puede borrar manualmente en Supabase)');
-    }
+    // Toda la limpieza se hace en la Edge Function `delete-user`,
+    // que invoca la función SQL `admin_delete_user_full` (atómica).
+    // El JS no toca BD directo — así no hay limpieza dispersa que pueda
+    // dejar huérfanos (como pasaba antes).
+    const { data, error } = await sb.functions.invoke('delete-user', { body: { userId } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
     showToast('Usuario eliminado', 'success');
     loadAdminUsers();
