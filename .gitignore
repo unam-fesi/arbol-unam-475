@@ -4,7 +4,7 @@ node_modules/
 *.bak
 arbol-backup*
 supabase-functions/
-supabase-functions/
+supabase/
 3dmaps/
 docs/
 PROPUESTAS-INNOVACION.md

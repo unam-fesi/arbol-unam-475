@@ -72,7 +72,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'groups') loadAdminGroups();
     else if (tabName === 'notifications') loadAdminNotifications();
     else if (tabName === 'assignments') loadAssignments();
-    else if (tabName === 'dashboard') { loadAdminDashboard(); loadWeatherWidget(); }
+    else if (tabName === 'dashboard') { loadAdminDashboard(true); loadWeatherWidget(); }
     else if (tabName === 'reports') loadCitizenReports();
     else if (tabName === 'audit') loadAuditLog();
   }
@@ -169,7 +169,8 @@ function _applyRoleRestrictionsToUserForm() {
 }
 
 // Oculta el bloque "Asignar Jardín" + "Asignaciones de Jardines" + el form
-// de creación de jardines cuando el campus efectivo NO es Iztacala.
+// de creación de jardines + el dropdown de jardín en el form de árboles
+// cuando el campus efectivo NO es Iztacala.
 // (Los jardines solo existen en FES Iztacala por ahora.)
 function _applyGardenVisibility() {
   const cf = effectiveCampusFilter();
@@ -186,6 +187,12 @@ function _applyGardenVisibility() {
   if (gardensTab && isAdminRole()) {
     gardensTab.style.display = showGardens ? '' : 'none';
   }
+  // Dropdown "Jardín (opcional)" del form de alta de árbol — fuera de Iztacala no existen jardines
+  const treeGardenWrap = document.getElementById('admin-tree-garden-wrap');
+  if (treeGardenWrap) treeGardenWrap.style.display = showGardens ? '' : 'none';
+  // Limpiar el valor para que no se envíe garden_id de un jardín de Iztacala
+  const treeGardenSel = document.getElementById('admin-tree-garden');
+  if (treeGardenSel && !showGardens) treeGardenSel.value = '';
 }
 
 // Actualiza el label del tab "FES Iztacala 3D" para reflejar el campus activo.
@@ -363,11 +370,14 @@ function loadAdminMap(treeList) {
     attribution: '&copy; OpenStreetMap'
   }).addTo(adminMapInstance);
 
-  // Fetch trees with coordinates from DB
-  sb.from('trees_catalog')
+  // Fetch trees with coordinates from DB — filtrado por campus efectivo
+  const _campusFilterMap = effectiveCampusFilter();
+  let _mapQuery = sb.from('trees_catalog')
     .select('id, tree_code, common_name, species, location_lat, location_lng, health_score, status, campus')
     .not('location_lat', 'is', null)
-    .not('location_lng', 'is', null)
+    .not('location_lng', 'is', null);
+  if (_campusFilterMap) _mapQuery = _mapQuery.eq('campus', _campusFilterMap);
+  _mapQuery
     .then(({ data: geoTrees, error }) => {
       if (error || !geoTrees || geoTrees.length === 0) {
         // No trees with coordinates, show message
