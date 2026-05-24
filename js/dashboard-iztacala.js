@@ -211,6 +211,12 @@ window.IztacalaMap = (function() {
       catch (e) { console.warn('No se pudo agregar las letras:', e); }
     }
 
+    // ---- Spawn 100 mariposas volando dentro del campus ----
+    if (window.IztacalaMariposas && scene) {
+      try { await window.IztacalaMariposas.spawn(scene, 100); }
+      catch (e) { console.warn('No se pudieron spawnear mariposas:', e); }
+    }
+
     animate();
   }
 
@@ -1765,10 +1771,16 @@ window.IztacalaMap = (function() {
     renderer.setSize(w, h);
   }
 
+  let _lastTime = 0;
   function animate() {
     if (!initialized) return;
     animId = requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = _lastTime ? Math.min((now - _lastTime) / 1000, 0.1) : 0.016;
+    _lastTime = now;
     if (controls) controls.update();
+    // Tick mariposas (cada una con su mixer + random walk)
+    if (window.IztacalaMariposas) window.IztacalaMariposas.tick(dt);
     if (renderer && scene && camera) renderer.render(scene, camera);
   }
 

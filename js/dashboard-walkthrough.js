@@ -195,6 +195,10 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     if (window.IztacalaLetras) {
       window.IztacalaLetras.addTo(scene).catch(e => console.warn('Letras FES no cargaron:', e));
     }
+    // 100 mariposas volando por el campus
+    if (window.IztacalaMariposas) {
+      window.IztacalaMariposas.spawn(scene, 100).catch(e => console.warn('Mariposas no cargaron:', e));
+    }
 
     // Pre-cargar TODOS los modelos GLB de las especies para que vayan
     // calentando el cache antes de que se rendericen los árboles.
@@ -1310,6 +1314,11 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         }
 
         avatar.visible = cameraDistance > 1.5;
+
+        // Tick de las mariposas (cada una con su mixer + random walk)
+        if (window.IztacalaMariposas) {
+          window.IztacalaMariposas.tick(dt / 60);
+        }
 
         // Animaciones — preferir mixer de GLB si existe.
         if (pumaMixer) {
