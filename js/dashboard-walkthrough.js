@@ -1028,28 +1028,8 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
           if (danceToggled) desired = 'dance';
           else if (isWalking) desired = running ? 'run' : 'walk';
 
-          // FIX: durante baile, SOBRESCRIBIR la rotación de TODOS los huesos
-          // del brazo (shoulder/upper/forearm/hand) para que queden abiertos
-          // y rectos sin "pliegues" hacia el cuerpo.
-          if (desired === 'dance' && avatar?.userData?.armBones) {
-            const t = Date.now() * 0.003;
-            const swing = Math.sin(t) * 0.15;        // mecida ±9°
-            const baseOut = 0.45;                    // ~26° apertura del upper arm hacia afuera
-            const ab = avatar.userData.armBones;
-            // Upper arm — abrir lateral (Z axis) con signos opuestos para cada lado
-            //   set(x, y, z): x=swing/lift, y=twist, z=lateral
-            if (ab.leftUpper)  ab.leftUpper.rotation.set(0,  0,  baseOut + swing);
-            if (ab.rightUpper) ab.rightUpper.rotation.set(0, 0, -(baseOut + swing));
-            // Forearm — RECTO (rotation 0,0,0) para que no se pliegue hacia el cuerpo
-            if (ab.leftFore)   ab.leftFore.rotation.set(0, 0, 0);
-            if (ab.rightFore)  ab.rightFore.rotation.set(0, 0, 0);
-            // Mano — relajada
-            if (ab.leftHand)   ab.leftHand.rotation.set(0, 0, 0);
-            if (ab.rightHand)  ab.rightHand.rotation.set(0, 0, 0);
-            // Hombros — sin rotación (la animación los movía y arrastraba el brazo)
-            if (ab.leftShoulder)  ab.leftShoulder.rotation.set(0, 0, 0);
-            if (ab.rightShoulder) ab.rightShoulder.rotation.set(0, 0, 0);
-          }
+          // (La animación dance del GLB ya tiene los brazos abiertos correctamente
+          //  desde Blender — no se requiere override JS.)
           // (jump no se setea aquí — el evento de Space ya lo dispara con fadeIn)
 
           // Crossfade hacia el estado deseado
