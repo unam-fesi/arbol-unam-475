@@ -205,6 +205,12 @@ window.IztacalaMap = (function() {
       catch (e) { console.warn('No se pudo agregar la escultura:', e); }
     }
 
+    // ---- Cargar Letras monumentales "FES UNAM Iztacala" ----
+    if (window.IztacalaLetras && scene) {
+      try { await window.IztacalaLetras.addTo(scene); }
+      catch (e) { console.warn('No se pudo agregar las letras:', e); }
+    }
+
     animate();
   }
 
