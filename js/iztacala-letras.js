@@ -18,14 +18,12 @@ window.IztacalaLetras = (function() {
 
   const config = {
     glbPath: 'data/letras_fesi.glb',
-    // Posición tentativa al norte del edificio Unidad de seminarios — zona verde.
-    // El user puede recalibrar con DashboardWalkthrough.debug.moveLetrasHere().
-    position: { x: 165, y: 0, z: -50 },
+    // Posición calibrada por el user con DashboardWalkthrough.debug.moveLetrasHere('back').
+    // Quedan al norte de Unidad de Seminarios, orientadas con la cara hacia atrás
+    // (alguien que mira desde el campus las lee al revés, como en la entrada real).
+    position: { x: 186.37, y: 0, z: -63.35 },
     rotationX: -Math.PI / 2,    // Z-up → Y-up (letras paradas verticalmente)
-    // rotationY: 0 = letras mirando al SUR (su frente apunta a +Z mundo).
-    // El observador default del IztacalaMap orbita y puede ver desde cualquier
-    // lado. Si quieres que se lean al revés, usa Math.PI.
-    rotationY: 0,
+    rotationY: -1.493,          // calibrada — orientation 'back'
     targetWidth: 22,
     castShadow: true,
   };

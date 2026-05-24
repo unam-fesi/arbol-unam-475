@@ -22,7 +22,16 @@
 
   // BANNER de versión — si ves esto en consola, el archivo v85 SÍ se cargó.
   // Si NO lo ves, es problema de caché (haz Application → Storage → "Clear site data").
-  console.warn('[TreeModels v85] módulo cargado — matching accent-insensitive activo');
+  console.warn('[TreeModels v86] módulo cargado — pino.glb blacklisted (modelo torcido), cae al genérico');
+
+  // GLBs problemáticos: el modelo en el archivo .glb está roto (rotación
+  // incorrecta, malla seca/fea, etc.) y NO podemos arreglarlo desde JS.
+  // Mientras se re-exporta el GLB en Blender, forzamos fallback al genérico
+  // para que los árboles de esas especies se vean bien.
+  //   - pino.glb: el árbol entero viene acostado horizontal + follaje pálido
+  const BROKEN_GLBS = new Set([
+    'pino.glb',
+  ]);
 
   // ⚠ Orden importa: más específico arriba.
   const TREE_GLB_MAP = [
@@ -94,6 +103,10 @@
     for (const entry of TREE_GLB_MAP) {
       for (const kw of entry.keywords) {
         if (text.includes(_normalize(kw))) {
+          if (BROKEN_GLBS.has(entry.glb)) {
+            console.warn(`[TreeModels] match "${kw}" → ${entry.glb} pero está en BROKEN_GLBS → genérico`);
+            return GENERIC_GLB;
+          }
           console.warn(`[TreeModels] match "${kw}" → ${entry.glb}  (text="${text}")`);
           return 'data/trees/' + entry.glb;
         }
