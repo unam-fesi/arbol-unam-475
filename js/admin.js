@@ -4124,17 +4124,25 @@ async function _loadCoordinacionResponsable(wrap) {
       const last = lastActivity[a.user_id];
       const lastStr = last ? new Date(last).toLocaleDateString('es-MX', { year:'numeric', month:'short', day:'numeric' }) : 'Sin actividad';
       const lastColor = last && (Date.now() - new Date(last).getTime()) < 30*24*3600*1000 ? '#2e7d32' : '#c62828';
+      const inactive = !last || (Date.now() - new Date(last).getTime()) >= 30*24*3600*1000;
       const notes = (a.notes || '').trim();
       return `
-        <div style="background:white;border:1px solid #e0e0e0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:0.8rem;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <div style="background:white;border:1px solid #e0e0e0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:0.8rem;box-shadow:0 1px 3px rgba(0,0,0,0.05);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;"
+             onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';"
+             onmouseleave="this.style.transform='';this.style.boxShadow='0 1px 3px rgba(0,0,0,0.05)';"
+             onclick="showStudentDetail('${s.id}')">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
             <div style="flex:1;min-width:0;">
-              <h4 style="margin:0 0 0.3rem;color:#1b5e20;">${escapeHtml(s.full_name)}</h4>
+              <h4 style="margin:0 0 0.3rem;color:#1b5e20;">${escapeHtml(s.full_name)} <i class="fas fa-chevron-right" style="font-size:0.7rem;opacity:0.4;margin-left:4px;"></i></h4>
               <div style="font-size:0.85rem;color:#666;">
                 <span>${escapeHtml(s.account_number || 'Sin cuenta')}</span> ·
                 <span>${escapeHtml(s.academic_status || '-')}</span>
               </div>
               ${notes ? `<p style="margin:0.5rem 0 0;font-size:0.82rem;color:#777;font-style:italic;"><i class="fas fa-sticky-note"></i> ${escapeHtml(notes)}</p>` : ''}
+              <div style="margin-top:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-primary" style="font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();openAssignTreeToStudent('${s.id}','${escapeHtml(s.full_name)}','${escapeHtml(s.campus || _userCampus())}')"><i class="fas fa-plus"></i> Asignar árbol</button>
+                ${inactive ? `<button class="btn btn-sm" style="background:#ff9800;color:white;font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();sendReminderToStudent('${s.id}','${escapeHtml(s.full_name)}')"><i class="fas fa-bell"></i> Recordar</button>` : ''}
+              </div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
               <div style="font-size:0.78rem;color:#888;">Árboles</div>
@@ -4148,8 +4156,17 @@ async function _loadCoordinacionResponsable(wrap) {
 
     wrap.innerHTML = `
       <h3 style="margin:0 0 0.6rem;">Mis estudiantes coordinados</h3>
-      <p class="text-muted" style="margin-bottom:1rem;">Coordinas <strong>${assigns.length}</strong> estudiante${assigns.length !== 1 ? 's' : ''} en el campus <strong>${escapeHtml(_userCampus())}</strong>.</p>
+      <p class="text-muted" style="margin-bottom:1rem;">Coordinas <strong>${assigns.length}</strong> estudiante${assigns.length !== 1 ? 's' : ''} en el campus <strong>${escapeHtml(_userCampus())}</strong>. Click en una tarjeta para ver detalle.</p>
       ${cards}
+
+      <details style="margin-top:1.5rem;background:white;border:1px solid #e0e0e0;border-radius:12px;padding:0.8rem 1rem;">
+        <summary style="cursor:pointer;font-weight:600;color:#1b5e20;font-size:1rem;">🌳 Bosque 3D de mis estudiantes</summary>
+        <div id="bosque-responsable-wrap" style="margin-top:1rem;">
+          <p class="text-muted" style="text-align:center;padding:0.5rem;">
+            <button class="btn btn-sm btn-primary" onclick="_loadBosqueDelResponsable('#bosque-responsable-wrap')"><i class="fas fa-tree"></i> Cargar bosque 3D</button>
+          </p>
+        </div>
+      </details>
     `;
   } catch (err) {
     console.error('loadCoordinacionResponsable error:', err);
@@ -4250,3 +4267,256 @@ window.loadCoordinacion = loadCoordinacion;
 window.manageResponsableStudents = manageResponsableStudents;
 window.assignStudentToResponsable = assignStudentToResponsable;
 window.unassignStudentFromResponsable = unassignStudentFromResponsable;
+
+// ============================================================================
+// VISTA DEL RESPONSABLE — extensiones
+// 1) Click en card → modal detalle del estudiante (árboles + seguimientos)
+// 2) Asignar nuevo árbol al estudiante
+// 3) Recordar seguimiento (notificación)
+// 4) Bosque 3D filtrado a sus estudiantes
+// ============================================================================
+
+async function showStudentDetail(userId) {
+  try {
+    showModal('Cargando…', '<p class="text-muted" style="padding:1rem;text-align:center;"><i class="fas fa-spinner fa-spin"></i></p>');
+
+    // Datos del estudiante
+    const { data: student } = await sb.from('user_profiles')
+      .select('id, full_name, account_number, academic_status, campus, telegram_chat_id')
+      .eq('id', userId)
+      .single();
+    if (!student) { showToast('Estudiante no encontrado', 'error'); closeModal(); return; }
+
+    // Árboles asignados
+    const { data: treeAssigns } = await sb.from('tree_assignments')
+      .select('tree_id, assigned_at, notes')
+      .eq('user_id', userId)
+      .order('assigned_at', { ascending: false });
+
+    const treeIds = (treeAssigns || []).map(a => a.tree_id);
+    let trees = [];
+    if (treeIds.length > 0) {
+      const { data: t } = await sb.from('trees_catalog')
+        .select('id, tree_code, common_name, species, campus, health_score, status, photo_url')
+        .in('id', treeIds);
+      trees = t || [];
+    }
+
+    // Últimos 5 seguimientos del estudiante
+    const { data: lastMeas } = await sb.from('tree_measurements')
+      .select('id, tree_id, measurement_date, height_cm, health_score, observations, photo_url')
+      .eq('user_id', userId)
+      .order('measurement_date', { ascending: false })
+      .limit(5);
+
+    // Mapa tree_id → datos
+    const treeMap = {};
+    trees.forEach(t => { treeMap[t.id] = t; });
+
+    // Resolver thumbs en paralelo (signed URLs)
+    await Promise.all((lastMeas || []).map(async m => {
+      if (m.photo_url) {
+        try {
+          const { data } = await sb.storage.from('tree-photos')
+            .createSignedUrl(thumbPathFor(m.photo_url) || m.photo_url, 3600);
+          m._photoSrc = data?.signedUrl || null;
+        } catch (_) { m._photoSrc = null; }
+      }
+    }));
+
+    // Render trees table
+    const treesHtml = trees.length === 0
+      ? '<p class="text-muted" style="padding:1rem;text-align:center;">Aún no tiene árboles asignados.</p>'
+      : `<table class="admin-table" style="font-size:0.85rem;">
+          <thead><tr><th>Código</th><th>Especie</th><th>Salud</th><th>Estado</th></tr></thead>
+          <tbody>
+            ${trees.map(t => {
+              const color = (t.health_score||0) >= 70 ? '#4CAF50' : (t.health_score||0) >= 40 ? '#FFA726' : '#EF5350';
+              return `<tr>
+                <td><strong>${escapeHtml(t.tree_code||'-')}</strong></td>
+                <td>${escapeHtml(t.common_name || t.species || '-')}</td>
+                <td><span style="background:${color};color:#fff;padding:2px 8px;border-radius:8px;font-size:0.75rem;">${t.health_score||0}</span></td>
+                <td><span style="background:#eee;padding:2px 8px;border-radius:6px;font-size:0.75rem;">${escapeHtml(TREE_STATUS_LABELS[t.status]||t.status||'-')}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+
+    // Render measurements
+    const measHtml = !lastMeas || lastMeas.length === 0
+      ? '<p class="text-muted" style="padding:1rem;text-align:center;">Sin seguimientos registrados aún.</p>'
+      : lastMeas.map(m => {
+          const tree = treeMap[m.tree_id] || {};
+          const dt = m.measurement_date ? new Date(m.measurement_date).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '?';
+          const color = (m.health_score||0) >= 70 ? '#4CAF50' : (m.health_score||0) >= 40 ? '#FFA726' : '#EF5350';
+          const photoTag = m._photoSrc
+            ? `<img src="${escapeHtml(m._photoSrc)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:zoom-in;" onclick="window.open(this.src,'_blank')">`
+            : '<div style="width:56px;height:56px;background:#eee;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;">📷</div>';
+          return `<div style="display:flex;gap:0.8rem;padding:0.6rem;border-bottom:1px solid #f0f0f0;align-items:center;">
+            ${photoTag}
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                <strong>🌳 ${escapeHtml(tree.tree_code || '?')}</strong>
+                <span style="font-size:0.78rem;color:#777;">${dt}</span>
+              </div>
+              <div style="font-size:0.78rem;color:#555;margin-top:3px;">
+                ${m.height_cm != null ? `📏 ${m.height_cm} cm · ` : ''}
+                <span style="color:${color};font-weight:600;">Salud ${m.health_score||0}/100</span>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+
+    showModal(`👤 ${escapeHtml(student.full_name)}`, `
+      <div style="margin-bottom:1rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;font-size:0.85rem;color:#666;">
+        <div>
+          <strong>${escapeHtml(student.account_number || 'Sin número de cuenta')}</strong>
+          <span> · ${escapeHtml(student.academic_status || '-')}</span>
+          <span> · ${escapeHtml(student.campus || '-')}</span>
+        </div>
+        <div>${student.telegram_chat_id ? '✅ Telegram' : '❌ Sin Telegram'}</div>
+      </div>
+
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        <button class="btn btn-sm btn-primary" onclick="openAssignTreeToStudent('${userId}','${escapeHtml(student.full_name)}','${escapeHtml(student.campus)}')"><i class="fas fa-plus"></i> Asignar árbol</button>
+        <button class="btn btn-sm" style="background:#ff9800;color:white;" onclick="sendReminderToStudent('${userId}','${escapeHtml(student.full_name)}')"><i class="fas fa-bell"></i> Recordar seguimiento</button>
+      </div>
+
+      <h4 style="margin:1rem 0 0.5rem;border-top:1px solid #eee;padding-top:0.8rem;">🌳 Árboles asignados (${trees.length})</h4>
+      ${treesHtml}
+
+      <h4 style="margin:1rem 0 0.5rem;border-top:1px solid #eee;padding-top:0.8rem;">📋 Últimos seguimientos</h4>
+      <div style="border:1px solid #eee;border-radius:10px;max-height:300px;overflow-y:auto;">
+        ${measHtml}
+      </div>
+    `);
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+    closeModal();
+  }
+}
+
+// ---- Asignar árbol a estudiante (selecciona uno de los disponibles en el campus) ----
+async function openAssignTreeToStudent(userId, userName, userCampus) {
+  try {
+    // Árboles del campus que NO están asignados a NADIE
+    const { data: trees } = await sb.from('trees_catalog')
+      .select('id, tree_code, common_name, species, campus, health_score')
+      .eq('campus', userCampus)
+      .order('tree_code');
+    const { data: existing } = await sb.from('tree_assignments').select('tree_id');
+    const assigned = new Set((existing || []).map(a => a.tree_id));
+    const available = (trees || []).filter(t => !assigned.has(t.id));
+
+    if (available.length === 0) {
+      showToast('No hay árboles disponibles en ' + userCampus + ' (todos están asignados)', 'warning');
+      return;
+    }
+
+    const opts = available.map(t =>
+      `<option value="${t.id}">${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species || '?')}</option>`
+    ).join('');
+
+    showModal(`Asignar árbol a ${userName}`, `
+      <form id="assign-tree-student-form">
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label>Árbol disponible (${available.length})</label>
+          <select id="ats-tree" style="width:100%;padding:0.5rem;" required>
+            <option value="">Selecciona…</option>${opts}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:1rem;">
+          <label>Notas (opcional)</label>
+          <input type="text" id="ats-notes" style="width:100%;padding:0.5rem;" placeholder="Ej: árbol asignado por su responsable">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Asignar</button>
+      </form>
+    `);
+
+    document.getElementById('assign-tree-student-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const treeId = document.getElementById('ats-tree').value;
+      const notes = document.getElementById('ats-notes').value.trim() || null;
+      if (!treeId) return;
+      try {
+        const { error } = await sb.from('tree_assignments').insert([{
+          tree_id: treeId,
+          user_id: userId,
+          assigned_by: currentUser?.id,
+          notes: notes
+        }]);
+        if (error) throw error;
+        showToast('Árbol asignado a ' + userName, 'success');
+        closeModal();
+        // Reabrir el modal de detalle para que refleje el cambio
+        showStudentDetail(userId);
+      } catch (err) {
+        showToast('Error: ' + (err.message || err), 'error');
+      }
+    });
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+  }
+}
+
+// ---- Enviar recordatorio (notificación in-app) ----
+async function sendReminderToStudent(userId, userName) {
+  if (!confirm('¿Enviar recordatorio de seguimiento a ' + userName + '?')) return;
+  try {
+    const { error } = await sb.from('notifications').insert([{
+      title: 'Recordatorio de tu coordinador',
+      message: 'Tu coordinador te recuerda hacer seguimiento de tus árboles asignados. Tu trabajo es importante para el proyecto Árbol UNAM 475 🌳',
+      sender_id: currentUser?.id || null,
+      notification_type: 'info',
+      target_user_id: userId,
+      sent_at: new Date().toISOString()
+    }]);
+    if (error) throw error;
+    showToast('Recordatorio enviado a ' + userName, 'success');
+  } catch (err) {
+    showToast('Error: ' + (err.message || err), 'error');
+  }
+}
+
+// ---- BOSQUE 3D del responsable (filtrado a sus estudiantes) ----
+async function _loadBosqueDelResponsable(containerSel) {
+  const el = document.querySelector(containerSel);
+  if (!el) return;
+  el.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;"><i class="fas fa-spinner fa-spin"></i> Cargando bosque…</p>';
+  try {
+    const myId = currentUser?.id;
+    const { data: assigns } = await sb.from('responsable_assignments')
+      .select('user_id')
+      .eq('responsable_id', myId);
+    const studentIds = (assigns || []).map(a => a.user_id);
+    if (studentIds.length === 0) {
+      el.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;">Sin estudiantes coordinados.</p>';
+      return;
+    }
+    const { data: treeAssigns } = await sb.from('tree_assignments')
+      .select('tree_id').in('user_id', studentIds);
+    const treeIds = [...new Set((treeAssigns || []).map(t => t.tree_id))];
+    if (treeIds.length === 0) {
+      el.innerHTML = '<p class="text-muted" style="padding:2rem;text-align:center;">Tus estudiantes aún no tienen árboles asignados.</p>';
+      return;
+    }
+    const { data: trees } = await sb.from('trees_catalog')
+      .select('id, tree_code, common_name, species, health_score, status, initial_height_cm, campus')
+      .in('id', treeIds);
+
+    if (!window.DashboardTree3D) {
+      el.innerHTML = '<p class="text-muted">Módulo 3D no disponible.</p>';
+      return;
+    }
+    // Crear un contenedor interno para el 3D
+    el.innerHTML = '<div id="bosque-resp-3d" style="width:100%;height:560px;border-radius:12px;overflow:hidden;background:#a8d4f0;"></div>';
+    window.DashboardTree3D.init('#bosque-resp-3d', trees || []);
+  } catch (err) {
+    el.innerHTML = `<p style="color:#c62828;">Error: ${escapeHtml(err.message || err)}</p>`;
+  }
+}
+
+window.showStudentDetail = showStudentDetail;
+window.openAssignTreeToStudent = openAssignTreeToStudent;
+window.sendReminderToStudent = sendReminderToStudent;
+window._loadBosqueDelResponsable = _loadBosqueDelResponsable;
