@@ -59,6 +59,12 @@ const TAB_GROUP = {
 
 // Cambia el GRUPO de tabs visibles (Gestión / Monitoreo / Comunicación / Seguridad)
 function switchAdminGroup(groupName) {
+  // SEGURIDAD: Monitoreo y Seguridad SOLO para admin principal (todas las tabs
+  // dentro están en TABS_ADMIN_ONLY; doble-check aquí evita exposición del UI).
+  if ((groupName === 'monitoreo' || groupName === 'seguridad') && !isAdminRole()) {
+    showToast('Acceso denegado: solo administrador principal', 'error');
+    return;
+  }
   // Actualizar estilo de los botones de grupo
   document.querySelectorAll('.admin-tab-group').forEach(btn => {
     const isActive = btn.dataset.group === groupName;
@@ -176,12 +182,25 @@ window._applyCampusTheme = _applyCampusTheme;
 
 // Aplicar restricciones UI según rol cuando se monta el panel admin
 function applyRoleBasedUIRestrictions() {
-  // PASO 0 — RESETEAR todas las tabs a visibles (necesario porque la función
-  // solo OCULTA; si un responsable se loguea y luego se loguea un admin en la
-  // misma página, las tabs quedarían escondidas del paso anterior).
-  document.querySelectorAll('.admin-tab').forEach(t => {
-    t.style.display = '';
-  });
+  // PASO 0 — RESETEAR todas las tabs y grupos a visibles
+  document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = ''; });
+  document.querySelectorAll('.admin-tab-group').forEach(t => { t.style.display = ''; });
+
+  // SEGURIDAD: Los GRUPOS "Monitoreo" y "Seguridad" solo los ve el admin principal.
+  // admin-campus y responsable NO deben siquiera ver los botones de esos grupos.
+  if (!isAdminRole()) {
+    document.querySelectorAll('.admin-tab-group').forEach(btn => {
+      const g = btn.dataset.group;
+      if (g === 'monitoreo' || g === 'seguridad') {
+        btn.style.display = 'none';
+      }
+    });
+    // Esconder también las filas de subtabs por si quedan visibles
+    const monRow = document.getElementById('admin-subtabs-monitoreo');
+    const segRow = document.getElementById('admin-subtabs-seguridad');
+    if (monRow) monRow.style.display = 'none';
+    if (segRow) segRow.style.display = 'none';
+  }
 
   // Ocultar tabs prohibidas para admin-campus
   if (isAdminCampusRole()) {
