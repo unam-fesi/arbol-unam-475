@@ -515,27 +515,57 @@ window.SplashVideo = (function() {
     }
     svgEl = overlayEl.querySelector('#splash-tree-svg');
 
-    // El círculo de progreso ESPERA a que el video empiece a reproducir.
-    // Mientras tanto, mensaje "Cargando video…" y árbol estático.
-    // Cuando el video emite `playing` por primera vez → arranca el progreso
-    // atado al currentTime/duration real del video.
+    // ── Lógica simple y robusta ──
+    // 1. Si video empieza a reproducir en ≤ MAX_WAIT_MS → reproducir todo
+    // 2. Si NO empieza en MAX_WAIT_MS → cerrar splash y entrar al portal
+    //    (el usuario ya está esperando demasiado, mejor entrar)
+    const MAX_WAIT_MS = 4000;   // ventana de espera para que el video arranque
+    const FALLBACK_TOTAL_MS = 25000;   // seguridad ABSOLUTA por si algo se atora
     let pct = 0;
     let videoStarted = false;
     const textEl = () => document.getElementById('splash-progress-text');
     const initTextEl = textEl();
-    if (initTextEl) initTextEl.textContent = 'Cargando video…';
+    if (initTextEl) initTextEl.textContent = 'Cargando…';
+
+    // Fallback duro: si NADA pasa en MAX_WAIT_MS, cerrar.
+    let waitTimeout = setTimeout(() => {
+      if (!videoStarted) {
+        console.warn(`[Splash] video no inició en ${MAX_WAIT_MS}ms, cerrando.`);
+        _close();
+      }
+    }, MAX_WAIT_MS);
+
+    // Salvavidas absoluto: si por algún bug nada cierra el splash, fuerza cierre
+    const absoluteSafety = setTimeout(() => {
+      console.warn('[Splash] salvavidas absoluto activado, forzando cierre.');
+      _close();
+    }, FALLBACK_TOTAL_MS);
 
     if (videoEl) {
       videoEl.addEventListener('playing', () => {
+        clearTimeout(waitTimeout);
         videoStarted = true;
         const t = textEl();
         if (t) t.textContent = LOADING_MESSAGES[0];
+        console.log('[Splash] video iniciado, duration=', videoEl.duration);
       }, { once: true });
+
+      videoEl.addEventListener('ended', () => {
+        clearTimeout(absoluteSafety);
+        setTimeout(_close, 400);
+      });
+
+      videoEl.addEventListener('error', (e) => {
+        console.warn('[Splash] video error:', e);
+        clearTimeout(waitTimeout);
+        clearTimeout(absoluteSafety);
+        setTimeout(_close, 600);
+      });
     }
 
+    // Loop de progreso atado al video real
     growthInterval = setInterval(() => {
       if (!videoStarted) {
-        // Video aún no empieza → progreso en 0, no avanzar
         _updateProgress(0);
         return;
       }
@@ -543,29 +573,16 @@ window.SplashVideo = (function() {
       const target = videoReady
         ? Math.min(100, (videoEl.currentTime / videoEl.duration) * 100)
         : 0;
-      pct = pct + (target - pct) * 0.15;
+      pct = pct + (target - pct) * 0.18;
       _updateProgress(pct);
       if (pct >= 99.5) { clearInterval(growthInterval); growthInterval = null; }
     }, 80);
 
-    // Cerrar cuando termina el video o auto a los 12s si el video falla
-    // (iOS Safari a veces tarda 1-2s extra en empezar a renderizar)
-    let closeTimer = setTimeout(_close, 12000);
-    if (videoEl) {
-      videoEl.addEventListener('ended', () => { clearTimeout(closeTimer); setTimeout(_close, 400); });
-      videoEl.addEventListener('error', () => { console.warn('[Splash] video falló, cerrando en 4s'); clearTimeout(closeTimer); setTimeout(_close, 4000); });
-      videoEl.addEventListener('loadedmetadata', () => {
-        if (videoEl.duration > 0) {
-          clearTimeout(closeTimer);
-          // duración total + 0.5s de transición de salida
-          closeTimer = setTimeout(_close, videoEl.duration * 1000 + 500);
-        }
-      });
-    }
-
     // Click "Saltar" cierra
     const skipBtn = overlayEl.querySelector('#splash-skip');
-    if (skipBtn) skipBtn.addEventListener('click', () => { clearTimeout(closeTimer); _close(); });
+    if (skipBtn) skipBtn.addEventListener('click', () => {
+      clearTimeout(waitTimeout); clearTimeout(absoluteSafety); _close();
+    });
   }
 
   function skip() { _close(); }
