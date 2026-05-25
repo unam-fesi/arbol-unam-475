@@ -13,7 +13,10 @@
 window.SplashVideo = (function() {
   'use strict';
 
-  const VIDEO_PATH = 'data/IztayCalaSembrando.mov';
+  // mp4 optimizado con H.264 baseline + faststart → carga en <1s en iPad.
+  // El .mov original sigue ahí como fallback por si el .mp4 falla en algún navegador raro.
+  const VIDEO_PATH_MP4 = 'data/IztayCalaSembrando.mp4';
+  const VIDEO_PATH_MOV = 'data/IztayCalaSembrando.mov';
   const STORAGE_KEY = 'splash_shown_session';
   let overlayEl = null;
   let videoEl = null;
@@ -455,14 +458,14 @@ window.SplashVideo = (function() {
       <!-- Video BG: blur cover llenando los lados del viewport (efecto cine) -->
       <!-- webkit-playsinline + playsinline + muted son OBLIGATORIOS para autoplay en iOS Safari -->
       <video id="splash-video-bg" autoplay muted playsinline webkit-playsinline="true" loop preload="auto" disableRemotePlayback>
-        <!-- mp4 primero porque iOS Safari prefiere ese sobre quicktime -->
-        <source src="${VIDEO_PATH}" type="video/mp4">
-        <source src="${VIDEO_PATH}" type="video/quicktime">
+        <!-- mp4 primero (ligero, faststart) + mov fallback -->
+        <source src="${VIDEO_PATH_MP4}" type="video/mp4">
+        <source src="${VIDEO_PATH_MOV}" type="video/quicktime">
       </video>
       <!-- Video MAIN: vertical real, height 100vh, width auto → puma COMPLETO -->
       <video id="splash-video-main" autoplay muted playsinline webkit-playsinline="true" preload="auto" disableRemotePlayback>
-        <source src="${VIDEO_PATH}" type="video/mp4">
-        <source src="${VIDEO_PATH}" type="video/quicktime">
+        <source src="${VIDEO_PATH_MP4}" type="video/mp4">
+        <source src="${VIDEO_PATH_MOV}" type="video/quicktime">
       </video>
 
       <div id="splash-brand">
