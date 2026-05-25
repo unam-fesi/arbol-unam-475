@@ -1,0 +1,29 @@
+# Gitleaks config — usa reglas default + algunos overrides para el proyecto
+
+[extend]
+# extiende las reglas default de Gitleaks
+useDefault = true
+
+[allowlist]
+description = "Allowlist global"
+paths = [
+  # La anon key de Supabase es pública por diseño (RLS hace el control real).
+  '''js/config\.js''',
+]
+regexes = [
+  # JWT tokens de Supabase anon (siempre empiezan con eyJ y el iss es supabase).
+  '''eyJhbGciOiJIUzI1NiI[A-Za-z0-9_\-.]+\.[A-Za-z0-9_\-.]+''',
+]
+
+# Reglas extra del proyecto
+[[rules]]
+id = "gemini-api-key"
+description = "Google Gemini / Generative AI API key"
+regex = '''AIza[0-9A-Za-z\-_]{35}'''
+keywords = ["AIza"]
+
+[[rules]]
+id = "supabase-service-role"
+description = "Supabase service_role JWT (NUNCA debe commitearse)"
+regex = '''eyJ[A-Za-z0-9_\-.]{20,}"service_role"[A-Za-z0-9_\-.]+'''
+keywords = ["service_role"]

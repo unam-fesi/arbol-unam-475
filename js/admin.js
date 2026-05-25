@@ -46,7 +46,7 @@ window.effectiveCampusFilter = effectiveCampusFilter;
 //   - 'gardens'  → solo admin principal (no admin-campus)
 //   - 'audit'    → solo admin principal
 //   - 'kpis'     → solo admin principal
-const TABS_ADMIN_ONLY = new Set(['gardens', 'audit', 'kpis']);
+const TABS_ADMIN_ONLY = new Set(['gardens', 'audit', 'kpis', 'security', 'quotas']);
 
 // Mapeo: cada tab pertenece a un grupo (gestión, monitoreo, comunicación, seguridad)
 const TAB_GROUP = {
@@ -54,7 +54,7 @@ const TAB_GROUP = {
   assignments: 'gestion', coordinacion: 'gestion',
   dashboard: 'monitoreo', kpis: 'monitoreo',
   notifications: 'comunicacion', reports: 'comunicacion',
-  audit: 'seguridad',
+  audit: 'seguridad', security: 'seguridad', quotas: 'seguridad',
 };
 
 // Cambia el GRUPO de tabs visibles (Gestión / Monitoreo / Comunicación / Seguridad)
@@ -111,6 +111,8 @@ function switchAdminTab(tabName) {
     else if (tabName === 'reports') loadCitizenReports();
     else if (tabName === 'audit') loadAuditLog();
     else if (tabName === 'kpis') loadKpis();
+    else if (tabName === 'security') loadSecurityDashboard();
+    else if (tabName === 'quotas') loadQuotasDashboard();
   }
   document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.classList.remove('active');
@@ -3046,6 +3048,229 @@ function _renderKpisHtml(byCampus, raw) {
 }
 
 window.loadKpis = loadKpis;
+
+// ============================================================================
+// SEGURIDAD — auth_attempts + ip_blocklist (solo admin principal)
+// ============================================================================
+async function loadSecurityDashboard() {
+  const wrap = document.getElementById('security-container');
+  if (!wrap) return;
+  if (!isAdminRole()) {
+    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal puede ver esta sección.</p>';
+    return;
+  }
+  wrap.innerHTML = '<p>Cargando intentos y bloqueos…</p>';
+  try {
+    const dayAgo  = new Date(Date.now() - 86400000).toISOString();
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const [attemptsRes, blocksRes, weekRes] = await Promise.all([
+      sb.from('auth_attempts').select('*').gte('occurred_at', dayAgo).order('occurred_at', { ascending: false }).limit(200),
+      sb.from('ip_blocklist').select('*').is('unlocked_at', null).order('blocked_at', { ascending: false }),
+      sb.from('auth_attempts').select('id, success, occurred_at').gte('occurred_at', weekAgo),
+    ]);
+    const attempts = attemptsRes.data || [];
+    const blocks = blocksRes.data || [];
+    const weekAttempts = weekRes.data || [];
+    const fails24h = attempts.filter(a => !a.success).length;
+    const ok24h = attempts.filter(a => a.success).length;
+    const fails7d = weekAttempts.filter(a => !a.success).length;
+    const ok7d = weekAttempts.filter(a => a.success).length;
+
+    // Top IPs fallidas (24h)
+    const ipFails = {};
+    attempts.filter(a => !a.success && a.ip).forEach(a => {
+      ipFails[a.ip] = (ipFails[a.ip] || 0) + 1;
+    });
+    const topIPs = Object.entries(ipFails).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    // Timeline por hora últimas 24h
+    const buckets = new Array(24).fill(0).map(() => ({ ok: 0, fail: 0 }));
+    attempts.forEach(a => {
+      const hoursAgo = Math.floor((Date.now() - new Date(a.occurred_at).getTime()) / 3600000);
+      if (hoursAgo >= 0 && hoursAgo < 24) {
+        const i = 23 - hoursAgo;
+        if (a.success) buckets[i].ok++; else buckets[i].fail++;
+      }
+    });
+    const maxBucket = Math.max(...buckets.map(b => b.ok + b.fail), 1);
+
+    const card = (label, value, sub, icon, color) => `
+      <div style="background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid ${color};min-width:140px;flex:1;">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${icon||''} ${label}</div>
+        <div style="font-size:24px;font-weight:700;color:#222;">${value}</div>
+        ${sub ? `<div style="font-size:11px;color:#777;margin-top:2px;">${sub}</div>` : ''}
+      </div>`;
+
+    wrap.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
+        ${card('Logins exitosos 24h', ok24h, '', '✅', '#3b7a3a')}
+        ${card('Fallos 24h', fails24h, '', '❌', fails24h > 20 ? '#b54f3a' : '#d4a574')}
+        ${card('Logins 7d', ok7d, `${fails7d} fallos`, '📊', '#5b8b7d')}
+        ${card('IPs bloqueadas activas', blocks.length, blocks.filter(b=>!b.blocked_until).length + ' permanentes', '🚫', blocks.length > 0 ? '#b54f3a' : '#999')}
+      </div>
+
+      <!-- Timeline 24h -->
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">📈 Intentos por hora (últimas 24h)</div>
+        <div style="display:flex;align-items:flex-end;height:80px;gap:2px;">
+          ${buckets.map(b => {
+            const total = b.ok + b.fail;
+            const okH = total > 0 ? (b.ok / maxBucket) * 100 : 0;
+            const failH = total > 0 ? (b.fail / maxBucket) * 100 : 0;
+            return `<div style="flex:1;display:flex;flex-direction:column-reverse;align-items:stretch;" title="${total} intentos: ${b.ok} ok, ${b.fail} fallidos">
+              <div style="background:#3b7a3a;height:${okH}%;"></div>
+              <div style="background:#b54f3a;height:${failH}%;"></div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:4px;">
+          <span>-24h</span><span>-12h</span><span>ahora</span>
+        </div>
+        <div style="display:flex;gap:14px;font-size:10px;color:#666;margin-top:8px;">
+          <span><span style="display:inline-block;width:10px;height:10px;background:#3b7a3a;margin-right:4px;"></span>Exitosos</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#b54f3a;margin-right:4px;"></span>Fallidos</span>
+        </div>
+      </div>
+
+      <!-- IPs bloqueadas -->
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;overflow-x:auto;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🚫 IPs bloqueadas activas (${blocks.length})</div>
+        ${blocks.length === 0 ? '<p class="text-muted text-small">Sin IPs bloqueadas.</p>' : `
+          <table class="admin-table" style="font-size:12px;width:100%;">
+            <thead><tr>
+              <th>IP</th><th>Bloqueada desde</th><th>Hasta</th><th>Bloqueos seguidos</th><th>Razón</th><th></th>
+            </tr></thead>
+            <tbody>
+              ${blocks.map(b => `
+                <tr>
+                  <td style="font-family:monospace;">${b.ip}</td>
+                  <td>${new Date(b.blocked_at).toLocaleString('es-MX')}</td>
+                  <td>${b.blocked_until ? new Date(b.blocked_until).toLocaleString('es-MX') : '<strong style="color:#b54f3a;">Permanente</strong>'}</td>
+                  <td style="text-align:center;">${b.consecutive_blocks}</td>
+                  <td style="font-size:11px;color:#666;">${b.reason}</td>
+                  <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px;" onclick="unblockIPHandler('${b.ip}')">🔓 Desbloquear</button></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>`}
+      </div>
+
+      <!-- Top IPs fallidas -->
+      ${topIPs.length > 0 ? `
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🎯 Top IPs con fallos (últimas 24h)</div>
+        ${topIPs.map(([ip, n]) => {
+          const pct = Math.round(100 * n / Math.max(...topIPs.map(x=>x[1])));
+          return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
+            <div style="width:160px;font-family:monospace;color:#333;">${ip}</div>
+            <div style="flex:1;background:#f0ede5;border-radius:6px;height:14px;overflow:hidden;">
+              <div style="width:${pct}%;background:#b54f3a;height:100%;"></div>
+            </div>
+            <div style="width:50px;text-align:right;font-weight:600;">${n}</div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      <!-- Últimos 50 intentos -->
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow-x:auto;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🕐 Últimos 50 intentos (24h)</div>
+        <table class="admin-table" style="font-size:11px;width:100%;">
+          <thead><tr><th>Fecha</th><th>Email</th><th>IP</th><th>Resultado</th><th>Razón</th></tr></thead>
+          <tbody>
+            ${attempts.slice(0, 50).map(a => `
+              <tr style="${a.success ? '' : 'background:rgba(181,79,58,0.05);'}">
+                <td>${new Date(a.occurred_at).toLocaleString('es-MX')}</td>
+                <td>${a.email || '—'}</td>
+                <td style="font-family:monospace;">${a.ip || '—'}</td>
+                <td style="color:${a.success ? '#3b7a3a' : '#b54f3a'};font-weight:600;">${a.success ? '✓ OK' : '✗ FAIL'}</td>
+                <td style="color:#666;">${a.reason || ''}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    console.error('loadSecurityDashboard error:', err);
+    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${err.message || err}</p>`;
+  }
+}
+
+async function unblockIPHandler(ip) {
+  if (!confirm(`¿Desbloquear la IP ${ip}?`)) return;
+  try {
+    const { error } = await sb.rpc('unblock_ip', { p_ip: ip });
+    if (error) throw error;
+    showToast(`IP ${ip} desbloqueada`, 'success');
+    loadSecurityDashboard();
+  } catch (e) {
+    showToast(`Error al desbloquear: ${e.message}`, 'error');
+  }
+}
+window.loadSecurityDashboard = loadSecurityDashboard;
+window.unblockIPHandler = unblockIPHandler;
+
+// ============================================================================
+// CUOTAS — service_quotas (Gemini, Supabase DB/Storage)
+// ============================================================================
+async function loadQuotasDashboard() {
+  const wrap = document.getElementById('quotas-container');
+  if (!wrap) return;
+  if (!isAdminRole()) {
+    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal puede ver esta sección.</p>';
+    return;
+  }
+  wrap.innerHTML = '<p>Cargando cuotas…</p>';
+  try {
+    const { data: quotas } = await sb.from('service_quotas').select('*').order('updated_at', { ascending: false });
+    const latestByService = {};
+    (quotas || []).forEach(q => {
+      if (!latestByService[q.service] ||
+          new Date(q.updated_at) > new Date(latestByService[q.service].updated_at)) {
+        latestByService[q.service] = q;
+      }
+    });
+    const services = Object.values(latestByService);
+
+    const colorFor = pct => pct >= 95 ? '#b54f3a' : pct >= 80 ? '#d4a574' : '#3b7a3a';
+    const labelFor = pct => pct >= 95 ? 'CRÍTICO' : pct >= 90 ? 'Alerta' : pct >= 80 ? 'Advertencia' : 'OK';
+
+    wrap.innerHTML = `
+      <p class="text-muted text-small" style="margin-bottom:14px;">
+        <i class="fas fa-info-circle"></i> Snapshot tomado por el job <code>check-quotas</code>.
+        Si una cuota supera 80% se crea una notificación al admin; si supera 90% se envía email.
+        Ejecuta manualmente: <code>supabase functions invoke check-quotas</code>
+      </p>
+      ${services.length === 0 ? `
+        <div style="background:#fff;padding:24px;border-radius:10px;text-align:center;color:#888;">
+          No hay datos de cuotas todavía. Despliega <code>check-quotas</code> y agrega su cron.
+        </div>
+      ` : services.map(q => `
+        <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:12px;border-left:4px solid ${colorFor(q.pct)};">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#333;text-transform:capitalize;">${q.service.replace(/_/g,' ')}</div>
+              <div style="font-size:11px;color:#777;margin-top:2px;">
+                ${Number(q.current_usage).toLocaleString('es-MX')} / ${Number(q.quota_limit).toLocaleString('es-MX')} ${q.metric}
+                ${q.period_end ? ` · ciclo termina ${new Date(q.period_end).toLocaleDateString('es-MX')}` : ''}
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:24px;font-weight:700;color:${colorFor(q.pct)};">${Number(q.pct).toFixed(1)}%</div>
+              <div style="font-size:10px;color:${colorFor(q.pct)};font-weight:600;">${labelFor(q.pct)}</div>
+            </div>
+          </div>
+          <div style="background:#f0ede5;border-radius:6px;height:10px;overflow:hidden;">
+            <div style="width:${Math.min(100, q.pct)}%;background:${colorFor(q.pct)};height:100%;transition:width 0.4s;"></div>
+          </div>
+          <div style="font-size:10px;color:#999;margin-top:6px;">Actualizado: ${new Date(q.updated_at).toLocaleString('es-MX')}</div>
+        </div>
+      `).join('')}
+    `;
+  } catch (err) {
+    console.error('loadQuotasDashboard error:', err);
+    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${err.message || err}</p>`;
+  }
+}
+window.loadQuotasDashboard = loadQuotasDashboard;
 
 // ---- EXPOSE ALL ----
 window.switchAdminTab = switchAdminTab;

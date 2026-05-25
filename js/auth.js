@@ -262,7 +262,52 @@ async function handleLogin(e) {
   errorEl.style.display = 'none';
 
   try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    // Llamar a la Edge Function `secure-login` (rate-limit + bloqueo por IP).
+    // Si la función no está deployada todavía, caer al signIn directo (legacy).
+    let data, error;
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/secure-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      const result = await resp.json();
+      if (resp.status === 429 || result.error === 'blocked') {
+        // IP bloqueada por rate limit
+        errorEl.innerHTML = `🚫 <strong>Acceso bloqueado.</strong><br>` + (result.message || 'Demasiados intentos fallidos.');
+        errorEl.style.display = 'block';
+        errorEl.style.color = '#b54f3a';
+        return;
+      }
+      if (!resp.ok || result.error) {
+        let msg = result.message || 'Correo o contraseña incorrectos';
+        if (result.blocked) {
+          msg += ' (esta IP ha sido bloqueada)';
+        } else if (result.recent_fails && result.recent_fails >= 3) {
+          msg += ` · ${result.recent_fails} intentos recientes`;
+        }
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+        return;
+      }
+      // Edge Function devolvió session — instalarla en el cliente local
+      if (result.session) {
+        await sb.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token,
+        });
+      }
+      data = { user: result.user, session: result.session };
+      error = null;
+    } catch (edgeErr) {
+      console.warn('secure-login no disponible, fallback a signIn directo:', edgeErr);
+      const r = await sb.auth.signInWithPassword({ email, password });
+      data = r.data; error = r.error;
+    }
 
     if (error) {
       errorEl.textContent = error.message === 'Invalid login credentials'
