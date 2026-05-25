@@ -740,7 +740,11 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       background:rgba(0,0,0,0.65);color:#fff;padding:0.35rem 0.8rem;border-radius:14px;
       font-size:0.78rem;font-family:Inter,sans-serif;pointer-events:none;
       backdrop-filter:blur(6px);display:none;`;
-    promptEl.innerHTML = '<kbd style="background:#fff;color:#000;padding:1px 5px;border-radius:3px;font-family:inherit;">E</kbd> Inspeccionar árbol';
+    // En mobile mostramos icono de tap en lugar de la tecla "E"
+    const _isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    promptEl.innerHTML = _isTouch
+      ? '<span style="background:#fff;color:#000;padding:1px 6px;border-radius:3px;">🔍</span> Toca para inspeccionar'
+      : '<kbd style="background:#fff;color:#000;padding:1px 5px;border-radius:3px;font-family:inherit;">E</kbd> Inspeccionar árbol';
     containerEl.appendChild(promptEl);
 
     // HUD inferior con instrucciones + contador
@@ -1189,8 +1193,8 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         _camFwd.y = 0;
         if (_camFwd.lengthSq() > 0.001) {
           _camFwd.normalize();
-          // Right perpendicular (CCW desde arriba)
-          _camRight.set(_camFwd.z, 0, -_camFwd.x);
+          // RIGHT real = forward × up. Antes estaba al revés → A/D invertidos.
+          _camRight.set(-_camFwd.z, 0, _camFwd.x);
           // Aplicar W/S (camFwd) y A/D (camRight)
           // move.z negativo = W = adelante
           playerPos.addScaledVector(_camFwd, -move.z * speed);
@@ -1217,13 +1221,21 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
         } else if (flyDir !== 0) {
           // Control manual: Space/Shift o botones touch
           playerPos.y += flyDir * FLY_SPEED * dt;
+          // Marcar última interacción manual: por 3s no autoreposicionar altura
+          touchState && (touchState._lastManualFlyAt = performance.now());
         } else {
-          // Sin input vertical: el zoom controla la altura proporcionalmente.
-          // Más zoom out → colibrí sube. Más zoom in → baja.
-          // Mapping cameraDistance → targetY (no lineal, suave para sentirse bien)
-          const zRatio = Math.min(1, (cameraDistance - CAM_DIST_MIN) / (40 - CAM_DIST_MIN));
-          const targetY = MIN_FLY_Y + zRatio * 30;  // 2m → 32m a max zoom
-          playerPos.y += (targetY - playerPos.y) * 0.04 * dt;
+          // Sin input vertical activo. En MOBILE el auto-altura no aplica
+          // (los botones ▲▼ son los únicos controles y autosubir contra el
+          // user es frustrante). En desktop con wheel sí ayuda a "elevarse"
+          // mientras zoomeas afuera.
+          const _isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+          const _recentManual = touchState && touchState._lastManualFlyAt &&
+                                (performance.now() - touchState._lastManualFlyAt < 3000);
+          if (!_isTouch && !_recentManual) {
+            const zRatio = Math.min(1, (cameraDistance - CAM_DIST_MIN) / (40 - CAM_DIST_MIN));
+            const targetY = MIN_FLY_Y + zRatio * 30;
+            playerPos.y += (targetY - playerPos.y) * 0.04 * dt;
+          }
         }
         if (playerPos.y < MIN_FLY_Y) playerPos.y = MIN_FLY_Y;
         if (playerPos.y > MAX_FLY_Y) playerPos.y = MAX_FLY_Y;

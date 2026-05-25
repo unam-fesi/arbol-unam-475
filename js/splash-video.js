@@ -50,6 +50,12 @@ window.SplashVideo = (function() {
 
       /* CINEMA LAYOUT: video vertical (1080x1920) centrado con BLUR del mismo
          video llenando los lados — efecto "letterbox blurred" tipo Netflix. */
+      /* Fondo verde oscuro mientras el video carga (NO negro). En iPad/Safari
+         el video puede tardar 1-2s en empezar; sin este fondo se ve pantalla
+         negra y se siente roto. */
+      #splash-video-overlay::after {
+        background: linear-gradient(180deg, rgba(5,15,8,0.55) 0%, rgba(5,15,8,0) 25%, rgba(5,15,8,0) 60%, rgba(5,15,8,0.85) 100%);
+      }
       #splash-video-bg {
         position: absolute; inset: -10px;
         width: calc(100% + 20px); height: calc(100% + 20px);
@@ -57,7 +63,10 @@ window.SplashVideo = (function() {
         filter: blur(40px) brightness(0.45) saturate(1.2);
         transform: scale(1.1);
         z-index: 0;
+        opacity: 0;
+        transition: opacity 0.8s ease-out;
       }
+      #splash-video-bg.ready { opacity: 1; }
       #splash-video-main {
         position: relative;
         height: 100vh;
@@ -66,6 +75,18 @@ window.SplashVideo = (function() {
         object-fit: contain;
         z-index: 1;
         box-shadow: 0 0 80px rgba(0,0,0,0.6);
+        opacity: 0;
+        transition: opacity 0.6s ease-out;
+      }
+      #splash-video-main.ready { opacity: 1; }
+      /* Decoración elegante mientras el video no está listo: un patrón sutil
+         del color verde de la app, en lugar del cubo negro */
+      #splash-video-overlay:not(.video-ready)::before {
+        content: '';
+        position: absolute; inset: 0; z-index: 0;
+        background: radial-gradient(circle at 30% 40%, rgba(80,160,80,0.15), transparent 60%),
+                    radial-gradient(circle at 70% 70%, rgba(60,140,100,0.12), transparent 50%),
+                    #0a1f0a;
       }
       #splash-video-overlay::after {
         content: ''; position: absolute; inset: 0; z-index: 2;
@@ -432,14 +453,16 @@ window.SplashVideo = (function() {
     overlayEl.id = 'splash-video-overlay';
     overlayEl.innerHTML = `
       <!-- Video BG: blur cover llenando los lados del viewport (efecto cine) -->
-      <video id="splash-video-bg" autoplay muted playsinline loop preload="auto">
-        <source src="${VIDEO_PATH}" type="video/quicktime">
+      <!-- webkit-playsinline + playsinline + muted son OBLIGATORIOS para autoplay en iOS Safari -->
+      <video id="splash-video-bg" autoplay muted playsinline webkit-playsinline="true" loop preload="auto" disableRemotePlayback>
+        <!-- mp4 primero porque iOS Safari prefiere ese sobre quicktime -->
         <source src="${VIDEO_PATH}" type="video/mp4">
+        <source src="${VIDEO_PATH}" type="video/quicktime">
       </video>
       <!-- Video MAIN: vertical real, height 100vh, width auto → puma COMPLETO -->
-      <video id="splash-video-main" autoplay muted playsinline preload="auto">
-        <source src="${VIDEO_PATH}" type="video/quicktime">
+      <video id="splash-video-main" autoplay muted playsinline webkit-playsinline="true" preload="auto" disableRemotePlayback>
         <source src="${VIDEO_PATH}" type="video/mp4">
+        <source src="${VIDEO_PATH}" type="video/quicktime">
       </video>
 
       <div id="splash-brand">
@@ -463,6 +486,23 @@ window.SplashVideo = (function() {
     // El video que importa para el progreso es el MAIN. El BG se sincroniza por tiempo.
     videoEl = overlayEl.querySelector('#splash-video-main');
     const bgVideoEl = overlayEl.querySelector('#splash-video-bg');
+
+    // iOS Safari: forzar carga explícita + play() programático.
+    // Sin esto, en iPad a veces el video se queda en negro 1-2s
+    [videoEl, bgVideoEl].forEach(v => {
+      if (!v) return;
+      try { v.load(); } catch(_) {}
+      // Reveal al primer 'playing' event (cuando empieza a renderizar frames de verdad)
+      v.addEventListener('playing', () => v.classList.add('ready'), { once: true });
+      // Si autoplay falla (iOS bloquea sin gesto), reintentar
+      const tryPlay = () => v.play().catch(() => {
+        // Fallback: revelarlo igual a los 600ms para no quedar negro
+        setTimeout(() => v.classList.add('ready'), 600);
+      });
+      if (v.readyState >= 2) tryPlay();
+      else v.addEventListener('loadeddata', tryPlay, { once: true });
+    });
+
     // Sincronizar BG con el main (mismo tiempo)
     if (videoEl && bgVideoEl) {
       videoEl.addEventListener('timeupdate', () => {
@@ -470,30 +510,47 @@ window.SplashVideo = (function() {
           bgVideoEl.currentTime = videoEl.currentTime;
         }
       });
+      // Marcar overlay como "video-ready" para esconder el fondo radial decorativo
+      videoEl.addEventListener('playing', () => overlayEl.classList.add('video-ready'), { once: true });
     }
     svgEl = overlayEl.querySelector('#splash-tree-svg');
 
-    // Simulación de progreso. Acompaña al video o dura mínimo 6 segundos.
+    // El círculo de progreso ESPERA a que el video empiece a reproducir.
+    // Mientras tanto, mensaje "Cargando video…" y árbol estático.
+    // Cuando el video emite `playing` por primera vez → arranca el progreso
+    // atado al currentTime/duration real del video.
     let pct = 0;
-    const startTime = Date.now();
+    let videoStarted = false;
+    const textEl = () => document.getElementById('splash-progress-text');
+    const initTextEl = textEl();
+    if (initTextEl) initTextEl.textContent = 'Cargando video…';
+
+    if (videoEl) {
+      videoEl.addEventListener('playing', () => {
+        videoStarted = true;
+        const t = textEl();
+        if (t) t.textContent = LOADING_MESSAGES[0];
+      }, { once: true });
+    }
+
     growthInterval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      // Progreso basado en video real si tenemos duration, sino lineal sobre 6s
-      let target;
-      if (videoEl && videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0) {
-        target = Math.min(100, (videoEl.currentTime / videoEl.duration) * 100);
-      } else {
-        target = Math.min(100, (elapsed / 6) * 100);
+      if (!videoStarted) {
+        // Video aún no empieza → progreso en 0, no avanzar
+        _updateProgress(0);
+        return;
       }
-      pct = pct + (target - pct) * 0.15;   // suavizado
+      const videoReady = videoEl && videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0;
+      const target = videoReady
+        ? Math.min(100, (videoEl.currentTime / videoEl.duration) * 100)
+        : 0;
+      pct = pct + (target - pct) * 0.15;
       _updateProgress(pct);
-      if (pct >= 99.5) {
-        clearInterval(growthInterval); growthInterval = null;
-      }
+      if (pct >= 99.5) { clearInterval(growthInterval); growthInterval = null; }
     }, 80);
 
-    // Cerrar cuando termina el video o auto a los 10s si el video falla
-    let closeTimer = setTimeout(_close, 10000);
+    // Cerrar cuando termina el video o auto a los 12s si el video falla
+    // (iOS Safari a veces tarda 1-2s extra en empezar a renderizar)
+    let closeTimer = setTimeout(_close, 12000);
     if (videoEl) {
       videoEl.addEventListener('ended', () => { clearTimeout(closeTimer); setTimeout(_close, 400); });
       videoEl.addEventListener('error', () => { console.warn('[Splash] video falló, cerrando en 4s'); clearTimeout(closeTimer); setTimeout(_close, 4000); });
