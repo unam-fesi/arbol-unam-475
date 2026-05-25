@@ -20,10 +20,20 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   'use strict';
 
   // ---- Proyección lat/lng → x,y en metros (mismo que iztacala) ----
-  const CENTER_LAT = 19.52552345;
-  const CENTER_LON = -99.1881276;
-  const M_PER_LAT = 110574.0;
-  const M_PER_LON = 104918.28705381248;
+  // Defaults para Iztacala. Si campus != Iztacala, se actualizan desde CampusBounds.
+  let CENTER_LAT = 19.52552345;
+  let CENTER_LON = -99.1881276;
+  let M_PER_LAT = 110574.0;
+  let M_PER_LON = 104918.28705381248;
+  function _setCampusOrigin(campusName) {
+    if (!window.CampusBounds) return;
+    const c = window.CampusBounds.get(campusName);
+    if (!c) return;
+    CENTER_LAT = c.centroid[0];
+    CENTER_LON = c.centroid[1];
+    M_PER_LAT = c.mPerLat || 110574;
+    M_PER_LON = c.mPerLon || 104918;
+  }
 
   // ---- Estado del módulo ----
   let scene, camera, renderer, raycaster;
@@ -94,8 +104,12 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     return 0xEF5350;
   }
 
+  let currentCampus = 'Iztacala';
+
   // ---- INIT ---------------------------------------------------------------
-  async function init(containerSelector) {
+  async function init(containerSelector, campusName) {
+    currentCampus = campusName || 'Iztacala';
+    _setCampusOrigin(currentCampus);
     if (!window.THREE) {
       console.warn('Three.js no cargado para walkthrough');
       return false;
@@ -180,29 +194,37 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     // mientras se cargan los GLBs en background (en lugar de pantalla negra).
     _startLoop();
 
-    // Cargar escenario + modelo de árbol + árboles desde BD en paralelo (no
-    // bloqueante: cada uno se agrega a la escena conforme termine).
-    _loadGLB('data/iztacala_campus.glb').then((gltf) => {
-      if (!scene || !gltf) return;
-      scene.add(gltf.scene);
-      console.log('🏛️  Campus GLB cargado');
-    }).catch((e) => console.warn('iztacala_campus.glb no cargó:', e?.message || e));
+    // Cargar escenario del campus seleccionado:
+    //   - Iztacala: GLB de alta fidelidad de Blender (iztacala_campus.glb)
+    //   - Acatlan / Aragon: edificios procedurales desde JSON OSM
+    if (currentCampus === 'Iztacala') {
+      _loadGLB('data/iztacala_campus.glb').then((gltf) => {
+        if (!scene || !gltf) return;
+        scene.add(gltf.scene);
+        console.log('🏛️  Iztacala GLB cargado');
+      }).catch((e) => console.warn('iztacala_campus.glb no cargó:', e?.message || e));
 
-    // Escultura "Barda Caída" — icónica de Iztacala
-    if (window.IztacalaSculpture) {
-      window.IztacalaSculpture.addTo(scene).catch(e => console.warn('Barda Caída no cargó:', e));
+      // Solo Iztacala tiene escultura, letras y logo del ahuehuete
+      if (window.IztacalaSculpture) {
+        window.IztacalaSculpture.addTo(scene).catch(e => console.warn('Barda Caída no cargó:', e));
+      }
+      if (window.IztacalaLetras) {
+        window.IztacalaLetras.addTo(scene).catch(e => console.warn('Letras FES no cargaron:', e));
+      }
+      if (window.IztacalaAhuehuete475) {
+        window.IztacalaAhuehuete475.addTo(scene).catch(e => console.warn('Logo Ahuehuete475 no cargó:', e));
+      }
+    } else if (window.CampusMap && window.CampusMap.buildInto) {
+      // Acatlan / Aragon — construir edificios procedural OSM
+      window.CampusMap.buildInto(scene, currentCampus)
+        .then(() => console.log(`🏛️  ${currentCampus} edificios procedural cargados`))
+        .catch(e => console.warn(`No se pudo construir ${currentCampus}:`, e?.message || e));
     }
-    // Letras monumentales "FES UNAM Iztacala"
-    if (window.IztacalaLetras) {
-      window.IztacalaLetras.addTo(scene).catch(e => console.warn('Letras FES no cargaron:', e));
-    }
-    // Logo "Ahuehuete 475" al lado de las letras
-    if (window.IztacalaAhuehuete475) {
-      window.IztacalaAhuehuete475.addTo(scene).catch(e => console.warn('Logo Ahuehuete475 no cargó:', e));
-    }
-    // 100 mariposas volando por el campus
+
+    // Mariposas en cualquier campus (usan el polygon del campus actual)
     if (window.IztacalaMariposas) {
-      window.IztacalaMariposas.spawn(scene, 100).catch(e => console.warn('Mariposas no cargaron:', e));
+      window.IztacalaMariposas.spawn(scene, 100, currentCampus)
+        .catch(e => console.warn('Mariposas no cargaron:', e));
     }
 
     // Pre-cargar TODOS los modelos GLB de las especies para que vayan
@@ -245,10 +267,13 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   async function _fetchTrees() {
     if (typeof sb === 'undefined') return [];
     try {
-      const { data } = await sb
+      let q = sb
         .from('trees_catalog')
-        .select('id, tree_code, common_name, species, health_score, location_lat, location_lng, status, photo_url')
+        .select('id, tree_code, common_name, species, health_score, location_lat, location_lng, status, photo_url, campus')
         .not('location_lat', 'is', null);
+      // Filtrar por campus del walkthrough actual
+      if (currentCampus) q = q.eq('campus', currentCampus);
+      const { data } = await q;
       return data || [];
     } catch (e) {
       console.warn('No se pudieron cargar árboles:', e);

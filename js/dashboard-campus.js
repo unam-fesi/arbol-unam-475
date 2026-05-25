@@ -492,5 +492,78 @@ window.CampusMap = (function() {
     window.removeEventListener('resize', onResize);
   }
 
-  return { init, destroy };
+  // ============================================================================
+  // buildInto(scene, campusName) — agrega edificios + boundary del campus a
+  // una scene EXTERNA (sin armar cámara/render/luces). Usado por el walkthrough
+  // multi-campus que necesita geometría de Acatlán/Aragón dentro de su propia escena.
+  // No interactúa con las variables de estado de CampusMap.
+  // ============================================================================
+  async function buildInto(targetScene, campusName) {
+    if (!targetScene || !campusName || campusName === 'Iztacala') return null;
+    const slug = (campusName || '').toLowerCase().replace(/\s+/g, '_');
+    let data;
+    try {
+      const res = await fetch(`data/campus_${slug}.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    } catch (e) {
+      console.warn(`[CampusMap.buildInto] no se pudo cargar campus_${slug}.json:`, e.message);
+      return null;
+    }
+    const root = new THREE.Group();
+    root.name = `CampusGeom_${campusName}`;
+
+    // Boundary line (verde)
+    if (data.boundary && data.boundary.length > 2) {
+      const pts = data.boundary.map(p => new THREE.Vector3(p[0], 0.15, -p[1]));
+      pts.push(pts[0].clone());
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x2E7D32 });
+      root.add(new THREE.Line(lineGeo, lineMat));
+
+      const shape = new THREE.Shape();
+      data.boundary.forEach((p, i) => {
+        if (i === 0) shape.moveTo(p[0], p[1]); else shape.lineTo(p[0], p[1]);
+      });
+      const floorGeo = new THREE.ShapeGeometry(shape);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0xD4E8B8, roughness: 0.95, transparent: true, opacity: 0.55 });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = 0.06;
+      floor.receiveShadow = true;
+      root.add(floor);
+    }
+
+    // Edificios
+    const bldgMat = new THREE.MeshStandardMaterial({ color: 0xFAF5EC, roughness: 0.8 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0xF5C8B5, roughness: 0.7 });
+    const roofExtra = new THREE.MeshStandardMaterial({ color: 0x5B8B7D, roughness: 0.7 });
+    (data.buildings || []).forEach(b => {
+      if (!b.footprint || b.footprint.length < 3) return;
+      const shape = new THREE.Shape();
+      b.footprint.forEach((p, i) => {
+        if (i === 0) shape.moveTo(p[0], p[1]); else shape.lineTo(p[0], p[1]);
+      });
+      const h = b.height || 8;
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geo, bldgMat);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData = { isBuilding: true, name: b.name };
+      root.add(mesh);
+
+      const roofGeo = new THREE.ShapeGeometry(shape);
+      const roof = new THREE.Mesh(roofGeo, b.extra ? roofExtra : roofMat);
+      roof.rotation.x = -Math.PI / 2;
+      roof.position.y = h + 0.1;
+      roof.receiveShadow = true;
+      root.add(roof);
+    });
+
+    targetScene.add(root);
+    console.warn(`[CampusMap.buildInto] ${campusName}: ${(data.buildings||[]).length} edificios agregados`);
+    return root;
+  }
+
+  return { init, destroy, buildInto };
 })();

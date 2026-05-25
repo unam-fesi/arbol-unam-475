@@ -26,6 +26,7 @@ window.IztacalaMariposas = (function() {
     minSpeed: 0.4,
     maxSpeed: 1.2,
     targetSize: 3.0,         // tamaño visual ~3m (XL — sacrificamos proporción por visibilidad)
+    campusName: 'Iztacala',  // de qué campus tomar el polígono (cambia con spawn(scene, count, campusName))
   };
 
   let _templatePromise = null;
@@ -85,7 +86,7 @@ window.IztacalaMariposas = (function() {
   // desde lat/lng → metros usando los factores del centroide de Iztacala.
   function _getCampusPolyXZ() {
     if (!window.CampusBounds) return null;
-    const camp = window.CampusBounds.get('Iztacala');
+    const camp = window.CampusBounds.get(config.campusName || 'Iztacala');
     if (!camp) return null;
     const cLat = camp.centroid[0];
     const cLon = camp.centroid[1];
@@ -130,9 +131,10 @@ window.IztacalaMariposas = (function() {
     return { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
   }
 
-  async function spawn(scene, count) {
+  async function spawn(scene, count, campusName) {
     const template = await _loadTemplate();
     if (!template) return [];
+    if (campusName) config.campusName = campusName;
     _hostScene = scene;
     const N = count || config.count;
     const poly = _getCampusPolyXZ();

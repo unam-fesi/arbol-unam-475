@@ -4132,10 +4132,12 @@ function switchVisTab(which) {
           _showCampusUnderConstruction('#dashboard-iztacala-vis', cf);
         }
       } else if (which === 'walkthrough') {
-        // Walkthrough sigue siendo solo Iztacala por ahora (necesita GLB del campus
-        // para collisions + ground). Cuando los otros campus tengan GLB, se generaliza.
-        if (isIzta && window.DashboardWalkthrough) {
-          window.DashboardWalkthrough.init('#dashboard-walkthrough-vis');
+        // Walkthrough soporta Iztacala (GLB de Blender), Acatlan y Aragon
+        // (edificios procedurales OSM). Otros campus quedan en construcción.
+        const cf = campusFilter || 'Iztacala';
+        const supported = ['Iztacala', 'Acatlan', 'Aragon'].includes(cf);
+        if (supported && window.DashboardWalkthrough) {
+          window.DashboardWalkthrough.init('#dashboard-walkthrough-vis', cf);
         } else {
           _showCampusUnderConstruction('#dashboard-walkthrough-vis', campusFilter);
         }
