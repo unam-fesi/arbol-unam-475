@@ -246,17 +246,57 @@ function updateUserDisplay() {
   }
 }
 
+// Tracking client-side de intentos fallidos por email (para mostrar captcha)
+const _failCountKey = (email) => `auth_fails_${email.toLowerCase()}`;
+function _getFailCount(email) { return Number(sessionStorage.getItem(_failCountKey(email)) || 0); }
+function _incrFailCount(email) { sessionStorage.setItem(_failCountKey(email), String(_getFailCount(email) + 1)); }
+function _resetFailCount(email) { sessionStorage.removeItem(_failCountKey(email)); }
+
+// Token de Turnstile (lo setea el callback global)
+let _turnstileToken = null;
+window.onTurnstileVerified = (token) => { _turnstileToken = token; };
+window.onTurnstileLoad = () => {};
+
 async function handleLogin(e) {
   if (e) e.preventDefault();
 
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
+  const honeypot = (document.getElementById('login-website') || {}).value || '';
   const errorEl = document.getElementById('login-error');
 
   if (!email || !password) {
     errorEl.textContent = 'Completa todos los campos';
     errorEl.style.display = 'block';
     return;
+  }
+
+  // HONEYPOT: si el campo invisible viene lleno → bot. Registrar + rechazar.
+  if (honeypot.trim().length > 0) {
+    console.warn('[auth] honeypot triggered, rejecting');
+    errorEl.textContent = 'Solicitud rechazada (anti-bot).';
+    errorEl.style.display = 'block';
+    // Disparar fetch a secure-login con bandera honeypot para que se registre
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/secure-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({ email, password: '', honeypot: honeypot }),
+      });
+    } catch(_) {}
+    return;
+  }
+
+  // CAPTCHA: si el email ya tiene ≥3 fallos en esta sesión, requerir Turnstile
+  const failCount = _getFailCount(email);
+  const captchaContainer = document.getElementById('login-captcha-container');
+  if (failCount >= 3) {
+    if (captchaContainer) captchaContainer.style.display = 'block';
+    if (!_turnstileToken) {
+      errorEl.textContent = 'Por favor verifica el captcha antes de continuar.';
+      errorEl.style.display = 'block';
+      return;
+    }
   }
 
   errorEl.style.display = 'none';
@@ -273,7 +313,7 @@ async function handleLogin(e) {
           'apikey': SUPABASE_KEY,
           'Authorization': `Bearer ${SUPABASE_KEY}`,
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, captcha_token: _turnstileToken }),
       });
       const result = await resp.json();
       if (resp.status === 429 || result.error === 'blocked') {
@@ -284,16 +324,28 @@ async function handleLogin(e) {
         return;
       }
       if (!resp.ok || result.error) {
+        _incrFailCount(email);
         let msg = result.message || 'Correo o contraseña incorrectos';
         if (result.blocked) {
           msg += ' (esta IP ha sido bloqueada)';
         } else if (result.recent_fails && result.recent_fails >= 3) {
           msg += ` · ${result.recent_fails} intentos recientes`;
         }
+        // Mostrar captcha desde el 3er fallo
+        if (_getFailCount(email) >= 3 && captchaContainer) {
+          captchaContainer.style.display = 'block';
+          msg += ' · Verifica el captcha para volver a intentar.';
+        }
         errorEl.textContent = msg;
         errorEl.style.display = 'block';
+        // Reset captcha token (cada intento requiere uno nuevo)
+        _turnstileToken = null;
+        try { window.turnstile && window.turnstile.reset(); } catch(_) {}
         return;
       }
+      // login OK → reset
+      _resetFailCount(email);
+      _turnstileToken = null;
       // Edge Function devolvió session — instalarla en el cliente local
       if (result.session) {
         await sb.auth.setSession({
@@ -301,7 +353,7 @@ async function handleLogin(e) {
           refresh_token: result.session.refresh_token,
         });
       }
-      data = { user: result.user, session: result.session };
+      data = { user: result.user, session: result.session, _anomaly: result.anomaly };
       error = null;
     } catch (edgeErr) {
       console.warn('secure-login no disponible, fallback a signIn directo:', edgeErr);
@@ -321,6 +373,15 @@ async function handleLogin(e) {
     await loadUserProfile();
     showMainApp();
     showToast('Bienvenido, ' + (currentUserProfile?.full_name || ''), 'success');
+    // Notificar al usuario si secure-login detectó un login anómalo
+    if (data._anomaly) {
+      setTimeout(() => {
+        const kind = data._anomaly.new_ip ? 'ubicación' : 'dispositivo';
+        showToast(`🔔 Login desde nueva ${kind}. Revisa tus notificaciones.`, 'warning');
+      }, 1500);
+    }
+    // Iniciar el timer de inactividad (60 min default)
+    if (window.SessionTimeout) window.SessionTimeout.start();
     // Splash cinematográfico post-login (una vez por sesión del browser)
     try {
       if (window.SplashVideo && !sessionStorage.getItem('splash_played')) {
@@ -336,6 +397,8 @@ async function handleLogin(e) {
 
 async function handleLogout() {
   try {
+    // Parar el timer de inactividad
+    if (window.SessionTimeout) window.SessionTimeout.stop();
     // Detener Walkthrough (canto del colibrí, animation loop) si está activo —
     // si no se hace, el audio sigue sonando incluso después del logout
     if (window.DashboardWalkthrough && typeof window.DashboardWalkthrough.destroy === 'function') {

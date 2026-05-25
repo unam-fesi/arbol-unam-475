@@ -20,6 +20,8 @@
 
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0"></script>
+    <!-- Cloudflare Turnstile (CAPTCHA gratis, sin tracking) — aparece solo tras 3 fallos -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer></script>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
@@ -70,15 +72,27 @@
 
             <div id="login-error" class="error-message"></div>
 
-            <form onsubmit="handleLogin(event)">
+            <form onsubmit="handleLogin(event)" autocomplete="on">
+                <!-- HONEYPOT: campo invisible que solo bots llenarán. Si llega con valor → reject -->
+                <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:0;height:0;overflow:hidden;" tabindex="-1">
+                    <label for="login-website">No completar este campo</label>
+                    <input type="text" id="login-website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
                 <div class="login-form-group">
                     <label for="login-email">Correo Electrónico</label>
-                    <input type="email" id="login-email" placeholder="tu.email@example.com" required>
+                    <input type="email" id="login-email" placeholder="tu.email@example.com" required autocomplete="username">
                 </div>
 
                 <div class="login-form-group">
                     <label for="login-password">Contraseña</label>
-                    <input type="password" id="login-password" placeholder="••••••••" required>
+                    <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+
+                <!-- CAPTCHA Cloudflare Turnstile (oculto por default; aparece tras 3 fallos del mismo email) -->
+                <div id="login-captcha-container" style="display:none;margin:0.75rem 0;">
+                    <div class="cf-turnstile" data-sitekey="1x00000000000000000000AA" data-callback="onTurnstileVerified"></div>
+                    <small class="text-muted" style="font-size:0.7rem;">Verifica que no eres un robot.</small>
                 </div>
 
                 <button type="submit" class="login-btn"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</button>
@@ -1459,6 +1473,7 @@
     <script src="js/iztacala-mariposas.js"></script>
     <script src="js/iztacala-calibrator.js"></script>
     <script src="js/splash-video.js"></script>
+    <script src="js/session-timeout.js"></script>
     <script src="js/dashboard-iztacala.js"></script>
     <script src="js/dashboard-campus.js"></script>
     <script src="js/dashboard-walkthrough.js"></script>

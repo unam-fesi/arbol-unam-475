@@ -4141,13 +4141,81 @@ async function loadAuditLog() {
   if (!container) return;
   try {
     const { data, error } = await sb.from('audit_log')
-      .select('*').order('occurred_at', { ascending: false }).limit(500);
+      .select('*').order('occurred_at', { ascending: false }).limit(1000);
     if (error) throw error;
     _auditCache = data || [];
-    // Header con filtros + clear button
+
+    // Stats: agrupar por acción / tabla / actor (top 5)
+    const byAction = {}, byTable = {}, byActor = {};
+    _auditCache.forEach(e => {
+      byAction[e.action] = (byAction[e.action] || 0) + 1;
+      byTable[e.table_name] = (byTable[e.table_name] || 0) + 1;
+      byActor[e.actor_email || '—'] = (byActor[e.actor_email || '—'] || 0) + 1;
+    });
+    const topTables = Object.entries(byTable).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const topActors = Object.entries(byActor).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    const last24h = _auditCache.filter(e => Date.now() - new Date(e.occurred_at) < 86400000).length;
+    const last7d = _auditCache.filter(e => Date.now() - new Date(e.occurred_at) < 7*86400000).length;
+
     container.innerHTML = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:0.6rem;">
-        <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearAuditFilters()">Limpiar filtros</button>
+      <!-- KPI cards arriba -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <div style="background:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid #5b8b7d;min-width:120px;flex:1;">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Total acciones</div>
+          <div style="font-size:22px;font-weight:700;color:#333;">${_auditCache.length}</div>
+          <div style="font-size:11px;color:#777;">${last24h} en 24h · ${last7d} en 7d</div>
+        </div>
+        <div style="background:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid #4CAF50;min-width:90px;flex:1;">
+          <div style="font-size:11px;color:#888;">INSERT</div>
+          <div style="font-size:22px;font-weight:700;color:#4CAF50;">${byAction.insert || 0}</div>
+        </div>
+        <div style="background:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid #FFC107;min-width:90px;flex:1;">
+          <div style="font-size:11px;color:#888;">UPDATE</div>
+          <div style="font-size:22px;font-weight:700;color:#d4a574;">${byAction.update || 0}</div>
+        </div>
+        <div style="background:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-left:4px solid #f44336;min-width:90px;flex:1;">
+          <div style="font-size:11px;color:#888;">DELETE</div>
+          <div style="font-size:22px;font-weight:700;color:#b54f3a;">${byAction.delete || 0}</div>
+        </div>
+      </div>
+
+      <!-- Top tablas + actores -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px;">
+        <div style="background:#fff;padding:12px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <div style="font-size:12px;font-weight:600;color:#333;margin-bottom:8px;">🗂 Top tablas modificadas</div>
+          ${topTables.map(([t, n]) => {
+            const max = topTables[0][1];
+            return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:11px;">
+              <div style="flex:1;color:#555;">${t}</div>
+              <div style="flex:2;background:#f0ede5;border-radius:4px;height:10px;overflow:hidden;">
+                <div style="width:${100*n/max}%;background:#5b8b7d;height:100%;"></div>
+              </div>
+              <div style="width:36px;text-align:right;font-weight:600;">${n}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="background:#fff;padding:12px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <div style="font-size:12px;font-weight:600;color:#333;margin-bottom:8px;">👤 Top usuarios activos</div>
+          ${topActors.map(([u, n]) => {
+            const max = topActors[0][1];
+            return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:11px;">
+              <div style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(u)}</div>
+              <div style="flex:2;background:#f0ede5;border-radius:4px;height:10px;overflow:hidden;">
+                <div style="width:${100*n/max}%;background:#8b6f47;height:100%;"></div>
+              </div>
+              <div style="width:36px;text-align:right;font-weight:600;">${n}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;gap:8px;">
+        <div class="text-small text-muted">${_auditCache.length} eventos cargados</div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearAuditFilters()">Limpiar filtros</button>
+          <button type="button" class="btn btn-sm" style="background:#3b7a3a;color:#fff;" onclick="_exportAuditCSV()">📥 Exportar CSV</button>
+        </div>
       </div>
       <table class="admin-table">
         <thead>
@@ -4157,6 +4225,7 @@ async function loadAuditLog() {
             <th><div>Acción</div><select class="filter-input" data-filter="a-action" onchange="_filterAudit()"><option value="">— Todas —</option><option value="insert">insert</option><option value="update">update</option><option value="delete">delete</option></select></th>
             <th><div>Tabla</div><input type="text" class="filter-input" data-filter="a-table" placeholder="🔍 tabla" oninput="_filterAudit()" autocomplete="off"></th>
             <th><div>Row ID</div><input type="text" class="filter-input" data-filter="a-row" placeholder="🔍 id" oninput="_filterAudit()" autocomplete="off"></th>
+            <th><div>Diff</div></th>
           </tr>
         </thead>
         <tbody id="audit-log-tbody"></tbody>
@@ -4179,12 +4248,14 @@ function _renderAudit(rows) {
   rows.forEach(e => {
     const color = e.action === 'delete' ? '#f44336' : e.action === 'update' ? '#FFC107' : '#4CAF50';
     const row = document.createElement('tr');
+    const hasDiff = e.before_data || e.after_data;
     row.innerHTML = `
       <td>${formatDate(e.occurred_at)}</td>
       <td>${escapeHtml(e.actor_email || '—')}</td>
       <td><span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${e.action}</span></td>
       <td>${escapeHtml(e.table_name)}</td>
       <td>${escapeHtml(e.row_id || '')}</td>
+      <td>${hasDiff ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:11px;" onclick="_showAuditDiff(${e.id})">👁 Ver</button>` : ''}</td>
     `;
     tbody.appendChild(row);
   });
@@ -4215,6 +4286,82 @@ function _clearAuditFilters() {
 
 window._filterAudit = _filterAudit;
 window._clearAuditFilters = _clearAuditFilters;
+
+// Export CSV del audit log filtrado
+function _exportAuditCSV() {
+  const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
+  const fDate = get('a-date'), fUser = get('a-user'), fAction = get('a-action'),
+        fTable = get('a-table'), fRow = get('a-row');
+  const rows = _auditCache.filter(e => {
+    if (fDate && !(e.occurred_at || '').toLowerCase().includes(fDate)) return false;
+    if (fUser && !(e.actor_email || '').toLowerCase().includes(fUser)) return false;
+    if (fAction && (e.action || '') !== fAction) return false;
+    if (fTable && !(e.table_name || '').toLowerCase().includes(fTable)) return false;
+    if (fRow && !(e.row_id || '').toLowerCase().includes(fRow)) return false;
+    return true;
+  });
+  const header = ['id','occurred_at','actor_email','action','table_name','row_id','before_data','after_data'];
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [header.join(',')].concat(rows.map(r =>
+    header.map(h => esc(typeof r[h] === 'object' ? JSON.stringify(r[h]) : r[h])).join(',')
+  ));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit_log_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`${rows.length} eventos exportados a CSV`, 'success');
+}
+window._exportAuditCSV = _exportAuditCSV;
+
+// Diff before → after del audit log
+function _showAuditDiff(id) {
+  const e = _auditCache.find(x => x.id === id);
+  if (!e) return;
+  const before = e.before_data || {};
+  const after  = e.after_data || {};
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const rows = [];
+  keys.forEach(k => {
+    const b = before[k], a = after[k];
+    const changed = JSON.stringify(b) !== JSON.stringify(a);
+    rows.push({ key: k, before: b, after: a, changed });
+  });
+  rows.sort((x,y) => (y.changed - x.changed));   // cambios arriba
+
+  const fmt = v => v === undefined ? '<em style="color:#999;">undefined</em>'
+                 : v === null ? '<em style="color:#999;">null</em>'
+                 : typeof v === 'object' ? `<code>${escapeHtml(JSON.stringify(v))}</code>`
+                 : `<code>${escapeHtml(String(v))}</code>`;
+
+  const html = `
+    <div style="max-height:60vh;overflow-y:auto;">
+      <div style="margin-bottom:10px;font-size:12px;color:#666;">
+        <strong>${e.action.toUpperCase()}</strong> en <code>${escapeHtml(e.table_name)}</code> · row_id <code>${escapeHtml(e.row_id||'')}</code><br>
+        ${formatDate(e.occurred_at)} · por ${escapeHtml(e.actor_email||'—')}
+      </div>
+      <table class="admin-table" style="font-size:11px;width:100%;">
+        <thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr style="${r.changed ? 'background:rgba(255,193,7,0.1);' : ''}">
+              <td style="font-weight:${r.changed?'600':'400'};">${escapeHtml(r.key)}</td>
+              <td style="word-break:break-all;">${fmt(r.before)}</td>
+              <td style="word-break:break-all;">${fmt(r.after)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  if (typeof showModal === 'function') {
+    showModal(`Diff #${id}`, html);
+  } else {
+    alert(`Diff #${id}:\nbefore: ${JSON.stringify(before, null, 2)}\nafter: ${JSON.stringify(after, null, 2)}`);
+  }
+}
+window._showAuditDiff = _showAuditDiff;
 
 // =============================================================
 // INNOVACIÓN #10 — Widget de clima en dashboard admin
