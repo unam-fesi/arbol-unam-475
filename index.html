@@ -305,18 +305,41 @@
                     <div id="admin-campus-banner" style="display:none;background:#fff7e6;border:1px solid #ffd180;color:#7a5a2a;padding:0.6rem 1rem;border-radius:8px;margin-bottom:1rem;font-size:0.88rem;"></div>
 
                     <div class="admin-panel">
-                        <div class="admin-tabs">
-                            <button class="admin-tab active" data-tab="users" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button>
-                            <button class="admin-tab" data-tab="trees" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Árboles</button>
-                            <button class="admin-tab" data-tab="gardens" onclick="switchAdminTab('gardens')"><i class="fas fa-leaf"></i> Jardines</button>
-                            <button class="admin-tab" data-tab="groups" onclick="switchAdminTab('groups')"><i class="fas fa-layer-group"></i> Grupos</button>
-                            <button class="admin-tab" data-tab="coordinacion" onclick="switchAdminTab('coordinacion')"><i class="fas fa-user-friends"></i> Coordinaci&oacute;n</button>
-                            <button class="admin-tab" data-tab="notifications" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
-                    <button class="admin-tab" data-tab="assignments" onclick="switchAdminTab(\'assignments\')"><i class="fas fa-link"></i> Asignaciones</button>
-                            <button class="admin-tab" data-tab="dashboard" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
-                            <button class="admin-tab" data-tab="kpis" onclick="switchAdminTab('kpis')"><i class="fas fa-chart-line"></i> KPIs Multi-Campus</button>
-                            <button class="admin-tab" data-tab="reports" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
-                            <button class="admin-tab" data-tab="audit" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditor&iacute;a</button>
+                        <!-- GRUPOS DE TABS — botones principales (un nivel) -->
+                        <div class="admin-tab-groups" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:4px;background:rgba(0,0,0,0.03);border-radius:8px;">
+                            <button class="admin-tab-group active" data-group="gestion" onclick="switchAdminGroup('gestion')" style="padding:8px 14px;border:0;border-radius:6px;background:#fff;font-weight:600;cursor:pointer;color:#333;box-shadow:0 1px 2px rgba(0,0,0,0.08);">
+                                <i class="fas fa-folder-open"></i> Gestión
+                            </button>
+                            <button class="admin-tab-group" data-group="monitoreo" onclick="switchAdminGroup('monitoreo')" style="padding:8px 14px;border:0;border-radius:6px;background:transparent;font-weight:600;cursor:pointer;color:#666;">
+                                <i class="fas fa-chart-line"></i> Monitoreo
+                            </button>
+                            <button class="admin-tab-group" data-group="comunicacion" onclick="switchAdminGroup('comunicacion')" style="padding:8px 14px;border:0;border-radius:6px;background:transparent;font-weight:600;cursor:pointer;color:#666;">
+                                <i class="fas fa-bullhorn"></i> Comunicación
+                            </button>
+                            <button class="admin-tab-group" data-group="seguridad" onclick="switchAdminGroup('seguridad')" style="padding:8px 14px;border:0;border-radius:6px;background:transparent;font-weight:600;cursor:pointer;color:#666;">
+                                <i class="fas fa-shield-halved"></i> Seguridad
+                            </button>
+                        </div>
+
+                        <!-- SUBTABS — solo se muestran los del grupo activo -->
+                        <div class="admin-tabs" id="admin-subtabs-gestion">
+                            <button class="admin-tab active" data-tab="users" data-group="gestion" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button>
+                            <button class="admin-tab" data-tab="trees" data-group="gestion" onclick="switchAdminTab('trees')"><i class="fas fa-tree"></i> Árboles</button>
+                            <button class="admin-tab" data-tab="gardens" data-group="gestion" onclick="switchAdminTab('gardens')"><i class="fas fa-leaf"></i> Jardines</button>
+                            <button class="admin-tab" data-tab="groups" data-group="gestion" onclick="switchAdminTab('groups')"><i class="fas fa-layer-group"></i> Grupos</button>
+                            <button class="admin-tab" data-tab="assignments" data-group="gestion" onclick="switchAdminTab('assignments')"><i class="fas fa-link"></i> Asignaciones</button>
+                            <button class="admin-tab" data-tab="coordinacion" data-group="gestion" onclick="switchAdminTab('coordinacion')"><i class="fas fa-user-friends"></i> Coordinación</button>
+                        </div>
+                        <div class="admin-tabs" id="admin-subtabs-monitoreo" style="display:none;">
+                            <button class="admin-tab" data-tab="dashboard" data-group="monitoreo" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
+                            <button class="admin-tab" data-tab="kpis" data-group="monitoreo" onclick="switchAdminTab('kpis')"><i class="fas fa-chart-line"></i> KPIs Multi-Campus</button>
+                        </div>
+                        <div class="admin-tabs" id="admin-subtabs-comunicacion" style="display:none;">
+                            <button class="admin-tab" data-tab="notifications" data-group="comunicacion" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
+                            <button class="admin-tab" data-tab="reports" data-group="comunicacion" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
+                        </div>
+                        <div class="admin-tabs" id="admin-subtabs-seguridad" style="display:none;">
+                            <button class="admin-tab" data-tab="audit" data-group="seguridad" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditoría</button>
                         </div>
 
                         <div class="admin-content">

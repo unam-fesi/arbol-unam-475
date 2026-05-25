@@ -45,7 +45,40 @@ window.effectiveCampusFilter = effectiveCampusFilter;
 // Tabs restringidas para admin-campus:
 //   - 'gardens'  → solo admin principal (no admin-campus)
 //   - 'audit'    → solo admin principal
+//   - 'kpis'     → solo admin principal
 const TABS_ADMIN_ONLY = new Set(['gardens', 'audit', 'kpis']);
+
+// Mapeo: cada tab pertenece a un grupo (gestión, monitoreo, comunicación, seguridad)
+const TAB_GROUP = {
+  users: 'gestion', trees: 'gestion', gardens: 'gestion', groups: 'gestion',
+  assignments: 'gestion', coordinacion: 'gestion',
+  dashboard: 'monitoreo', kpis: 'monitoreo',
+  notifications: 'comunicacion', reports: 'comunicacion',
+  audit: 'seguridad',
+};
+
+// Cambia el GRUPO de tabs visibles (Gestión / Monitoreo / Comunicación / Seguridad)
+function switchAdminGroup(groupName) {
+  // Actualizar estilo de los botones de grupo
+  document.querySelectorAll('.admin-tab-group').forEach(btn => {
+    const isActive = btn.dataset.group === groupName;
+    btn.classList.toggle('active', isActive);
+    btn.style.background = isActive ? '#fff' : 'transparent';
+    btn.style.color = isActive ? '#333' : '#666';
+    btn.style.boxShadow = isActive ? '0 1px 2px rgba(0,0,0,0.08)' : 'none';
+  });
+  // Mostrar solo la fila de subtabs del grupo activo
+  document.querySelectorAll('[id^="admin-subtabs-"]').forEach(el => {
+    el.style.display = el.id === `admin-subtabs-${groupName}` ? '' : 'none';
+  });
+  // Auto-seleccionar la primera tab visible del grupo (que no esté oculta por rol)
+  const firstTab = document.querySelector(`#admin-subtabs-${groupName} .admin-tab:not([style*="display: none"])`);
+  if (firstTab) {
+    const tabName = firstTab.dataset.tab;
+    if (tabName) switchAdminTab(tabName);
+  }
+}
+window.switchAdminGroup = switchAdminGroup;
 
 function switchAdminTab(tabName) {
   // admin principal Y admin-campus pueden entrar al panel
@@ -83,6 +116,20 @@ function switchAdminTab(tabName) {
     tab.classList.remove('active');
     if (tab.dataset.tab === tabName) tab.classList.add('active');
   });
+  // Asegurar que el grupo de la tab esté visible (por si se navegó directo a una tab)
+  const group = TAB_GROUP[tabName];
+  if (group) {
+    document.querySelectorAll('.admin-tab-group').forEach(btn => {
+      const isActive = btn.dataset.group === group;
+      btn.classList.toggle('active', isActive);
+      btn.style.background = isActive ? '#fff' : 'transparent';
+      btn.style.color = isActive ? '#333' : '#666';
+      btn.style.boxShadow = isActive ? '0 1px 2px rgba(0,0,0,0.08)' : 'none';
+    });
+    document.querySelectorAll('[id^="admin-subtabs-"]').forEach(el => {
+      el.style.display = el.id === `admin-subtabs-${group}` ? '' : 'none';
+    });
+  }
 }
 
 // ============================================================================
@@ -2667,33 +2714,46 @@ async function loadKpis() {
       try { const r = await promiseLike; return r && r.data ? r.data : []; }
       catch (_) { return []; }
     };
-    const [trees, gardens, users, groups, meas, gvisits, followups, reports, treeAssigns, badges] = await Promise.all([
-      safe(sb.from('trees_catalog').select('id, campus, health_score, status, photo_url, location_lat, location_lng, created_at')),
+    const [trees, gardens, users, groups, meas, gvisits, followups, reports, treeAssigns, badges, measAll, measPhotos] = await Promise.all([
+      safe(sb.from('trees_catalog').select('id, campus, common_name, species, health_score, status, photo_url, location_lat, location_lng, created_at, initial_height_cm')),
       safe(sb.from('gardens').select('id, campus, name')),
       safe(sb.from('user_profiles').select('id, campus, role')),
       safe(sb.from('user_groups').select('id, campus, name')),
-      safe(sb.from('tree_measurements').select('id, tree_id, measurement_date').gte('measurement_date', monthAgo)),
+      safe(sb.from('tree_measurements').select('id, tree_id, user_id, measurement_date').gte('measurement_date', monthAgo)),
       safe(sb.from('garden_visits').select('id, garden_id, visit_date').gte('visit_date', monthAgo)),
       safe(sb.from('specialist_followups').select('id, tree_id, followup_date').gte('followup_date', monthAgo)),
       safe(sb.from('problem_reports').select('id, status, urgency, created_at, tree_id')),
       safe(sb.from('tree_assignments').select('id, tree_id, user_id, assigned_at')),
       safe(sb.from('user_badges').select('id, user_id, badge_id, awarded_at')),
+      // TODAS las mediciones (no solo 30d) para calcular % de engagement
+      safe(sb.from('tree_measurements').select('id, tree_id, user_id, photo_url')),
+      // Set de tree_ids con foto en mediciones (más usado que photo_url en trees_catalog)
+      safe(sb.from('tree_measurements').select('tree_id').not('photo_url', 'is', null)),
     ]);
 
     // Indexar árboles por id para resolver mediciones → campus
     const treeById = new Map(trees.map(t => [t.id, t]));
     const gardenById = new Map(gardens.map(g => [g.id, g]));
     const userById = new Map(users.map(u => [u.id, u]));
+    // Set de tree_ids que tienen al menos UNA foto (en trees_catalog.photo_url o en tree_measurements.photo_url)
+    const treesWithAnyPhoto = new Set();
+    trees.forEach(t => { if (t.photo_url) treesWithAnyPhoto.add(t.id); });
+    (measPhotos || []).forEach(m => { if (m.tree_id) treesWithAnyPhoto.add(m.tree_id); });
+    // Set de tree_ids que tienen al menos UNA medición (engagement = % activo)
+    const treesWithMeas = new Set();
+    (measAll || []).forEach(m => { if (m.tree_id) treesWithMeas.add(m.tree_id); });
 
     // Calcular KPIs por campus
     function emptyKpi() {
       return {
-        trees: 0, treesWithPhoto: 0, treesWithGPS: 0,
+        trees: 0, treesWithPhoto: 0, treesWithGPS: 0, treesWithMeas: 0,
         healthSum: 0, healthCount: 0,
         healthBuena: 0, healthMedia: 0, healthMala: 0,
         gardens: 0, users: 0, students: 0, responsables: 0, adminCampus: 0, specialists: 0,
         groups: 0, measurements30d: 0, gardenVisits30d: 0, followups30d: 0,
         treeAssignments: 0, badges: 0, problemsOpen: 0,
+        co2KgYear: 0,            // CO2 capturado estimado (~22kg/año por árbol — promedio conservador)
+        speciesCount: {},        // count por especie para top
       };
     }
     const byCampus = Object.create(null);
@@ -2702,8 +2762,9 @@ async function loadKpis() {
     trees.forEach(t => {
       const c = byCampus[t.campus] || (byCampus[t.campus] = emptyKpi());
       c.trees++;
-      if (t.photo_url) c.treesWithPhoto++;
+      if (treesWithAnyPhoto.has(t.id)) c.treesWithPhoto++;
       if (t.location_lat && t.location_lng) c.treesWithGPS++;
+      if (treesWithMeas.has(t.id)) c.treesWithMeas++;
       const h = (t.health_score == null) ? null : Number(t.health_score);
       if (h != null && !isNaN(h)) {
         c.healthSum += h; c.healthCount++;
@@ -2711,6 +2772,15 @@ async function loadKpis() {
         else if (h >= 40) c.healthMedia++;
         else c.healthMala++;
       }
+      // CO2 capturado estimado: ~22kg CO2/año por árbol urbano joven
+      // (referencia: estudios de FAO/UN-Habitat para árboles urbanos).
+      // Si tenemos altura inicial, escalamos: árboles más altos absorben más.
+      const baseCO2 = 22;
+      const heightFactor = t.initial_height_cm ? Math.min(2.5, Math.max(0.5, t.initial_height_cm / 200)) : 1;
+      c.co2KgYear += baseCO2 * heightFactor;
+      // Conteo de especies para top
+      const sp = (t.common_name || t.species || 'sin-especie').trim().toLowerCase();
+      if (sp) c.speciesCount[sp] = (c.speciesCount[sp] || 0) + 1;
     });
     gardens.forEach(g => { (byCampus[g.campus] = byCampus[g.campus] || emptyKpi()).gardens++; });
     users.forEach(u => {
@@ -2768,19 +2838,29 @@ function _renderKpisHtml(byCampus, raw) {
     acc.trees += k.trees;
     acc.treesWithPhoto += k.treesWithPhoto;
     acc.treesWithGPS += k.treesWithGPS;
+    acc.treesWithMeas += k.treesWithMeas;
     acc.healthSum += k.healthSum;
     acc.healthCount += k.healthCount;
+    acc.healthBuena += k.healthBuena;
+    acc.healthMedia += k.healthMedia;
+    acc.healthMala += k.healthMala;
     acc.gardens += k.gardens;
     acc.users += k.users;
     acc.measurements30d += k.measurements30d;
+    acc.co2KgYear += k.co2KgYear;
     return acc;
-  }, { trees: 0, treesWithPhoto: 0, treesWithGPS: 0, healthSum: 0, healthCount: 0, gardens: 0, users: 0, measurements30d: 0 });
+  }, { trees: 0, treesWithPhoto: 0, treesWithGPS: 0, treesWithMeas: 0, healthSum: 0, healthCount: 0, healthBuena: 0, healthMedia: 0, healthMala: 0, gardens: 0, users: 0, measurements30d: 0, co2KgYear: 0 });
   const avgHealth = totals.healthCount > 0 ? (totals.healthSum / totals.healthCount) : null;
   const pctPhoto = totals.trees > 0 ? Math.round(100 * totals.treesWithPhoto / totals.trees) : 0;
   const pctGPS = totals.trees > 0 ? Math.round(100 * totals.treesWithGPS / totals.trees) : 0;
+  const pctEngagement = totals.trees > 0 ? Math.round(100 * totals.treesWithMeas / totals.trees) : 0;
   const openReports = (raw.reports || []).filter(r => !['resolved', 'closed'].includes((r.status || 'open').toLowerCase())).length;
   const totalAssigns = (raw.treeAssigns || []).length;
   const totalBadges = (raw.badges || []).length;
+  // Equivalencias del CO2 capturado para hacerlo tangible
+  const co2Tons = totals.co2KgYear / 1000;
+  const carEquiv = Math.round(totals.co2KgYear / 4600);   // 1 carro promedio ~4.6 ton/año
+  const personEquiv = Math.round(totals.co2KgYear / 400); // 1 persona respira ~400 kg/año
 
   // Theme colors per campus para barras
   const colorOf = (c) => (CAMPUS_THEMES[c] && CAMPUS_THEMES[c].color) || '#999';
@@ -2820,6 +2900,7 @@ function _renderKpisHtml(byCampus, raw) {
     const avgH = k.healthCount > 0 ? (k.healthSum / k.healthCount).toFixed(1) : '—';
     const photoPct = k.trees > 0 ? Math.round(100 * k.treesWithPhoto / k.trees) + '%' : '—';
     const gpsPct = k.trees > 0 ? Math.round(100 * k.treesWithGPS / k.trees) + '%' : '—';
+    const engagePct = k.trees > 0 ? Math.round(100 * k.treesWithMeas / k.trees) + '%' : '—';
     return `
       <tr>
         <td style="font-weight:600;color:${colorOf(c)};"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colorOf(c)};margin-right:6px;"></span>${c}</td>
@@ -2831,14 +2912,25 @@ function _renderKpisHtml(byCampus, raw) {
         <td style="text-align:right;">${k.groups}</td>
         <td style="text-align:right;">${photoPct}</td>
         <td style="text-align:right;">${gpsPct}</td>
+        <td style="text-align:right;">${engagePct}</td>
         <td style="text-align:right;">${avgH}</td>
         <td style="text-align:right;">${k.measurements30d}</td>
         <td style="text-align:right;">${k.gardenVisits30d}</td>
         <td style="text-align:right;">${k.treeAssignments}</td>
         <td style="text-align:right;">${k.badges}</td>
+        <td style="text-align:right;">${(k.co2KgYear/1000).toFixed(1)} t</td>
         <td style="text-align:right;color:${k.problemsOpen>0?'#b54f3a':'#999'};">${k.problemsOpen}</td>
       </tr>`;
   }).join('');
+
+  // Top 5 especies globales
+  const speciesGlobal = {};
+  campusOrder.forEach(c => {
+    Object.entries(byCampus[c].speciesCount).forEach(([sp, n]) => {
+      speciesGlobal[sp] = (speciesGlobal[sp] || 0) + n;
+    });
+  });
+  const top5Species = Object.entries(speciesGlobal).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return `
     <!-- KPIs globales -->
@@ -2847,20 +2939,72 @@ function _renderKpisHtml(byCampus, raw) {
       ${card('Jardines', totals.gardens, '', '🌿', '#5b8b7d')}
       ${card('Usuarios', totals.users, `${raw.users.filter(u=>u.role==='admin-campus').length} admin · ${raw.users.filter(u=>u.role==='responsable').length} resp.`, '👥', '#8b6f47')}
       ${card('Salud promedio', avgHealth != null ? avgHealth.toFixed(1) : '—', avgHealth != null ? (avgHealth >= 70 ? 'Buena' : avgHealth >= 40 ? 'Media' : 'Mala') : '', '❤️', avgHealth != null ? (avgHealth >= 70 ? '#3b7a3a' : avgHealth >= 40 ? '#d4a574' : '#b54f3a') : '#999')}
-      ${card('% con foto', pctPhoto + '%', `${totals.treesWithPhoto}/${totals.trees}`, '📷', '#4a7c2a')}
+      ${card('% con foto', pctPhoto + '%', `${totals.treesWithPhoto}/${totals.trees} árboles`, '📷', '#4a7c2a')}
       ${card('% con GPS', pctGPS + '%', `${totals.treesWithGPS}/${totals.trees}`, '📍', '#5b8b7d')}
-      ${card('Mediciones 30d', totals.measurements30d, 'últimos 30 días', '📈', '#d4a574')}
-      ${card('Asignaciones', totalAssigns, 'árboles asignados', '🔗', '#5b8b7d')}
+      ${card('% engagement', pctEngagement + '%', `${totals.treesWithMeas}/${totals.trees} con seguimiento`, '🎯', pctEngagement >= 50 ? '#3b7a3a' : pctEngagement >= 25 ? '#d4a574' : '#b54f3a')}
+      ${card('Seguimientos árbol 30d', totals.measurements30d, 'últimos 30 días', '📈', '#d4a574')}
+      ${card('CO₂ capturado', co2Tons.toFixed(1) + ' t/año', `≈ ${carEquiv} auto${carEquiv!==1?'s':''} · ${personEquiv} persona${personEquiv!==1?'s':''}`, '🌬️', '#2E7D32')}
+      ${card('Asignaciones activas', totalAssigns, 'árboles con responsable', '🔗', '#5b8b7d')}
       ${card('Badges otorgados', totalBadges, '', '🏅', '#4a7c2a')}
       ${card('Reportes abiertos', openReports, '', '🚨', openReports > 0 ? '#b54f3a' : '#999')}
     </div>
+
+    <!-- Distribución de salud (barra apilada) -->
+    <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">❤️ Distribución de salud por campus</div>
+      ${campusOrder.map(c => {
+        const k = byCampus[c];
+        const total = k.healthBuena + k.healthMedia + k.healthMala;
+        if (total === 0) return '';
+        const pB = (100*k.healthBuena/total).toFixed(1);
+        const pM = (100*k.healthMedia/total).toFixed(1);
+        const pX = (100*k.healthMala/total).toFixed(1);
+        return `
+          <div style="margin:8px 0;font-size:11px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+              <span style="font-weight:600;color:${colorOf(c)};">${c}</span>
+              <span style="color:#666;">${total} árboles con dato de salud</span>
+            </div>
+            <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;border:1px solid #e0d8c8;">
+              <div style="width:${pB}%;background:#3b7a3a;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;" title="Buena ≥70: ${k.healthBuena}">${k.healthBuena>0?k.healthBuena:''}</div>
+              <div style="width:${pM}%;background:#d4a574;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;" title="Media 40-69: ${k.healthMedia}">${k.healthMedia>0?k.healthMedia:''}</div>
+              <div style="width:${pX}%;background:#b54f3a;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;" title="Mala <40: ${k.healthMala}">${k.healthMala>0?k.healthMala:''}</div>
+            </div>
+          </div>`;
+      }).join('')}
+      <div style="display:flex;gap:14px;font-size:10px;color:#666;margin-top:8px;">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#3b7a3a;border-radius:2px;margin-right:4px;"></span>Buena ≥70</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#d4a574;border-radius:2px;margin-right:4px;"></span>Media 40-69</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#b54f3a;border-radius:2px;margin-right:4px;"></span>Mala &lt;40</span>
+      </div>
+    </div>
+
+    <!-- Top 5 especies -->
+    ${top5Species.length > 0 ? `
+    <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🌿 Top 5 especies más comunes</div>
+      ${top5Species.map(([sp, n], i) => {
+        const pct = Math.round(100 * n / totals.trees);
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
+            <div style="width:24px;color:#888;font-weight:600;">${i+1}.</div>
+            <div style="flex:1;text-transform:capitalize;color:#333;">${sp}</div>
+            <div style="flex:2;background:#f0ede5;border-radius:6px;height:14px;overflow:hidden;">
+              <div style="width:${pct}%;background:#4a7c2a;height:100%;"></div>
+            </div>
+            <div style="width:80px;text-align:right;color:#555;font-weight:600;">${n} <span style="color:#888;font-weight:normal;">(${pct}%)</span></div>
+          </div>`;
+      }).join('')}
+    </div>` : ''}
 
     <!-- Barras comparativas -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:18px;">
       ${bars('trees', '🌳 Árboles por campus')}
       ${bars('users', '👥 Usuarios por campus')}
       ${bars('gardens', '🌿 Jardines por campus')}
-      ${bars('measurements30d', '📈 Mediciones últimos 30 días')}
+      ${bars('measurements30d', '📈 Seguimientos árbol 30d')}
+      ${bars('gardenVisits30d', '🌿 Visitas jardín 30d')}
+      ${bars('treeAssignments', '🔗 Árboles con asignación')}
     </div>
 
     <!-- Tabla detallada -->
@@ -2876,13 +3020,15 @@ function _renderKpisHtml(byCampus, raw) {
             <th style="text-align:right;">Estudiantes</th>
             <th style="text-align:right;">Responsables</th>
             <th style="text-align:right;">Grupos</th>
-            <th style="text-align:right;">% Foto</th>
-            <th style="text-align:right;">% GPS</th>
-            <th style="text-align:right;">Salud ø</th>
-            <th style="text-align:right;">Med. 30d</th>
-            <th style="text-align:right;">Visitas 30d</th>
+            <th style="text-align:right;" title="Árboles con al menos una foto (en catálogo o seguimientos)">% Foto</th>
+            <th style="text-align:right;" title="Árboles con coordenadas GPS">% GPS</th>
+            <th style="text-align:right;" title="% árboles con al menos 1 seguimiento histórico">% Engage</th>
+            <th style="text-align:right;" title="Salud promedio 0-100">Salud ø</th>
+            <th style="text-align:right;" title="Seguimientos de árbol últimos 30 días (tree_measurements)">Segui. árbol 30d</th>
+            <th style="text-align:right;" title="Visitas a jardines últimos 30 días (garden_visits)">Visitas jardín 30d</th>
             <th style="text-align:right;">Asign.</th>
             <th style="text-align:right;">Badges</th>
+            <th style="text-align:right;" title="CO₂ capturado estimado por año (~22kg base + factor altura)">CO₂/año</th>
             <th style="text-align:right;">Probl.</th>
           </tr>
         </thead>
@@ -2890,8 +3036,11 @@ function _renderKpisHtml(byCampus, raw) {
       </table>
     </div>
 
-    <p class="text-muted text-small" style="margin-top:10px;">
-      <i class="fas fa-info-circle"></i> Datos en tiempo real. Salud promedio en escala 0-100 (Buena ≥70, Media 40-69, Mala &lt;40).
+    <p class="text-muted text-small" style="margin-top:10px;line-height:1.5;">
+      <i class="fas fa-info-circle"></i> Datos en tiempo real. Salud 0-100 (Buena ≥70, Media 40-69, Mala &lt;40).
+      <strong>% Engage</strong> = árboles con al menos 1 seguimiento histórico.
+      <strong>% Foto</strong> = árboles con foto en catálogo o en algún seguimiento.
+      <strong>CO₂</strong> estimado con ~22 kg/año por árbol urbano joven, escalado por altura inicial.
     </p>
   `;
 }
