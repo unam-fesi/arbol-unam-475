@@ -503,11 +503,11 @@ window.CampusMap = (function() {
     const slug = (campusName || '').toLowerCase().replace(/\s+/g, '_');
     let data;
     try {
-      const res = await fetch(`data/campus_${slug}.json`);
+      const res = await fetch(`data/${slug}_campus.json`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
     } catch (e) {
-      console.warn(`[CampusMap.buildInto] no se pudo cargar campus_${slug}.json:`, e.message);
+      console.warn(`[CampusMap.buildInto] no se pudo cargar ${slug}_campus.json:`, e.message);
       return null;
     }
     const root = new THREE.Group();
