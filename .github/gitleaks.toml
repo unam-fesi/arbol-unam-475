@@ -9,11 +9,21 @@ description = "Allowlist global"
 paths = [
   # La anon key de Supabase es pública por diseño (RLS hace el control real).
   '''js/config\.js''',
+  # DAST tests legítimamente incluyen la anon key como header de prueba
+  '''scripts/dast/.*''',
 ]
 regexes = [
   # JWT tokens de Supabase anon (siempre empiezan con eyJ y el iss es supabase).
   '''eyJhbGciOiJIUzI1NiI[A-Za-z0-9_\-.]+\.[A-Za-z0-9_\-.]+''',
+  # Anon key de Supabase específica del proyecto (es pública por diseño)
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhbWJzY2ZkaWF5bW93c2tpc2x3Iiwicm9sZSI6ImFub24i[A-Za-z0-9_\-.]+''',
 ]
+
+# Excluir commits específicos que contenían secretos ya rotados/conocidos
+[allowlist.commits]
+# El commit c94093ca tenía una Gemini API key que DEBE rotarse (ver README de seguridad).
+# Después de rotarla, se puede listar aquí para que no aparezca en futuros scans.
+# commits = ["c94093ca..."]
 
 # Reglas extra del proyecto
 [[rules]]
