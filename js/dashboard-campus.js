@@ -513,32 +513,73 @@ window.CampusMap = (function() {
     const root = new THREE.Group();
     root.name = `CampusGeom_${campusName}`;
 
-    // Boundary line (verde)
+    // ── Mismo pasto / borde / techos que Iztacala ──
+    const GRASS_COLOR = 0x6fb24a;          // verde vivo tipo mapa UNAM
+    const BORDER_COLOR = 0x2d4a1a;          // borde oscuro
+    const ROOF_BASE = [0xb04a40, 0xa84538]; // techos regular
+    const ROOF_SCHOOL = [0xc8554a, 0xd05a4d, 0xd86250]; // techos coloreados para "school"
+
+    // Textura procedural de tejas (canvas) para los techos
+    const _makeRoofTexture = (() => {
+      let cached = null;
+      return () => {
+        if (cached) return cached;
+        const c = document.createElement('canvas');
+        c.width = c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#c25446';
+        ctx.fillRect(0, 0, 256, 256);
+        // Líneas horizontales (filas de tejas)
+        ctx.strokeStyle = 'rgba(80,30,20,0.5)';
+        ctx.lineWidth = 2;
+        for (let y = 0; y < 256; y += 16) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
+        }
+        // Líneas verticales escalonadas (separación entre tejas)
+        ctx.strokeStyle = 'rgba(60,20,15,0.35)';
+        ctx.lineWidth = 1;
+        for (let y = 0; y < 256; y += 16) {
+          const offset = (y/16) % 2 === 0 ? 0 : 8;
+          for (let x = offset; x < 256; x += 16) {
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 16); ctx.stroke();
+          }
+        }
+        // Sombras sutiles
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        for (let y = 0; y < 256; y += 16) ctx.fillRect(0, y, 256, 4);
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        cached = tex;
+        return tex;
+      };
+    })();
+
+    // Boundary line + piso pasto
     if (data.boundary && data.boundary.length > 2) {
-      const pts = data.boundary.map(p => new THREE.Vector3(p[0], 0.15, -p[1]));
+      const pts = data.boundary.map(p => new THREE.Vector3(p[0], 0.1, -p[1]));
       pts.push(pts[0].clone());
       const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x2E7D32 });
+      const lineMat = new THREE.LineBasicMaterial({ color: BORDER_COLOR });
       root.add(new THREE.Line(lineGeo, lineMat));
 
+      // Piso de pasto verde (mismo color que Iztacala)
       const shape = new THREE.Shape();
       data.boundary.forEach((p, i) => {
         if (i === 0) shape.moveTo(p[0], p[1]); else shape.lineTo(p[0], p[1]);
       });
-      const floorGeo = new THREE.ShapeGeometry(shape);
-      const floorMat = new THREE.MeshStandardMaterial({ color: 0xD4E8B8, roughness: 0.95, transparent: true, opacity: 0.55 });
-      const floor = new THREE.Mesh(floorGeo, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = 0.06;
-      floor.receiveShadow = true;
-      root.add(floor);
+      const grassGeo = new THREE.ShapeGeometry(shape);
+      grassGeo.rotateX(-Math.PI / 2);
+      const grassMat = new THREE.MeshLambertMaterial({ color: GRASS_COLOR, side: THREE.DoubleSide });
+      const grass = new THREE.Mesh(grassGeo, grassMat);
+      grass.position.y = 0.05;
+      grass.receiveShadow = true;
+      root.add(grass);
     }
 
-    // Edificios
-    const bldgMat = new THREE.MeshStandardMaterial({ color: 0xFAF5EC, roughness: 0.8 });
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0xF5C8B5, roughness: 0.7 });
-    const roofExtra = new THREE.MeshStandardMaterial({ color: 0x5B8B7D, roughness: 0.7 });
-    (data.buildings || []).forEach(b => {
+    // Edificios + techo con textura tejas
+    const bldgMat = new THREE.MeshStandardMaterial({ color: 0xFAF5EC, roughness: 0.85 });
+    const roofTex = _makeRoofTexture();
+    (data.buildings || []).forEach((b, idx) => {
       if (!b.footprint || b.footprint.length < 3) return;
       const shape = new THREE.Shape();
       b.footprint.forEach((p, i) => {
@@ -552,8 +593,24 @@ window.CampusMap = (function() {
       mesh.userData = { isBuilding: true, name: b.name };
       root.add(mesh);
 
+      // Techo con textura procedural + tono coral variable (mismo patrón Iztacala)
       const roofGeo = new THREE.ShapeGeometry(shape);
-      const roof = new THREE.Mesh(roofGeo, b.extra ? roofExtra : roofMat);
+      const isSchool = b.tags && (b.tags.building === 'school' || b.tags.amenity === 'school');
+      const palette = isSchool ? ROOF_SCHOOL : ROOF_BASE;
+      const tint = palette[(idx + (b.id || 0)) % palette.length];
+      const roofMat = new THREE.MeshLambertMaterial({
+        color: tint,
+        map: roofTex.clone(),   // clonar para repetición independiente por edificio
+      });
+      // Repetición proporcional al tamaño del edificio para que las tejas se vean a escala real
+      const bbox = new THREE.Box3().setFromPoints(b.footprint.map(p => new THREE.Vector3(p[0], 0, p[1])));
+      const size = bbox.getSize(new THREE.Vector3());
+      const repX = Math.max(1, Math.round(size.x / 4));
+      const repZ = Math.max(1, Math.round(size.z / 4));
+      roofMat.map.repeat.set(repX, repZ);
+      roofMat.map.needsUpdate = true;
+
+      const roof = new THREE.Mesh(roofGeo, roofMat);
       roof.rotation.x = -Math.PI / 2;
       roof.position.y = h + 0.1;
       roof.receiveShadow = true;
@@ -561,7 +618,7 @@ window.CampusMap = (function() {
     });
 
     targetScene.add(root);
-    console.warn(`[CampusMap.buildInto] ${campusName}: ${(data.buildings||[]).length} edificios agregados`);
+    console.warn(`[CampusMap.buildInto] ${campusName}: ${(data.buildings||[]).length} edificios con techo texturizado`);
     return root;
   }
 

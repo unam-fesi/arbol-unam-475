@@ -276,6 +276,13 @@ async function handleLogin(e) {
     await loadUserProfile();
     showMainApp();
     showToast('Bienvenido, ' + (currentUserProfile?.full_name || ''), 'success');
+    // Splash cinematográfico post-login (una vez por sesión del browser)
+    try {
+      if (window.SplashVideo && !sessionStorage.getItem('splash_played')) {
+        sessionStorage.setItem('splash_played', '1');
+        window.SplashVideo.play();
+      }
+    } catch (_) {}
   } catch (err) {
     errorEl.textContent = 'Error de conexión';
     errorEl.style.display = 'block';
