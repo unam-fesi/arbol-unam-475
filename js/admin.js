@@ -120,6 +120,13 @@ function switchAdminTab(tabName) {
     else if (tabName === 'security') loadSecurityDashboard();
     else if (tabName === 'quotas') loadQuotasDashboard();
   }
+  // Tabs que son SIEMPRE globales (no filtran por campus) → esconder el dropdown del filter
+  const globalTabs = new Set(['kpis', 'security', 'quotas', 'audit']);
+  const campusFilterWrap = document.getElementById('admin-campus-filter-wrap')
+                        || document.getElementById('admin-campus-filter')?.parentElement;
+  if (campusFilterWrap) {
+    campusFilterWrap.style.display = globalTabs.has(tabName) ? 'none' : '';
+  }
   document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.classList.remove('active');
     if (tab.dataset.tab === tabName) tab.classList.add('active');
@@ -2954,6 +2961,11 @@ function _renderKpisHtml(byCampus, raw) {
   const top5Species = Object.entries(speciesGlobal).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return `
+    <!-- Banner que aclara que es vista global, no filtrada -->
+    <div style="background:linear-gradient(90deg,#3b7a3a22,#5b8b7d22);border-left:4px solid #3b7a3a;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:12px;color:#2e5a2e;">
+      <i class="fas fa-globe-americas"></i> <strong>Vista global multi-campus.</strong> Incluye los ${campusOrder.length} campus con datos. El filtro de campus del header NO aplica aquí.
+    </div>
+
     <!-- KPIs globales -->
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
       ${card('Árboles totales', totals.trees, `${campusOrder.length} campus`, '🌳', '#3b7a3a')}
