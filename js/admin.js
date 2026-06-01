@@ -929,9 +929,25 @@ function _setupAdminTreesFilters() {
 
   // Inputs de filtro embebidos como segunda fila del header
   // (placeholder = nombre de columna, gris claro; al teclear desaparece)
-  const allCampus = [...new Set(_adminTreesCache.map(t => t.campus).filter(Boolean))].sort();
+  // SIEMPRE mostrar TODOS los campus canónicos (no solo los que ya tienen árboles)
+  // + unir cualquier valor legacy presente en datos.
+  const CANONICAL = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'];
+  const CAMPUS_LABEL = {
+    'Iztacala':   'FES Iztacala',
+    'Acatlan':    'FES Acatlán',
+    'Aragon':     'FES Aragón',
+    'Cuautitlan1':'FES Cuautitlán C1',
+    'Cuautitlan': 'FES Cuautitlán C4',
+    'Zaragoza':   'FES Zaragoza',
+    'CU':         'Ciudad Universitaria',
+  };
+  const dataCampus = [...new Set(_adminTreesCache.map(t => t.campus).filter(Boolean))];
+  const extraCampus = dataCampus.filter(c => !CANONICAL.includes(c)).sort();
+  const allCampus = [...CANONICAL, ...extraCampus];
   const allStatus = [...new Set(_adminTreesCache.map(t => t.status).filter(Boolean))].sort();
-  const campusOpts = allCampus.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const campusOpts = allCampus
+    .map(c => `<option value="${escapeHtml(c)}">${escapeHtml(CAMPUS_LABEL[c] || c)}</option>`)
+    .join('');
   const statusOpts = allStatus.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(TREE_STATUS_LABELS[s] || s)}</option>`).join('');
 
   const filterRow = document.createElement('tr');
