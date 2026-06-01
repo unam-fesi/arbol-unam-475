@@ -88,8 +88,15 @@ async function initApp() {
   // reportar problema como ciudadano (sin cuenta).
   // Backwards compat: ?t= y ?report= siguen funcionando.
   const _params = new URLSearchParams(window.location.search);
-  const _treeCode = _params.get('tree') || _params.get('t') || _params.get('report');
+  let _treeCode = _params.get('tree') || _params.get('t') || _params.get('report');
   const _isReportShortcut = !!_params.get('report');  // legacy
+  // SECURITY: validar que el tree_code matchea el formato esperado antes de
+  // usarlo en CUALQUIER lado. Esto bloquea vectores XSS de tipo
+  // ?tree=');alert(1)// y limita a códigos legítimos (alfanuméricos, guiones).
+  if (_treeCode && !/^[A-Za-z0-9_-]{1,40}$/.test(_treeCode)) {
+    console.warn('[auth] tree code inválido, ignorando:', _treeCode);
+    _treeCode = null;
+  }
   if (_treeCode) {
     introFinished = true;
     const overlay = document.getElementById('intro-video-overlay');
@@ -729,10 +736,10 @@ function showQrLandingScreen(treeCode) {
         Escaneaste el QR de este árbol.<br>¿Cómo quieres continuar?
       </p>
       <div style="display:flex;flex-direction:column;gap:0.75rem;">
-        <button class="login-btn" onclick="qrLandingChooseLogin('${escapeHtml(treeCode)}')">
+        <button class="login-btn" onclick="qrLandingChooseLogin('${safeJsAttr(treeCode)}')">
           <i class="fas fa-sign-in-alt"></i> Tengo cuenta &mdash; Iniciar sesión
         </button>
-        <button class="btn btn-outline" style="padding:0.85rem;font-size:0.95rem;" onclick="qrLandingChooseAnon('${escapeHtml(treeCode)}')">
+        <button class="btn btn-outline" style="padding:0.85rem;font-size:0.95rem;" onclick="qrLandingChooseAnon('${safeJsAttr(treeCode)}')">
           <i class="fas fa-flag"></i> Reportar problema sin cuenta
         </button>
       </div>

@@ -79,6 +79,26 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Escape SEGURO para usar dentro de un onclick="fn('${...}')" o atributo similar.
+// El parser HTML decodifica entidades ANTES de evaluar el JS del onclick, por
+// eso `escapeHtml` (que convierte ' → &#39;) NO sirve aquí — el browser
+// decodifica &#39; → ' y rompe el string literal del JS (vector XSS).
+// safeJsAttr produce escapes que sobreviven el HTML parser y son válidos
+// dentro de un string JS delimitado por comillas simples.
+function safeJsAttr(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')   // backslash primero, sino se escapa doble
+    .replace(/'/g, "\\'")     // single quote (delimitador de string JS)
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/</g, '\\x3c')   // evita romper con </script>, </button>, etc.
+    .replace(/>/g, '\\x3e')
+    .replace(/&/g, '\\x26')   // queda fuera del HTML parser → JS escape literal
+    .replace(/"/g, '&quot;'); // por si rompe el atributo HTML envolvente
+}
+window.safeJsAttr = safeJsAttr;
+
 // Sanitize markdown-like text: escape HTML first, then apply safe formatting
 function safeMd(text) {
   if (!text) return '';

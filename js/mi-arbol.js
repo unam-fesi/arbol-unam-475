@@ -421,7 +421,7 @@ async function loadMyTree(forceReload, specificTreeId) {
 
         <!-- Citizen report button (#12) -->
         <div style="margin-top:1rem;">
-          <button class="btn btn-outline" onclick="openCitizenReport(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')">
+          <button class="btn btn-outline" onclick="openCitizenReport(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')">
             <i class="fas fa-flag"></i> Reportar problema con este árbol
           </button>
         </div>

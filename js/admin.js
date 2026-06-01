@@ -630,7 +630,7 @@ function _renderUsers(users) {
       <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')" title="Editar">✏️</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${escapeHtml(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${safeJsAttr(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
       </td>
     `;
     tbody.appendChild(row);
@@ -1059,7 +1059,7 @@ function _renderAdminTreesRows(trees) {
         <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
         <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>
         <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
-        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${escapeHtml(tree.tree_code)}', '${escapeHtml(tree.common_name || '')}')" title="QR">📱</button>
+        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>
         <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
       </td>
     `;
@@ -1434,7 +1434,7 @@ async function editAdminTree(treeId) {
   const latestPhotoThumb = latestPhotoSrc
     ? `<div style="flex-shrink:0;text-align:center;">
          <img src="${escapeHtml(latestPhotoSrc)}"
-              onclick="window.open('${escapeHtml(latestPhotoSrc)}','_blank')"
+              onclick="window.open('${safeJsAttr(latestPhotoSrc)}','_blank')"
               title="Última foto — click para ver completa"
               style="width:80px;height:80px;object-fit:cover;border-radius:10px;cursor:zoom-in;border:2px solid #2E7D32;box-shadow:0 2px 8px rgba(0,0,0,0.15);"
               onerror="this.style.display='none'">
@@ -2001,7 +2001,7 @@ function _renderGroups(rows) {
       <td>${escapeHtml(g.name)} <small style="color:#888;">(${g._memberCount} miembros)</small></td>
       <td>${escapeHtml(g.description || '-')}</td>
       <td>
-        <button class="btn btn-sm btn-secondary" onclick="manageGroupMembers('${g.id}', '${escapeHtml(g.name)}')">Miembros</button>
+        <button class="btn btn-sm btn-secondary" onclick="manageGroupMembers('${g.id}', '${safeJsAttr(g.name)}')">Miembros</button>
         <button class="btn btn-sm btn-danger" onclick="deleteAdminGroup('${g.id}')">Eliminar</button>
       </td>
     `;
@@ -2092,7 +2092,7 @@ async function manageGroupMembers(groupId, groupName) {
         : '';
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eee;">
         <span>${escapeHtml(name)}${roleBadge}</span>
-        <button onclick="removeGroupMember('${groupId}', '${m.user_id}', '${escapeHtml(groupName)}')" class="btn btn-sm btn-danger">Quitar</button>
+        <button onclick="removeGroupMember('${groupId}', '${m.user_id}', '${safeJsAttr(groupName)}')" class="btn btn-sm btn-danger">Quitar</button>
       </div>`;
     }).join('') || '<p class="text-muted" style="padding:8px;">Sin miembros</p>';
 
@@ -2119,7 +2119,7 @@ async function manageGroupMembers(groupId, groupName) {
           <select id="add-member-select" style="flex:1;padding:0.5rem;border:1px solid #ddd;border-radius:4px;">
             <option value="">Selecciona usuario...</option>${optionsHtml}
           </select>
-          <button onclick="addGroupMember('${groupId}', '${escapeHtml(groupName)}')" class="btn btn-primary btn-sm">Agregar</button>
+          <button onclick="addGroupMember('${groupId}', '${safeJsAttr(groupName)}')" class="btn btn-primary btn-sm">Agregar</button>
         </div>
       </div>
     `);
@@ -3620,7 +3620,7 @@ async function viewTreeMeasurementsAdmin(treeId) {
     const initialThumb = initialPhotoSrc
       ? `<div style="flex-shrink:0;text-align:center;">
            <img src="${escapeHtml(initialPhotoSrc)}"
-                onclick="window.open('${escapeHtml(initialPhotoSrc)}','_blank')"
+                onclick="window.open('${safeJsAttr(initialPhotoSrc)}','_blank')"
                 title="Foto inicial — click para ver completa"
                 style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:2px solid #4CAF50;box-shadow:0 2px 6px rgba(0,0,0,0.15);"
                 onerror="this.style.display='none'">
@@ -4066,10 +4066,10 @@ function showTreeQR(treeId, treeCode, commonName) {
         <span class="text-muted">Código: <code>${escapeHtml(treeCode)}</code></span>
       </div>
       <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1.25rem;flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="printTreeQR('${escapeHtml(treeCode)}','${escapeHtml(commonName || '')}')">
+        <button class="btn btn-primary" onclick="printTreeQR('${safeJsAttr(treeCode)}','${safeJsAttr(commonName || '')}')">
           <i class="fas fa-print"></i> Imprimir placa
         </button>
-        <button class="btn btn-outline" onclick="downloadQR('qr-canvas-tree','${escapeHtml(treeCode)}')">
+        <button class="btn btn-outline" onclick="downloadQR('qr-canvas-tree','${safeJsAttr(treeCode)}')">
           <i class="fas fa-download"></i> Descargar PNG
         </button>
       </div>
@@ -4966,7 +4966,7 @@ async function _loadCoordinacionAdmin(wrap) {
           <td>${escapeHtml(r.account_number || '-')}</td>
           <td>${escapeHtml(r.campus || '-')}</td>
           <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 10px;border-radius:10px;font-weight:600;">${count}</span></td>
-          <td><button class="btn btn-sm btn-primary" onclick="manageResponsableStudents('${r.id}','${escapeHtml(r.full_name)}','${escapeHtml(r.campus)}')">Gestionar estudiantes</button></td>
+          <td><button class="btn btn-sm btn-primary" onclick="manageResponsableStudents('${r.id}','${safeJsAttr(r.full_name)}','${safeJsAttr(r.campus)}')">Gestionar estudiantes</button></td>
         </tr>
       `;
     }).join('');
@@ -5070,8 +5070,8 @@ async function _loadCoordinacionResponsable(wrap) {
               </div>
               ${notes ? `<p style="margin:0.5rem 0 0;font-size:0.82rem;color:#777;font-style:italic;"><i class="fas fa-sticky-note"></i> ${escapeHtml(notes)}</p>` : ''}
               <div style="margin-top:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
-                <button class="btn btn-sm btn-primary" style="font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();openAssignTreeToStudent('${s.id}','${escapeHtml(s.full_name)}','${escapeHtml(s.campus || _userCampus())}')"><i class="fas fa-plus"></i> Asignar árbol</button>
-                ${inactive ? `<button class="btn btn-sm" style="background:#ff9800;color:white;font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();sendReminderToStudent('${s.id}','${escapeHtml(s.full_name)}')"><i class="fas fa-bell"></i> Recordar</button>` : ''}
+                <button class="btn btn-sm btn-primary" style="font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();openAssignTreeToStudent('${s.id}','${safeJsAttr(s.full_name)}','${safeJsAttr(s.campus || _userCampus())}')"><i class="fas fa-plus"></i> Asignar árbol</button>
+                ${inactive ? `<button class="btn btn-sm" style="background:#ff9800;color:white;font-size:0.75rem;padding:4px 10px;" onclick="event.stopPropagation();sendReminderToStudent('${s.id}','${safeJsAttr(s.full_name)}')"><i class="fas fa-bell"></i> Recordar</button>` : ''}
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
@@ -5308,8 +5308,8 @@ async function showStudentDetail(userId) {
       </div>
 
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-        <button class="btn btn-sm btn-primary" onclick="openAssignTreeToStudent('${userId}','${escapeHtml(student.full_name)}','${escapeHtml(student.campus)}')"><i class="fas fa-plus"></i> Asignar árbol</button>
-        <button class="btn btn-sm" style="background:#ff9800;color:white;" onclick="sendReminderToStudent('${userId}','${escapeHtml(student.full_name)}')"><i class="fas fa-bell"></i> Recordar seguimiento</button>
+        <button class="btn btn-sm btn-primary" onclick="openAssignTreeToStudent('${userId}','${safeJsAttr(student.full_name)}','${safeJsAttr(student.campus)}')"><i class="fas fa-plus"></i> Asignar árbol</button>
+        <button class="btn btn-sm" style="background:#ff9800;color:white;" onclick="sendReminderToStudent('${userId}','${safeJsAttr(student.full_name)}')"><i class="fas fa-bell"></i> Recordar seguimiento</button>
       </div>
 
       <h4 style="margin:1rem 0 0.5rem;border-top:1px solid #eee;padding-top:0.8rem;">🌳 Árboles asignados (${trees.length})</h4>

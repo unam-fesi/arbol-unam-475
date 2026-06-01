@@ -809,7 +809,7 @@
           img.style.filter = 'none';
           // Cambiar el botón "Ver foto completa" al URL de alta resolución
           const btn = modal.querySelector('button[onclick*="window.open"]');
-          if (btn) btn.setAttribute('onclick', `window.open('${fullUrl}','_blank')`);
+          if (btn) btn.setAttribute('onclick', `window.open('${safeJsAttr(fullUrl)}','_blank')`);
         };
         tmp.onerror = () => { img.style.filter = 'none'; };
         tmp.src = fullUrl;
