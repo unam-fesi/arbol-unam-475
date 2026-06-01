@@ -155,6 +155,7 @@ const CAMPUS_THEMES = {
   'Iztacala':   { color: '#d4a574', name: 'durazno' },
   'Acatlan':    { color: '#95b86c', name: 'verde hoja' },
   'Aragon':     { color: '#5b8b7d', name: 'azul-verde' },
+  'Cuautitlan1':{ color: '#a08260', name: 'marrón medio' },
   'Cuautitlan': { color: '#8b6f47', name: 'marrón claro' },
   'Zaragoza':   { color: '#b54f3a', name: 'terracota' },
   'CU':         { color: '#4a7c2a', name: 'verde primario' },
@@ -348,7 +349,8 @@ function _applyCampus3DTitle() {
     'Iztacala':  'FES Iztacala 3D',
     'Acatlan':   'FES Acatlán 3D',
     'Aragon':    'FES Aragón 3D',
-    'Cuautitlan':'FES Cuautitlán 3D',
+    'Cuautitlan1':'FES Cuautitlán C1 3D',
+    'Cuautitlan':'FES Cuautitlán C4 3D',
     'Zaragoza':  'FES Zaragoza 3D',
     'CU':        'CU 3D',
   };
@@ -790,7 +792,7 @@ async function editAdminUser(userId) {
       `<option value="${s}" ${user.academic_status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
     ).join('');
 
-    const campusOptions = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'];
+    const campusOptions = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'];
     const campusSelect = campusOptions.map(c =>
       `<option value="${c}" ${user.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`
     ).join('');
@@ -1389,7 +1391,7 @@ async function editAdminTree(treeId) {
     `<option value="${s}" ${tree.tree_type === s ? 'selected' : ''}>${TREE_TYPE_LABELS[s]}</option>`).join('');
   const sizeOpts = TREE_SIZE_VALUES.map(s =>
     `<option value="${s}" ${tree.size === s ? 'selected' : ''}>${TREE_SIZE_LABELS[s]}</option>`).join('');
-  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'].map(c =>
+  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'].map(c =>
     `<option value="${c}" ${tree.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
 
   // ---- Última foto: del seguimiento más reciente; fallback a la del alta ----
@@ -1854,7 +1856,7 @@ async function editAdminGarden(id) {
     (specialists || []).map(s =>
       `<option value="${s.id}" ${g.responsible_specialist_id === s.id ? 'selected' : ''}>${escapeHtml(s.full_name)}${s.specialty ? ' — ' + escapeHtml(s.specialty) : ''}</option>`
     ).join('');
-  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan','Zaragoza','CU'].map(c =>
+  const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'].map(c =>
     `<option value="${c}" ${g.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
   const soilOpts = '<option value="">—</option>' + GARDEN_SOIL_VALUES.map(v =>
     `<option value="${v}" ${g.soil_type === v ? 'selected' : ''}>${v}</option>`).join('');
@@ -2761,7 +2763,7 @@ async function showSpecialistTree(treeId) {
 // KPIs MULTI-CAMPUS — solo admin principal. Métricas comparativas entre
 // todos los campus FES (Iztacala, Acatlan, Aragon, Cuautitlan, Zaragoza, CU).
 // ============================================================================
-const _KPI_CAMPUS_LIST = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan', 'Zaragoza', 'CU'];
+const _KPI_CAMPUS_LIST = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan1', 'Cuautitlan', 'Zaragoza', 'CU'];
 
 async function loadKpis() {
   const wrap = document.getElementById('kpis-container');
@@ -4717,7 +4719,7 @@ function switchVisTab(which) {
         console.warn(`[switchVisTab] tab="iztacala" campusFilter="${cf}" hasCampusMap=${!!window.CampusMap} hasIztacalaMap=${!!window.IztacalaMap}`);
         if (cf === 'Iztacala' && window.IztacalaMap) {
           window.IztacalaMap.init('#dashboard-iztacala-vis');
-        } else if (['Acatlan', 'Aragon', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf) && window.CampusMap) {
+        } else if (['Acatlan', 'Aragon', 'Cuautitlan1', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf) && window.CampusMap) {
           window.CampusMap.init('#dashboard-iztacala-vis', cf);
         } else {
           _showCampusUnderConstruction('#dashboard-iztacala-vis', cf);
@@ -4726,7 +4728,7 @@ function switchVisTab(which) {
         // Walkthrough soporta los 6 campus: Iztacala (GLB Blender) +
         // Acatlan, Aragon, Cuautitlan, Zaragoza, CU (procedurales OSM)
         const cf = campusFilter || 'Iztacala';
-        const supported = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf);
+        const supported = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan1', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf);
         if (supported && window.DashboardWalkthrough) {
           window.DashboardWalkthrough.init('#dashboard-walkthrough-vis', cf);
         } else {
