@@ -47,20 +47,31 @@
     [19.47289, -99.04390], [19.47211, -99.03995], [19.47591, -99.03910]
   ];
 
-  // FES Cuautitlán Campo 4 (Almaraz) — polígono manual centrado en el hospital
-  // veterinario UNAM (OSM way 375695689). La FES Cuautitlán no tiene un polígono
-  // de universidad propio en OSM; se usó bbox conocido con edificios reales OSM.
+  // FES Cuautitlán — polígono REAL de OSM relation 12323197 (Campo 1, Cuautitlán)
   const POLY_CUAUTITLAN = [
-    [19.69500, -99.19400], [19.69500, -99.18700],
-    [19.68700, -99.18700], [19.68700, -99.19400]
+    [19.63911, -99.20722], [19.63866, -99.20715], [19.63831, -99.20709],
+    [19.63808, -99.20710], [19.63799, -99.20696], [19.63760, -99.20690],
+    [19.63729, -99.20686], [19.63561, -99.20665], [19.63554, -99.20691],
+    [19.63549, -99.20710], [19.63542, -99.20733], [19.63533, -99.20761],
+    [19.63518, -99.20804], [19.63488, -99.20869], [19.63507, -99.20880],
+    [19.63538, -99.20892], [19.63571, -99.20895], [19.63594, -99.20891],
+    [19.63648, -99.20874], [19.63785, -99.20829], [19.63790, -99.20828],
+    [19.63799, -99.20807], [19.63811, -99.20809], [19.63870, -99.20849],
+    [19.63889, -99.20837], [19.63904, -99.20820], [19.63909, -99.20803],
+    [19.63914, -99.20767], [19.63920, -99.20732], [19.63919, -99.20728],
+    [19.63916, -99.20724], [19.63911, -99.20722]
   ];
 
-  // FES Zaragoza — polígono OSM way 424226537 (Iztapalapa). El polígono OSM es
-  // muy pequeño (~30 m²); puede que sea un subedificio. Se mantiene el bbox amplio
-  // de respaldo más una expansión para incluir el área completa del campus.
+  // FES Zaragoza — polígono REAL de OSM relation 12313406 (multi-edificios)
   const POLY_ZARAGOZA = [
-    [19.39100, -99.02700], [19.39100, -99.02400],
-    [19.38700, -99.02400], [19.38700, -99.02700]
+    [19.38478, -99.03615], [19.38466, -99.03593], [19.38120, -99.03813],
+    [19.38205, -99.03867], [19.38202, -99.03879], [19.38211, -99.03876],
+    [19.38220, -99.03866], [19.38227, -99.03859], [19.38251, -99.03842],
+    [19.38259, -99.03836], [19.38287, -99.03819], [19.38299, -99.03815],
+    [19.38308, -99.03814], [19.38316, -99.03813], [19.38337, -99.03816],
+    [19.38364, -99.03819], [19.38370, -99.03817], [19.38388, -99.03806],
+    [19.38454, -99.03765], [19.38493, -99.03740], [19.38512, -99.03725],
+    [19.38531, -99.03711], [19.38478, -99.03615]
   ];
 
   // CU (Ciudad Universitaria) — polígono REAL de OSM way 26531801 (34 puntos)
@@ -120,22 +131,22 @@
     },
     'Cuautitlan': {
       polygon: POLY_CUAUTITLAN,
-      centroid: [19.691000, -99.190500],
+      centroid: [19.637575, -99.207842],   // real OSM relation 12323197
       hasRealModel: true,
       glb: null,
       json: 'data/cuautitlan_campus.json',
       mPerLat: 110574.0,
-      mPerLon: 104810.39,
+      mPerLon: 104845.32,
       displayName: 'FES Cuautitlán',
     },
     'Zaragoza': {
       polygon: POLY_ZARAGOZA,
-      centroid: [19.389072, -99.025406],
+      centroid: [19.383117, -99.038085],   // real OSM relation 12313406
       hasRealModel: true,
       glb: null,
       json: 'data/zaragoza_campus.json',
       mPerLat: 110574.0,
-      mPerLon: 105006.60,
+      mPerLon: 105010.44,
       displayName: 'FES Zaragoza',
     },
     'CU': {
