@@ -387,19 +387,47 @@ async function loadAdminDashboard(forceReload) {
   if (dashboardLoaded && !forceReload) return;
   try {
     const campusFilter = effectiveCampusFilter();
-    const userQ = sb.from('user_profiles').select('*', { count: 'exact', head: true });
-    const treeQ = sb.from('trees_catalog').select('*', { count: 'exact', head: true });
-    const assignQ = sb.from('tree_assignments').select('*', { count: 'exact', head: true });
-    if (campusFilter) { userQ.eq('campus', campusFilter); treeQ.eq('campus', campusFilter); }
+
+    // Usuarios: filtramos por campus. Para mantener visibles a los admin principales
+    // (que no tienen campus asignado) cuando hay filtro, los incluimos siempre.
+    let userQ = sb.from('user_profiles').select('*', { count: 'exact', head: true });
+    if (campusFilter) userQ = userQ.or(`campus.eq.${campusFilter},role.eq.admin`);
     const { count: userCount } = await userQ;
+
+    // Árboles: filtrar por campus
+    let treeQ = sb.from('trees_catalog').select('*', { count: 'exact', head: true });
+    if (campusFilter) treeQ = treeQ.eq('campus', campusFilter);
     const { count: treeCount } = await treeQ;
-    const { count: assignCount } = await assignQ;
+
+    // Trees con detalle para calcular salud promedio
     let trQ = sb.from('trees_catalog').select('id, tree_code, common_name, species, health_score, status, campus, location_lat, location_lng, photo_url, initial_height_cm');
     if (campusFilter) trQ = trQ.eq('campus', campusFilter);
     const { data: trees } = await trQ;
     const treeList = trees || [];
     const avgHealth = treeList.length > 0
       ? Math.round(treeList.reduce((sum, t) => sum + (t.health_score || 0), 0) / treeList.length) : 0;
+
+    // Asignaciones: tree_assignments NO tiene columna campus, hay que filtrar por
+    // tree_id ∈ árboles del campus. Si no hay filtro, conteo global.
+    let assignCount = 0;
+    if (campusFilter) {
+      const treeIds = treeList.map(t => t.id);
+      if (treeIds.length > 0) {
+        // Supabase tiene un límite ~1000 IDs en .in(), si excede se paginan
+        const CHUNK = 500;
+        for (let i = 0; i < treeIds.length; i += CHUNK) {
+          const slice = treeIds.slice(i, i + CHUNK);
+          const { count } = await sb.from('tree_assignments')
+            .select('*', { count: 'exact', head: true })
+            .in('tree_id', slice);
+          assignCount += (count || 0);
+        }
+      }
+    } else {
+      const { count } = await sb.from('tree_assignments')
+        .select('*', { count: 'exact', head: true });
+      assignCount = count || 0;
+    }
 
     const statsEl = document.getElementById('dashboard-stats');
     if (statsEl) {
