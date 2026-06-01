@@ -110,6 +110,14 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
   async function init(containerSelector, campusName) {
     currentCampus = campusName || 'Iztacala';
     _setCampusOrigin(currentCampus);
+    // Spinner si tarda > 500ms
+    const _displayName = (window.CampusBounds && window.CampusBounds.get(currentCampus)?.displayName) || currentCampus;
+    const _cont = typeof containerSelector === 'string' ? document.querySelector(containerSelector) : containerSelector;
+    const _loaderId = (_cont && window.MapLoader)
+      ? window.MapLoader.show(_cont, `Cargando walkthrough de ${_displayName}…`)
+      : null;
+    // Ocultar cuando el loop arranque (el render ya está corriendo)
+    const _hideLoaderSafe = () => { if (_loaderId && window.MapLoader) setTimeout(() => window.MapLoader.hide(_loaderId), 200); };
     if (!window.THREE) {
       console.warn('Three.js no cargado para walkthrough');
       return false;
@@ -193,6 +201,7 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
     // ARRANCAR EL LOOP YA — así el usuario ve el cielo + suelo de inmediato
     // mientras se cargan los GLBs en background (en lugar de pantalla negra).
     _startLoop();
+    _hideLoaderSafe();
 
     // Cargar escenario del campus seleccionado:
     //   - Iztacala: GLB de alta fidelidad de Blender (iztacala_campus.glb)

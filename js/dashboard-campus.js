@@ -103,6 +103,9 @@ window.CampusMap = (function() {
       console.error('[CampusMap] container no encontrado:', containerSel);
       return;
     }
+    // Mostrar spinner si la carga tarda más de 500ms
+    const _displayName = (window.CampusBounds && window.CampusBounds.get(campusName)?.displayName) || campusName;
+    const _loaderId = window.MapLoader ? window.MapLoader.show(containerEl, `Cargando ${_displayName}…`) : null;
 
     // Si cambia de campus, destruir escena previa
     if (currentCampus && currentCampus !== campusName) {
@@ -144,16 +147,22 @@ window.CampusMap = (function() {
       console.warn(`[CampusMap] JSON cargado: ${mapData.buildings?.length || 0} edificios, centro (${mapData.center_lat}, ${mapData.center_lon})`);
     } catch (e) {
       console.error('[CampusMap] No se pudo cargar JSON del campus:', e);
+      if (window.MapLoader && _loaderId) window.MapLoader.hide(_loaderId);
       _renderUnderConstruction(campusName);
       return;
     }
 
     // Setup escena
+    if (window.MapLoader && _loaderId) window.MapLoader.setMessage(_loaderId, `Renderizando edificios…`);
     await _setupScene(containerEl);
     animate();
 
     // Cargar árboles del campus
+    if (window.MapLoader && _loaderId) window.MapLoader.setMessage(_loaderId, `Cargando árboles…`);
     await _loadTrees(campusName);
+
+    // Listo — ocultar spinner
+    if (window.MapLoader && _loaderId) window.MapLoader.hide(_loaderId);
   }
 
   function _renderUnderConstruction(name) {

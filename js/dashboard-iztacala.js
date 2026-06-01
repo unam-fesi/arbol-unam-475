@@ -73,6 +73,11 @@ window.IztacalaMap = (function() {
       ? document.querySelector(containerSel)
       : containerSel;
     if (!containerEl) return;
+    // Spinner reutilizable mientras carga (sólo aparece si tarda >500ms)
+    const _loaderId = (!initialized && window.MapLoader)
+      ? window.MapLoader.show(containerEl, 'Cargando FES Iztacala…')
+      : null;
+    const _hideLoader = () => { if (_loaderId && window.MapLoader) window.MapLoader.hide(_loaderId); };
 
     if (initialized) {
       // Re-attach + reload trees only
@@ -228,6 +233,7 @@ window.IztacalaMap = (function() {
     // if (window.IztacalaCalibrator) window.IztacalaCalibrator.mount(containerEl);
 
     animate();
+    _hideLoader();
   }
 
   // ============================================================================
