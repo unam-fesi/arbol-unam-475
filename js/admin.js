@@ -4678,16 +4678,16 @@ function switchVisTab(which) {
         console.warn(`[switchVisTab] tab="iztacala" campusFilter="${cf}" hasCampusMap=${!!window.CampusMap} hasIztacalaMap=${!!window.IztacalaMap}`);
         if (cf === 'Iztacala' && window.IztacalaMap) {
           window.IztacalaMap.init('#dashboard-iztacala-vis');
-        } else if ((cf === 'Acatlan' || cf === 'Aragon') && window.CampusMap) {
+        } else if (['Acatlan', 'Aragon', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf) && window.CampusMap) {
           window.CampusMap.init('#dashboard-iztacala-vis', cf);
         } else {
           _showCampusUnderConstruction('#dashboard-iztacala-vis', cf);
         }
       } else if (which === 'walkthrough') {
-        // Walkthrough soporta Iztacala (GLB de Blender), Acatlan y Aragon
-        // (edificios procedurales OSM). Otros campus quedan en construcción.
+        // Walkthrough soporta los 6 campus: Iztacala (GLB Blender) +
+        // Acatlan, Aragon, Cuautitlan, Zaragoza, CU (procedurales OSM)
         const cf = campusFilter || 'Iztacala';
-        const supported = ['Iztacala', 'Acatlan', 'Aragon'].includes(cf);
+        const supported = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan', 'Zaragoza', 'CU'].includes(cf);
         if (supported && window.DashboardWalkthrough) {
           window.DashboardWalkthrough.init('#dashboard-walkthrough-vis', cf);
         } else {
