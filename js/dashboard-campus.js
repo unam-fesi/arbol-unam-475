@@ -179,9 +179,6 @@ window.CampusMap = (function() {
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe8f0f5);
-    scene.fog = new THREE.Fog(0xe8f0f5, 600, 2200);
-
-    camera = new THREE.PerspectiveCamera(45, w / h, 1, 4000);
     // Centrar la cámara para ver el bbox COMPLETO — extender con extra buildings
     let bbox = mapData.bbox || { min_x: -300, max_x: 300, min_y: -300, max_y: 300 };
     if (mapData.buildings) {
@@ -195,6 +192,14 @@ window.CampusMap = (function() {
       });
     }
     const span = Math.max(bbox.max_x - bbox.min_x, bbox.max_y - bbox.min_y);
+
+    // FOG dinámico proporcional al span (antes era fijo 600-2200 → CU no se veía).
+    // Empieza a 30% del span, termina a 150% para que el campus completo sea visible.
+    scene.fog = new THREE.Fog(0xe8f0f5, span * 0.3, Math.max(span * 1.5, 2200));
+
+    // FAR plane dinámico — campus grandes (CU: 3.4km) requieren far más lejos.
+    const farPlane = Math.max(span * 3, 4000);
+    camera = new THREE.PerspectiveCamera(45, w / h, 1, farPlane);
     const camDist = span * 0.95;
     camera.position.set(camDist * 0.5, camDist * 0.6, camDist * 0.7);
     camera.lookAt(0, 0, 0);
@@ -207,16 +212,24 @@ window.CampusMap = (function() {
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // Luces
+    // Luces — para campus grandes (CU = 3.4km) usar shadow camera dinámico
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const sun = new THREE.DirectionalLight(0xfff4d6, 1.0);
-    sun.position.set(200, 300, 200);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -500;
-    sun.shadow.camera.right = 500;
-    sun.shadow.camera.top = 500;
-    sun.shadow.camera.bottom = -500;
+    // Posición proporcional al span para que ilumine todo el campus
+    const sunDist = Math.max(span * 0.5, 200);
+    sun.position.set(sunDist, sunDist * 1.5, sunDist);
+    // Para campus muy grandes (CU), desactivar shadows para evitar lag con 731 edificios
+    if (span < 1500) {
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(1024, 1024);
+      const shadowSize = Math.max(span * 0.7, 500);
+      sun.shadow.camera.left = -shadowSize;
+      sun.shadow.camera.right = shadowSize;
+      sun.shadow.camera.top = shadowSize;
+      sun.shadow.camera.bottom = -shadowSize;
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = sunDist * 4;
+    }
     scene.add(sun);
 
     // GROUND PLANE
