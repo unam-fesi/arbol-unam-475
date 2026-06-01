@@ -556,6 +556,90 @@ async function saveProfile(e) {
   }
 }
 
+// ========== CAMBIO DE CONTRASEÑA (desde el perfil) ==========
+// Validación de fortaleza: ≥8 chars, al menos 1 mayúscula y 1 dígito.
+function _passwordIsStrong(pwd) {
+  if (!pwd || pwd.length < 8) return { ok: false, msg: 'Mínimo 8 caracteres' };
+  if (!/[A-Z]/.test(pwd)) return { ok: false, msg: 'Debe incluir al menos una mayúscula' };
+  if (!/[0-9]/.test(pwd)) return { ok: false, msg: 'Debe incluir al menos un número' };
+  return { ok: true };
+}
+
+function _setupPasswordLiveStrength(inputId, hintId) {
+  const i = document.getElementById(inputId);
+  const h = document.getElementById(hintId);
+  if (!i || !h) return;
+  i.oninput = () => {
+    const v = i.value || '';
+    if (!v) { h.textContent = ''; return; }
+    const score = (v.length >= 8 ? 1 : 0) + (/[A-Z]/.test(v) ? 1 : 0) +
+                  (/[0-9]/.test(v) ? 1 : 0) + (/[^A-Za-z0-9]/.test(v) ? 1 : 0);
+    if (score <= 1)      { h.textContent = '🔴 Débil';   h.style.color = '#c62828'; }
+    else if (score === 2){ h.textContent = '🟡 Media';   h.style.color = '#f57c00'; }
+    else if (score === 3){ h.textContent = '🟢 Buena';   h.style.color = '#2e7d32'; }
+    else                 { h.textContent = '✅ Excelente'; h.style.color = '#1b5e20'; }
+  };
+}
+
+function openChangePasswordModal() {
+  const modal = document.getElementById('change-password-modal');
+  if (!modal) return;
+  // Cerrar el modal de perfil para que no quede una capa encima
+  const profileModal = document.getElementById('profile-modal');
+  if (profileModal) profileModal.style.display = 'none';
+  modal.style.display = 'flex';
+  // Reset campos
+  const np = document.getElementById('cp-new');
+  const cp = document.getElementById('cp-confirm');
+  const err = document.getElementById('cp-error');
+  const hint = document.getElementById('cp-strength');
+  if (np) np.value = '';
+  if (cp) cp.value = '';
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  if (hint) hint.textContent = '';
+  _setupPasswordLiveStrength('cp-new', 'cp-strength');
+  setTimeout(() => { try { np?.focus(); } catch(_){} }, 100);
+}
+
+function closeChangePasswordModal() {
+  const modal = document.getElementById('change-password-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function submitChangePassword(e) {
+  if (e) e.preventDefault();
+  const np = document.getElementById('cp-new')?.value || '';
+  const cp = document.getElementById('cp-confirm')?.value || '';
+  const err = document.getElementById('cp-error');
+  const showErr = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+
+  if (np !== cp) return showErr('Las contraseñas no coinciden');
+  const strength = _passwordIsStrong(np);
+  if (!strength.ok) return showErr(strength.msg);
+
+  // Verificar que haya sesión activa
+  try {
+    const { data: sessData } = await sb.auth.getSession();
+    if (!sessData?.session) return showErr('Tu sesión expiró. Inicia sesión nuevamente.');
+  } catch (_) {}
+
+  try {
+    const { error } = await sb.auth.updateUser({ password: np });
+    if (error) return showErr('Error: ' + error.message);
+
+    // Cerrar otras sesiones por seguridad (only si el SDK lo soporta)
+    try { await sb.auth.signOut({ scope: 'others' }); } catch(_) {}
+
+    closeChangePasswordModal();
+    if (typeof showToast === 'function') {
+      showToast('✓ Contraseña actualizada. Otras sesiones fueron cerradas.', 'success');
+    }
+  } catch (ex) {
+    showErr('Error inesperado: ' + (ex.message || ex));
+  }
+}
+
 // ========== FORGOT PASSWORD (#20) ==========
 function showForgotPassword() {
   const p = document.getElementById('forgot-password-panel');
@@ -884,3 +968,6 @@ window.showQrLandingScreen = showQrLandingScreen;
 window.qrLandingChooseLogin = qrLandingChooseLogin;
 window.qrLandingChooseAnon = qrLandingChooseAnon;
 window.handleDeepLinkTree = handleDeepLinkTree;
+window.openChangePasswordModal = openChangePasswordModal;
+window.closeChangePasswordModal = closeChangePasswordModal;
+window.submitChangePassword = submitChangePassword;

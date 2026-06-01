@@ -1435,6 +1435,42 @@
                     <button type="button" class="btn btn-outline" onclick="closeProfileModal()" style="flex:0 0 auto;">Cancelar</button>
                 </div>
             </form>
+
+            <!-- Seguridad: cambio de contraseña dentro del propio perfil -->
+            <div style="margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid #eee;">
+                <h4 style="margin:0 0 .6rem;font-size:1rem;"><i class="fas fa-lock"></i> Seguridad de la cuenta</h4>
+                <p class="text-small text-muted" style="margin:0 0 .8rem;">Cambia tu contraseña en cualquier momento.</p>
+                <button type="button" class="btn btn-outline" onclick="openChangePasswordModal()" style="width:100%;">
+                    <i class="fas fa-key"></i> Cambiar contraseña
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CAMBIO DE CONTRASEÑA (desde perfil) ========== -->
+    <div id="change-password-modal" class="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+        <div class="modal-content" style="background:#fff;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:2rem;width:100%;max-width:440px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;">
+                <h3 style="margin:0;"><i class="fas fa-key"></i> Cambiar contraseña</h3>
+                <button onclick="closeChangePasswordModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-light);">&times;</button>
+            </div>
+            <form onsubmit="submitChangePassword(event)">
+                <div class="form-group">
+                    <label>Nueva contraseña</label>
+                    <input type="password" id="cp-new" minlength="8" required placeholder="Mínimo 8 caracteres, incluye mayúscula y número" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Confirmar nueva contraseña</label>
+                    <input type="password" id="cp-confirm" minlength="8" required autocomplete="new-password">
+                </div>
+                <div id="cp-strength" style="font-size:0.78rem;margin:0.3rem 0 0.8rem;color:#888;"></div>
+                <div id="cp-error" class="error-message" style="display:none;margin-bottom:0.5rem;"></div>
+                <div style="display:flex;gap:0.6rem;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;"><i class="fas fa-check"></i> Actualizar contraseña</button>
+                    <button type="button" class="btn btn-outline" onclick="closeChangePasswordModal()">Cancelar</button>
+                </div>
+            </form>
+            <p class="text-muted text-small" style="margin-top:0.9rem;">Por seguridad, se cerrará tu sesión en otros dispositivos al cambiar la contraseña.</p>
         </div>
     </div>
 
