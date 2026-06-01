@@ -635,22 +635,33 @@ function _renderUsers(users) {
   });
 }
 
+// Normaliza un string de campus para comparación robusta: minúsculas, sin acentos,
+// sin espacios extras. Acepta variantes como "FES Iztacala", " Iztacala ", "iztacala"
+function _normCampus(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // quita acentos
+    .replace(/^fes\s+/i, '')                              // "FES Iztacala" → "iztacala"
+    .trim();
+}
+
 function _filterUsers() {
   const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
   const fName = get('u-name'), fAcc = get('u-acc'), fRole = get('u-role'),
         fStatus = get('u-status'), fCampus = get('u-campus'), fTg = get('u-tg');
+  const fCampusN = _normCampus(fCampus);
   const filtered = _usersCache.filter(u => {
     if (fName && !(u.full_name || '').toLowerCase().includes(fName)) return false;
     if (fAcc && !(u.account_number || '').toLowerCase().includes(fAcc)) return false;
-    if (fRole && (u.role || 'user') !== fRole) return false;
+    if (fRole && (u.role || 'user').toLowerCase() !== fRole) return false;
     if (fStatus && (u.academic_status || '').toLowerCase() !== fStatus) return false;
-    if (fCampus && (u.campus || '') !== fCampus) return false;
+    if (fCampusN && _normCampus(u.campus) !== fCampusN) return false;
     if (fTg === 'yes' && !u.telegram_chat_id) return false;
     if (fTg === 'no' && u.telegram_chat_id) return false;
     return true;
   });
   _renderUsers(filtered);
 }
+window._normCampus = _normCampus;
 
 function _clearUsersFilters() {
   ['u-name','u-acc','u-role','u-status','u-campus','u-tg'].forEach(k => {
