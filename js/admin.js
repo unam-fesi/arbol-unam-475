@@ -2475,7 +2475,7 @@ async function loadAssignments() {
 
     let taTreeMap = {}, taUserMap = {}, taGroupMap = {};
     if (taTreeIds.length > 0) {
-      const { data: td } = await sb.from('trees_catalog').select('id, tree_code, common_name').in('id', taTreeIds);
+      const { data: td } = await sb.from('trees_catalog').select('id, tree_code, common_name, campus').in('id', taTreeIds);
       (td || []).forEach(t => { taTreeMap[t.id] = t; });
     }
     if (taUserIds.length > 0) {
@@ -2497,7 +2497,7 @@ async function loadAssignments() {
     const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     // Pre-procesar cada asignación de árbol con los campos display
-    const treeAssignmentsEnriched = (treeAssignments || []).map(a => {
+    const treeAssignmentsEnrichedAll = (treeAssignments || []).map(a => {
       const tree = taTreeMap[a.tree_id] || {};
       const targetName = a.user_id ? (taUserMap[a.user_id]?.full_name || 'Usuario') : (taGroupMap[a.group_id]?.name || 'Grupo');
       const type = a.user_id ? 'Usuario' : 'Grupo';
@@ -2511,8 +2511,15 @@ async function loadAssignments() {
           specialist = UUID_RX.test(raw) ? (specialistMap[raw] || raw) : raw;
         }
       }
-      return { raw: a, tree, targetName, type, badgeClass, specialist };
+      // campus al nivel raíz para que el sort y filtro funcionen sobre r.campus
+      return { raw: a, tree, campus: tree.campus || null, targetName, type, badgeClass, specialist };
     });
+    // Filtrar por campus efectivo del usuario actual (admin-campus / responsable ven solo el suyo;
+    // admin principal ve todo si no hay campus filter, o filtra cuando elige uno).
+    const _campusEff_TA = effectiveCampusFilter();
+    const treeAssignmentsEnriched = _campusEff_TA
+      ? treeAssignmentsEnrichedAll.filter(r => r.campus === _campusEff_TA)
+      : treeAssignmentsEnrichedAll;
     _treeAssignmentsCache = treeAssignmentsEnriched;
     _renderTreeAssignments(treeAssignmentsEnriched);
 
@@ -2540,13 +2547,17 @@ async function loadAssignments() {
     }
 
     // Pre-procesar cada asignación de jardín con los campos display
-    const gardenAssignmentsEnriched = (gardenAssignments || []).map(a => {
+    const gardenAssignmentsEnrichedAll = (gardenAssignments || []).map(a => {
       const garden = gaGardenMap[a.garden_id] || {};
       const targetName = a.user_id ? (gaUserMap[a.user_id]?.full_name || 'Usuario') : (gaGroupMap[a.group_id]?.name || 'Grupo');
       const type = a.user_id ? 'Usuario' : 'Grupo';
       const badgeClass = a.user_id ? 'assignment-badge-user' : 'assignment-badge-group';
-      return { raw: a, garden, targetName, type, badgeClass };
+      return { raw: a, garden, campus: garden.campus || null, targetName, type, badgeClass };
     });
+    const _campusEff_GA = effectiveCampusFilter();
+    const gardenAssignmentsEnriched = _campusEff_GA
+      ? gardenAssignmentsEnrichedAll.filter(r => r.campus === _campusEff_GA)
+      : gardenAssignmentsEnrichedAll;
     _gardenAssignmentsCache = gardenAssignmentsEnriched;
     _renderGardenAssignments(gardenAssignmentsEnriched);
 
@@ -2567,13 +2578,14 @@ function _renderTreeAssignments(rows) {
   if (!tbody) return;
   tbody.innerHTML = '';
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
     return;
   }
   rows.forEach(r => {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>🌳 ${escapeHtml(r.tree.tree_code || '-')} - ${escapeHtml(r.tree.common_name || '')}</td>
+      <td>${escapeHtml(r.campus || '-')}</td>
       <td>${escapeHtml(r.targetName)}</td>
       <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
       <td>${escapeHtml(r.specialist)}</td>
@@ -2589,13 +2601,14 @@ function _renderGardenAssignments(rows) {
   if (!tbody) return;
   tbody.innerHTML = '';
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
     return;
   }
   rows.forEach(r => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>🌿 ${escapeHtml(r.garden.name || '-')} (${escapeHtml(r.garden.campus || '')})</td>
+      <td>🌿 ${escapeHtml(r.garden.name || '-')}</td>
+      <td>${escapeHtml(r.campus || '-')}</td>
       <td>${escapeHtml(r.targetName)}</td>
       <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
       <td>${formatDate(r.raw.assigned_at)}</td>
@@ -2608,12 +2621,15 @@ function _renderGardenAssignments(rows) {
 function _filterTreeAssignments() {
   const get = sel => (document.querySelector(`[data-filter="${sel}"]`)?.value || '').toLowerCase().trim();
   const fTree = get('ta-tree');
+  const fCampus = get('ta-campus');
   const fTarget = get('ta-target');
   const fType = get('ta-type');
   const fSpec = get('ta-specialist');
+  const fCampusN = _normCampus(fCampus);
   const filtered = _treeAssignmentsCache.filter(r => {
     const treeText = `${r.tree.tree_code || ''} ${r.tree.common_name || ''}`.toLowerCase();
     if (fTree && !treeText.includes(fTree)) return false;
+    if (fCampusN && _normCampus(r.campus) !== fCampusN) return false;
     if (fTarget && !(r.targetName || '').toLowerCase().includes(fTarget)) return false;
     if (fType && r.type !== fType) return false;
     if (fSpec && !(r.specialist || '').toLowerCase().includes(fSpec)) return false;
@@ -2623,7 +2639,7 @@ function _filterTreeAssignments() {
 }
 
 function _clearTreeAssignmentFilters() {
-  ['ta-tree','ta-target','ta-type','ta-specialist'].forEach(k => {
+  ['ta-tree','ta-campus','ta-target','ta-type','ta-specialist'].forEach(k => {
     const el = document.querySelector(`[data-filter="${k}"]`);
     if (el) el.value = '';
   });
@@ -2633,11 +2649,14 @@ function _clearTreeAssignmentFilters() {
 function _filterGardenAssignments() {
   const get = sel => (document.querySelector(`[data-filter="${sel}"]`)?.value || '').toLowerCase().trim();
   const fGarden = get('ga-garden');
+  const fCampus = get('ga-campus');
   const fTarget = get('ga-target');
   const fType = get('ga-type');
+  const fCampusN = _normCampus(fCampus);
   const filtered = _gardenAssignmentsCache.filter(r => {
-    const gText = `${r.garden.name || ''} ${r.garden.campus || ''}`.toLowerCase();
+    const gText = `${r.garden.name || ''}`.toLowerCase();
     if (fGarden && !gText.includes(fGarden)) return false;
+    if (fCampusN && _normCampus(r.campus) !== fCampusN) return false;
     if (fTarget && !(r.targetName || '').toLowerCase().includes(fTarget)) return false;
     if (fType && r.type !== fType) return false;
     return true;
@@ -2646,7 +2665,7 @@ function _filterGardenAssignments() {
 }
 
 function _clearGardenAssignmentFilters() {
-  ['ga-garden','ga-target','ga-type'].forEach(k => {
+  ['ga-garden','ga-campus','ga-target','ga-type'].forEach(k => {
     const el = document.querySelector(`[data-filter="${k}"]`);
     if (el) el.value = '';
   });
