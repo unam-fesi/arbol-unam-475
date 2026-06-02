@@ -59,10 +59,16 @@ const TAB_GROUP = {
 
 // Cambia el GRUPO de tabs visibles (Gestión / Monitoreo / Comunicación / Seguridad)
 function switchAdminGroup(groupName) {
-  // SEGURIDAD: Monitoreo y Seguridad SOLO para admin principal (todas las tabs
-  // dentro están en TABS_ADMIN_ONLY; doble-check aquí evita exposición del UI).
-  if ((groupName === 'monitoreo' || groupName === 'seguridad') && !isAdminRole()) {
+  // SEGURIDAD: 'seguridad' SOLO admin principal. 'monitoreo' admin global y
+  // admin-campus (este último viendo solo su campus — effectiveCampusFilter
+  // ya lo fuerza). Las tabs internas más restrictivas (kpis, security,
+  // quotas, audit) están en TABS_ADMIN_ONLY y se filtran en switchAdminTab.
+  if (groupName === 'seguridad' && !isAdminRole()) {
     showToast('Acceso denegado: solo administrador principal', 'error');
+    return;
+  }
+  if (groupName === 'monitoreo' && !(isAdminRole() || isAdminCampusRole())) {
+    showToast('Acceso denegado: solo admin / admin-campus', 'error');
     return;
   }
   // Actualizar estilo de los botones de grupo
@@ -988,6 +994,13 @@ async function editAdminUser(userId) {
 let _adminTreesCache = [];
 
 async function loadAdminTrees() {
+  // SEGURIDAD UX: admin-campus, responsable y specialist NO pueden crear/editar/borrar
+  // árboles. La sección colapsable "Agregar/Editar Árbol" se oculta para ellos.
+  // (La verdadera barrera está en las RLS policies de trees_catalog: aunque
+  // alguien forzara el formulario por consola, el INSERT/UPDATE/DELETE se
+  // rechaza desde la BD.)
+  _applyTreeAdminOnlyUI();
+
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
   try {
@@ -1001,6 +1014,22 @@ async function loadAdminTrees() {
     _renderAdminTreesRows(_adminTreesCache);
   } catch (err) {
     showToast('Error cargando árboles: ' + err.message, 'error');
+  }
+}
+
+// Oculta el form "Agregar/Editar Árbol" para usuarios que NO son admin global.
+function _applyTreeAdminOnlyUI() {
+  const isAdmin = isAdminRole();
+  // Buscar el <details class="admin-collapsible"> dentro del tab de árboles
+  // que contiene al form#form-admin-tree
+  const treeForm = document.getElementById('form-admin-tree');
+  const detailsBlock = treeForm?.closest('details') || treeForm?.closest('.admin-form');
+  if (detailsBlock) {
+    detailsBlock.style.display = isAdmin ? '' : 'none';
+  }
+  // También si está abierto, cerrarlo
+  if (detailsBlock && detailsBlock.tagName === 'DETAILS' && !isAdmin) {
+    detailsBlock.removeAttribute('open');
   }
 }
 
@@ -1129,6 +1158,11 @@ function _renderAdminTreesRows(trees) {
   const tbody = document.getElementById('trees-table-body');
   if (!tbody) return;
   tbody.innerHTML = '';
+  // SEGURIDAD UX: solo admin global ve botones de editar/editar-ubicación/borrar.
+  // admin-campus / responsable / specialist solo ven los botones de lectura
+  // (ver seguimientos, QR). RLS de trees_catalog rechaza la operación en BD
+  // de todos modos si forzaran el frontend.
+  const canMutate = isAdminRole();
   trees.forEach(tree => {
     const row = document.createElement('tr');
     const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
@@ -1137,6 +1171,11 @@ function _renderAdminTreesRows(trees) {
     const co2Tag = co2 > 0
       ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
       : '';
+    const mutateButtons = canMutate ? `
+        <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
+        <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>` : '';
+    const deleteButton = canMutate ? `
+        <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>` : '';
     row.innerHTML = `
       <td>${escapeHtml(tree.tree_code || '-')}</td>
       <td>${escapeHtml(tree.species || '-')}</td>
@@ -1146,12 +1185,9 @@ function _renderAdminTreesRows(trees) {
         ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
       </td>
       <td>${tree.health_score || 0}%${co2Tag}</td>
-      <td>
-        <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
-        <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>
+      <td>${mutateButtons}
         <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
-        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>
+        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>${deleteButton}
       </td>
     `;
     tbody.appendChild(row);
@@ -1198,6 +1234,12 @@ async function populateGardenDropdown(selectId, currentValue) {
 
 async function saveAdminTree(e) {
   if (e) e.preventDefault();
+  // SEGURIDAD: solo admin global puede crear/editar árboles.
+  // (Doble defensa: la RLS de trees_catalog rechaza igual si forzaran el form.)
+  if (!isAdminRole()) {
+    showToast('Solo el administrador principal puede crear o editar árboles', 'error');
+    return;
+  }
 
   // Recoger metas del árbol (sección "Metas del árbol")
   const goals = _readTreeGoalsFromForm('admin-tree');
@@ -1478,6 +1520,11 @@ Notas:
 }
 
 async function editAdminTree(treeId) {
+  // SEGURIDAD: solo admin global puede editar árboles.
+  if (!isAdminRole()) {
+    showToast('Solo el administrador principal puede editar árboles', 'error');
+    return;
+  }
   const { data: tree } = await sb.from('trees_catalog').select('*').eq('id', treeId).single();
   if (!tree) return;
 
@@ -1627,6 +1674,11 @@ async function editAdminTree(treeId) {
 }
 
 async function deleteAdminTree(treeId) {
+  // SEGURIDAD: solo admin global puede borrar árboles.
+  if (!isAdminRole()) {
+    showToast('Solo el administrador principal puede borrar árboles', 'error');
+    return;
+  }
   if (!confirm('¿Eliminar este árbol?\n\n⚠ Se eliminarán TAMBIÉN:\n• Todos sus seguimientos (mediciones)\n• Sus asignaciones a usuarios\n• Sus reportes ciudadanos\n• Sus bitácoras y resúmenes anuales')) return;
 
   try {
