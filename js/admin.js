@@ -1163,11 +1163,13 @@ function _renderAdminTreesRows(trees) {
   const tbody = document.getElementById('trees-table-body');
   if (!tbody) return;
   tbody.innerHTML = '';
-  // SEGURIDAD UX: solo admin global ve botones de editar/editar-ubicación/borrar.
-  // admin-campus / responsable / specialist solo ven los botones de lectura
-  // (ver seguimientos, QR). RLS de trees_catalog rechaza la operación en BD
-  // de todos modos si forzaran el frontend.
-  const canMutate = isAdminRole();
+  // SEGURIDAD UX:
+  //   - admin global   : ve todos los botones (editar, editar-ubicación, borrar)
+  //   - admin-campus   : ve editar + editar-ubicación (de su campus), SIN borrar
+  //   - responsable / specialist / user: solo lectura (📋, 📱)
+  // Las RLS de trees_catalog son la barrera dura en BD.
+  const canEdit   = isAdminRole() || isAdminCampusRole();
+  const canDelete = isAdminRole();
   trees.forEach(tree => {
     const row = document.createElement('tr');
     const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
@@ -1176,10 +1178,12 @@ function _renderAdminTreesRows(trees) {
     const co2Tag = co2 > 0
       ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
       : '';
-    const mutateButtons = canMutate ? `
+    // admin-campus solo ve editar para árboles de SU campus (extra safety)
+    const showEditForRow = isAdminRole() || (isAdminCampusRole() && tree.campus === _userCampus());
+    const editButtons = (canEdit && showEditForRow) ? `
         <button class="btn btn-sm btn-secondary" onclick="editAdminTree(${tree.id})" title="Editar">✏️</button>
         <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>` : '';
-    const deleteButton = canMutate ? `
+    const deleteButton = canDelete ? `
         <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>` : '';
     row.innerHTML = `
       <td>${escapeHtml(tree.tree_code || '-')}</td>
@@ -1190,7 +1194,7 @@ function _renderAdminTreesRows(trees) {
         ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
       </td>
       <td>${tree.health_score || 0}%${co2Tag}</td>
-      <td>${mutateButtons}
+      <td>${editButtons}
         <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
         <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>${deleteButton}
       </td>
@@ -1525,13 +1529,18 @@ Notas:
 }
 
 async function editAdminTree(treeId) {
-  // SEGURIDAD: solo admin global puede editar árboles.
-  if (!isAdminRole()) {
-    showToast('Solo el administrador principal puede editar árboles', 'error');
+  // SEGURIDAD: admin global y admin-campus pueden editar árboles.
+  // Para admin-campus, solo árboles de SU campus (las RLS también lo verifican).
+  if (!isAdminRole() && !isAdminCampusRole()) {
+    showToast('Solo administradores pueden editar árboles', 'error');
     return;
   }
   const { data: tree } = await sb.from('trees_catalog').select('*').eq('id', treeId).single();
   if (!tree) return;
+  if (isAdminCampusRole() && tree.campus !== _userCampus()) {
+    showToast(`Solo puedes editar árboles de tu campus (${_userCampus()})`, 'error');
+    return;
+  }
 
   // Jardines SOLO existen en Iztacala. Solo cargar+mostrar dropdown si el árbol es de Iztacala.
   const showGardens = (tree.campus === 'Iztacala');
@@ -1552,6 +1561,11 @@ async function editAdminTree(treeId) {
     `<option value="${s}" ${tree.size === s ? 'selected' : ''}>${TREE_SIZE_LABELS[s]}</option>`).join('');
   const campusOpts = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'].map(c =>
     `<option value="${c}" ${tree.campus === c ? 'selected' : ''}>${c === 'CU' ? 'CU' : 'FES ' + c}</option>`).join('');
+  // Para admin-campus: el campus queda BLOQUEADO al del árbol (no puede migrarlo
+  // a otro campus). La RLS también lo impide a nivel BD.
+  const campusFieldDisabled = isAdminCampusRole() ? 'disabled' : '';
+  const campusFieldHint = isAdminCampusRole()
+    ? ' <small style="color:#888;">(no editable)</small>' : '';
 
   // ---- Última foto: del seguimiento más reciente; fallback a la del alta ----
   let latestPhotoSrc = null;
@@ -1601,7 +1615,7 @@ async function editAdminTree(treeId) {
         <div class="form-group"><label>Tamaño</label><select id="edit-tree-size" style="width:100%;padding:0.5rem;">${sizeOpts}</select></div>
       </div>
       <div style="display:grid;grid-template-columns:${showGardens ? '1fr 1fr' : '1fr'};gap:0.5rem;margin-bottom:0.75rem;">
-        <div class="form-group"><label>Campus</label><select id="edit-tree-campus" style="width:100%;padding:0.5rem;">${campusOpts}</select></div>
+        <div class="form-group"><label>Campus${campusFieldHint}</label><select id="edit-tree-campus" style="width:100%;padding:0.5rem;" ${campusFieldDisabled}>${campusOpts}</select></div>
         ${showGardens ? `<div class="form-group"><label>Jardín</label><select id="edit-tree-garden" style="width:100%;padding:0.5rem;">${gardenOpts}</select></div>` : ''}
       </div>
       <div class="form-group" style="margin-bottom:0.75rem;">
@@ -1654,13 +1668,20 @@ async function editAdminTree(treeId) {
 
   document.getElementById('edit-tree-form').addEventListener('submit', async function(e) {
     e.preventDefault();
+    // SEGURIDAD UX: admin-campus no puede migrar el árbol a otro campus.
+    // El select está disabled (que no envía valor), pero por defensa forzamos
+    // el campus original. La RLS de trees_catalog también lo rechaza si lo
+    // intentaran via consola.
+    const campusToSave = isAdminCampusRole()
+      ? tree.campus
+      : document.getElementById('edit-tree-campus').value;
     const { error } = await sb.from('trees_catalog').update({
       tree_code: document.getElementById('edit-tree-code').value.trim(),
       species: document.getElementById('edit-tree-species').value.trim(),
       common_name: document.getElementById('edit-tree-common').value.trim() || null,
       tree_type: document.getElementById('edit-tree-type').value,
       size: document.getElementById('edit-tree-size').value,
-      campus: document.getElementById('edit-tree-campus').value,
+      campus: campusToSave,
       garden_id: document.getElementById('edit-tree-garden')?.value || null,
       location_lat: parseFloat(document.getElementById('edit-tree-lat').value) || null,
       location_lng: parseFloat(document.getElementById('edit-tree-lng').value) || null,
