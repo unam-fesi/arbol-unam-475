@@ -684,6 +684,7 @@ a:hover { color: var(--primary-dark); }
 .admin-collapsible:not([open]) { padding-top: 1rem; padding-bottom: 1rem; }
 
 /* ─── Sort headers en tablas admin ─── */
+/* El thead tiene fondo verde con color:white, así que las flechitas son blancas */
 .sort-header {
   cursor: pointer;
   user-select: none;
@@ -693,19 +694,28 @@ a:hover { color: var(--primary-dark); }
   justify-content: space-between;
   padding: 0.15rem 0.1rem;
   border-radius: 4px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease;
 }
 .sort-header:hover {
-  background: rgba(74,124,42,0.08);
-  color: var(--primary-dark);
+  background: rgba(255,255,255,0.18);   /* overlay blanco sobre el verde */
 }
 .sort-header .sort-ind {
-  font-size: 0.72rem;
-  opacity: 0.3;
-  transition: opacity 0.15s ease;
+  font-size: 0.78rem;
+  color: #ffffff;                       /* blanco explícito */
+  opacity: 0.75;                        /* siempre visible */
+  transition: opacity 0.15s ease, text-shadow 0.15s ease;
   letter-spacing: -0.02em;
+  text-shadow: 0 0 2px rgba(0,0,0,0.3); /* leve contraste contra el verde */
+  font-weight: 700;
 }
-.sort-header:hover .sort-ind { opacity: 0.7; }
+.sort-header:hover .sort-ind {
+  opacity: 1;
+}
+/* Cuando está activa (asc/desc), totalmente sólida */
+.sort-header[data-sort-active] .sort-ind {
+  opacity: 1;
+  text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 2px rgba(0,0,0,0.4);
+}
 
 .admin-content { padding: 0; }
 

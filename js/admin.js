@@ -689,7 +689,8 @@ function _toggleSort(table, field) {
   else { s.dir = 'asc'; }
 }
 
-// Actualiza el indicador visual ▲/▼ en los headers de la tabla
+// Actualiza el indicador visual ▲/▼ en los headers de la tabla.
+// El styling (opacity / glow) lo maneja el CSS via [data-sort-active].
 function _updateSortIndicators(tableSelector) {
   const table = document.querySelector(tableSelector);
   if (!table) return;
@@ -701,10 +702,10 @@ function _updateSortIndicators(tableSelector) {
     if (!ind) return;
     if (s && s.field === f && s.dir) {
       ind.textContent = s.dir === 'asc' ? '▲' : '▼';
-      ind.style.opacity = '1';
+      el.setAttribute('data-sort-active', s.dir);
     } else {
       ind.textContent = '⇅';
-      ind.style.opacity = '0.3';
+      el.removeAttribute('data-sort-active');
     }
   });
 }
