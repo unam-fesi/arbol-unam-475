@@ -465,15 +465,15 @@
                                     <span>Usuarios Registrados</span>
                                     <button type="button" class="btn btn-sm" style="background:#f0f0f0;color:#444;" onclick="_clearUsersFilters()">Limpiar filtros</button>
                                 </h4>
-                                <table class="admin-table">
+                                <table class="admin-table" data-sort-table="users">
                                     <thead>
                                         <tr>
-                                            <th><div>Nombre</div><input type="text" class="filter-input" data-filter="u-name" placeholder="🔍 nombre" oninput="_filterUsers()" autocomplete="off"></th>
-                                            <th><div>No. Cuenta</div><input type="text" class="filter-input" data-filter="u-acc" placeholder="🔍 cuenta" oninput="_filterUsers()" autocomplete="off"></th>
-                                            <th><div>Rol</div><select class="filter-input" data-filter="u-role" onchange="_filterUsers()"><option value="">— Todos —</option><option value="admin">admin</option><option value="admin-campus">admin-campus</option><option value="responsable">responsable</option><option value="specialist">specialist</option><option value="user">user</option></select></th>
-                                            <th><div>Estatus</div><select class="filter-input" data-filter="u-status" onchange="_filterUsers()"><option value="">— Todos —</option><option value="alumno">alumno</option><option value="profesor">profesor</option><option value="ciudadano">ciudadano</option><option value="ex-alumno">ex-alumno</option></select></th>
-                                            <th><div>Campus</div><select class="filter-input" data-filter="u-campus" onchange="_filterUsers()"><option value="">— Todos —</option><option value="Iztacala">FES Iztacala</option><option value="Acatlan">FES Acatlán</option><option value="Aragon">FES Aragón</option><option value="Cuautitlan1">FES Cuautitlán Campus 1</option><option value="Cuautitlan">FES Cuautitlán Campus 4</option><option value="Zaragoza">FES Zaragoza</option><option value="CU">CU</option></select></th>
-                                            <th><div>Telegram</div><select class="filter-input" data-filter="u-tg" onchange="_filterUsers()"><option value="">— Todos —</option><option value="yes">Sí ✅</option><option value="no">No ❌</option></select></th>
+                                            <th><div class="sort-header" data-sort-field="full_name" onclick="_sortAdminTable('users','full_name')">Nombre <span class="sort-ind">⇅</span></div><input type="text" class="filter-input" data-filter="u-name" placeholder="🔍 nombre" oninput="_filterUsers()" autocomplete="off"></th>
+                                            <th><div class="sort-header" data-sort-field="account_number" onclick="_sortAdminTable('users','account_number')">No. Cuenta <span class="sort-ind">⇅</span></div><input type="text" class="filter-input" data-filter="u-acc" placeholder="🔍 cuenta" oninput="_filterUsers()" autocomplete="off"></th>
+                                            <th><div class="sort-header" data-sort-field="role" onclick="_sortAdminTable('users','role')">Rol <span class="sort-ind">⇅</span></div><select class="filter-input" data-filter="u-role" onchange="_filterUsers()"><option value="">— Todos —</option><option value="admin">admin</option><option value="admin-campus">admin-campus</option><option value="responsable">responsable</option><option value="specialist">specialist</option><option value="user">user</option></select></th>
+                                            <th><div class="sort-header" data-sort-field="academic_status" onclick="_sortAdminTable('users','academic_status')">Estatus <span class="sort-ind">⇅</span></div><select class="filter-input" data-filter="u-status" onchange="_filterUsers()"><option value="">— Todos —</option><option value="alumno">alumno</option><option value="profesor">profesor</option><option value="ciudadano">ciudadano</option><option value="ex-alumno">ex-alumno</option></select></th>
+                                            <th><div class="sort-header" data-sort-field="campus" onclick="_sortAdminTable('users','campus')">Campus <span class="sort-ind">⇅</span></div><select class="filter-input" data-filter="u-campus" onchange="_filterUsers()"><option value="">— Todos —</option><option value="Iztacala">FES Iztacala</option><option value="Acatlan">FES Acatlán</option><option value="Aragon">FES Aragón</option><option value="Cuautitlan1">FES Cuautitlán Campus 1</option><option value="Cuautitlan">FES Cuautitlán Campus 4</option><option value="Zaragoza">FES Zaragoza</option><option value="CU">CU</option></select></th>
+                                            <th><div class="sort-header" data-sort-field="telegram" onclick="_sortAdminTable('users','telegram')">Telegram <span class="sort-ind">⇅</span></div><select class="filter-input" data-filter="u-tg" onchange="_filterUsers()"><option value="">— Todos —</option><option value="yes">Sí ✅</option><option value="no">No ❌</option></select></th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -685,14 +685,14 @@
                                 </details>
 
                                 <h4 style="margin-bottom: 1rem;">Árboles Registrados</h4>
-                                <table class="admin-table">
+                                <table class="admin-table" data-sort-table="trees">
                                     <thead>
                                         <tr>
-                                            <th>Código</th>
-                                            <th>Especie</th>
-                                            <th>Campus</th>
-                                            <th>Estado</th>
-                                            <th>Salud</th>
+                                            <th><div class="sort-header" data-sort-field="tree_code" onclick="_sortAdminTable('trees','tree_code')">Código <span class="sort-ind">⇅</span></div></th>
+                                            <th><div class="sort-header" data-sort-field="species" onclick="_sortAdminTable('trees','species')">Especie <span class="sort-ind">⇅</span></div></th>
+                                            <th><div class="sort-header" data-sort-field="campus" onclick="_sortAdminTable('trees','campus')">Campus <span class="sort-ind">⇅</span></div></th>
+                                            <th><div class="sort-header" data-sort-field="status" onclick="_sortAdminTable('trees','status')">Estado <span class="sort-ind">⇅</span></div></th>
+                                            <th><div class="sort-header" data-sort-field="health_score" onclick="_sortAdminTable('trees','health_score')">Salud <span class="sort-ind">⇅</span></div></th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>

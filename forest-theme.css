@@ -683,6 +683,30 @@ a:hover { color: var(--primary-dark); }
 .admin-collapsible > summary:hover > h4 { color: var(--primary); }
 .admin-collapsible:not([open]) { padding-top: 1rem; padding-bottom: 1rem; }
 
+/* ─── Sort headers en tablas admin ─── */
+.sort-header {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: space-between;
+  padding: 0.15rem 0.1rem;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sort-header:hover {
+  background: rgba(74,124,42,0.08);
+  color: var(--primary-dark);
+}
+.sort-header .sort-ind {
+  font-size: 0.72rem;
+  opacity: 0.3;
+  transition: opacity 0.15s ease;
+  letter-spacing: -0.02em;
+}
+.sort-header:hover .sort-ind { opacity: 0.7; }
+
 .admin-content { padding: 0; }
 
 /* Forms */

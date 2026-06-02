@@ -646,6 +646,83 @@ function _normCampus(s) {
     .trim();
 }
 
+// ─── Sort genérico para tablas admin ───
+// Estado por tabla. dir = 'asc' | 'desc' | null (null = sin orden, usa orden de origen).
+const _adminSortState = {
+  users: { field: null, dir: null },
+  trees: { field: null, dir: null },
+};
+
+// Comparador robusto: strings case-insensitive sin acentos, numbers numéricos,
+// booleans (true>false), null/undefined siempre al final.
+function _sortCompare(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;   // nulls al final
+  if (b == null) return -1;
+  // numérico
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  // boolean
+  if (typeof a === 'boolean' && typeof b === 'boolean') return (a === b) ? 0 : a ? -1 : 1;
+  // strings: lowercase + sin acentos
+  const sa = String(a).toLocaleLowerCase('es-MX').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const sb = String(b).toLocaleLowerCase('es-MX').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return sa.localeCompare(sb, 'es-MX', { numeric: true });
+}
+
+function _sortRows(rows, field, dir) {
+  if (!field || !dir) return rows;
+  const out = [...rows];
+  out.sort((r1, r2) => {
+    const cmp = _sortCompare(r1[field], r2[field]);
+    return dir === 'desc' ? -cmp : cmp;
+  });
+  return out;
+}
+
+// Toggle: null → asc → desc → null
+function _toggleSort(table, field) {
+  const s = _adminSortState[table];
+  if (!s) return;
+  if (s.field !== field) { s.field = field; s.dir = 'asc'; }
+  else if (s.dir === 'asc') { s.dir = 'desc'; }
+  else if (s.dir === 'desc') { s.field = null; s.dir = null; }
+  else { s.dir = 'asc'; }
+}
+
+// Actualiza el indicador visual ▲/▼ en los headers de la tabla
+function _updateSortIndicators(tableSelector) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+  const tableName = table.dataset.sortTable; // 'users' | 'trees'
+  const s = _adminSortState[tableName];
+  table.querySelectorAll('[data-sort-field]').forEach(el => {
+    const f = el.dataset.sortField;
+    const ind = el.querySelector('.sort-ind');
+    if (!ind) return;
+    if (s && s.field === f && s.dir) {
+      ind.textContent = s.dir === 'asc' ? '▲' : '▼';
+      ind.style.opacity = '1';
+    } else {
+      ind.textContent = '⇅';
+      ind.style.opacity = '0.3';
+    }
+  });
+}
+
+// Click handler universal (HTML invoca esto desde onclick)
+function _sortAdminTable(table, field) {
+  _toggleSort(table, field);
+  if (table === 'users') {
+    _filterUsers();
+    _updateSortIndicators('#users-table-body')?.closest?.('table');
+    _updateSortIndicators('table[data-sort-table="users"]');
+  } else if (table === 'trees') {
+    _filterAdminTrees();
+    _updateSortIndicators('table[data-sort-table="trees"]');
+  }
+}
+window._sortAdminTable = _sortAdminTable;
+
 function _filterUsers() {
   const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
   const fName = get('u-name'), fAcc = get('u-acc'), fRole = get('u-role'),
@@ -661,7 +738,13 @@ function _filterUsers() {
     if (fTg === 'no' && u.telegram_chat_id) return false;
     return true;
   });
-  _renderUsers(filtered);
+  const { field, dir } = _adminSortState.users;
+  // Para telegram, el "field" del objeto NO es booleano puro — lo convertimos al sortear
+  const filteredSorted = (field === 'telegram')
+    ? _sortRows(filtered.map(u => ({ ...u, telegram: !!u.telegram_chat_id })), field, dir)
+    : _sortRows(filtered, field, dir);
+  _renderUsers(filteredSorted);
+  _updateSortIndicators('table[data-sort-table="users"]');
 }
 window._normCampus = _normCampus;
 
@@ -670,7 +753,9 @@ function _clearUsersFilters() {
     const el = document.querySelector(`[data-filter="${k}"]`);
     if (el) el.value = '';
   });
+  _adminSortState.users = { field: null, dir: null };
   _renderUsers(_usersCache);
+  _updateSortIndicators('table[data-sort-table="users"]');
 }
 
 window._filterUsers = _filterUsers;
@@ -1011,7 +1096,10 @@ function _filterAdminTrees() {
     return true;
   });
 
-  _renderAdminTreesRows(filtered);
+  const { field, dir } = _adminSortState.trees;
+  const filteredSorted = _sortRows(filtered, field, dir);
+  _renderAdminTreesRows(filteredSorted);
+  _updateSortIndicators('table[data-sort-table="trees"]');
 
   // Contador en consola para debug y feedback visual
   const tbody = document.getElementById('trees-table-body');
@@ -1031,7 +1119,9 @@ function _clearAdminTreesFilters() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  _adminSortState.trees = { field: null, dir: null };
   _renderAdminTreesRows(_adminTreesCache);
+  _updateSortIndicators('table[data-sort-table="trees"]');
 }
 
 function _renderAdminTreesRows(trees) {
