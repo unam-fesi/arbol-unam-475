@@ -648,6 +648,41 @@ a:hover { color: var(--primary-dark); }
   color: var(--primary-dark);
 }
 
+/* ─── Secciones colapsables (<details class="admin-collapsible">) ─── */
+.admin-collapsible > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  margin: -0.25rem 0 0;
+}
+.admin-collapsible > summary::-webkit-details-marker { display: none; }
+.admin-collapsible > summary > h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+  transition: padding-bottom 0.2s ease, border-color 0.2s ease, margin-bottom 0.2s ease;
+}
+.admin-collapsible > summary > h4::before {
+  content: '▶';
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--primary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.admin-collapsible[open] > summary > h4::before { transform: rotate(90deg); }
+.admin-collapsible[open] > summary > h4 {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+}
+.admin-collapsible > summary:hover > h4 { color: var(--primary); }
+.admin-collapsible:not([open]) { padding-top: 1rem; padding-bottom: 1rem; }
+
 .admin-content { padding: 0; }
 
 /* Forms */

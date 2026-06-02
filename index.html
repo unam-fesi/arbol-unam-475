@@ -370,8 +370,8 @@
                         <div class="admin-content">
                             <!-- USERS TAB -->
                             <div id="usersTab" class="tab-pane active">
-                                <div class="admin-form">
-                                    <h4>Agregar/Editar Usuario</h4>
+                                <details class="admin-form admin-collapsible" open>
+                                    <summary><h4>Agregar/Editar Usuario</h4></summary>
                                     <form id="form-admin-user">
                                         <div class="form-row">
                                             <div class="form-group">
@@ -459,7 +459,7 @@
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="saveAdminUser(event)">Guardar Usuario</button>
                                     </form>
-                                </div>
+                                </details>
 
                                 <h4 style="margin-bottom: 1rem;display:flex;justify-content:space-between;align-items:center;">
                                     <span>Usuarios Registrados</span>
@@ -485,8 +485,8 @@
 
                             <!-- TREES TAB -->
                             <div id="treesTab" class="tab-pane">
-                                <div class="admin-form">
-                                    <h4>Agregar/Editar Árbol</h4>
+                                <details class="admin-form admin-collapsible" open>
+                                    <summary><h4>Agregar/Editar Árbol</h4></summary>
                                     <form id="form-admin-tree">
                                         <div class="form-row">
                                             <div class="form-group">
@@ -682,7 +682,7 @@
 
                                         <button type="button" class="btn btn-primary" onclick="saveAdminTree(event)">Guardar &Aacute;rbol</button>
                                     </form>
-                                </div>
+                                </details>
 
                                 <h4 style="margin-bottom: 1rem;">Árboles Registrados</h4>
                                 <table class="admin-table">
