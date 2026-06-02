@@ -127,11 +127,16 @@ function switchAdminTab(tabName) {
     else if (tabName === 'quotas') loadQuotasDashboard();
   }
   // Tabs que son SIEMPRE globales (no filtran por campus) → esconder el dropdown del filter
+  // El dropdown solo lo ve admin global; admin-campus tiene su campus fijo (lo dice el banner).
   const globalTabs = new Set(['kpis', 'security', 'quotas', 'audit']);
   const campusFilterWrap = document.getElementById('admin-campus-filter-wrap')
                         || document.getElementById('admin-campus-filter')?.parentElement;
   if (campusFilterWrap) {
-    campusFilterWrap.style.display = globalTabs.has(tabName) ? 'none' : '';
+    if (!isAdminRole()) {
+      campusFilterWrap.style.display = 'none';
+    } else {
+      campusFilterWrap.style.display = globalTabs.has(tabName) ? 'none' : '';
+    }
   }
   document.querySelectorAll('.admin-tab').forEach(tab => {
     tab.classList.remove('active');
@@ -200,21 +205,21 @@ function applyRoleBasedUIRestrictions() {
   document.querySelectorAll('.admin-tab').forEach(t => { t.style.display = ''; });
   document.querySelectorAll('.admin-tab-group').forEach(t => { t.style.display = ''; });
 
-  // SEGURIDAD: Los GRUPOS "Monitoreo" y "Seguridad" solo los ve el admin principal.
-  // admin-campus y responsable NO deben siquiera ver los botones de esos grupos.
-  if (!isAdminRole()) {
-    document.querySelectorAll('.admin-tab-group').forEach(btn => {
-      const g = btn.dataset.group;
-      if (g === 'monitoreo' || g === 'seguridad') {
-        btn.style.display = 'none';
-      }
-    });
-    // Esconder también las filas de subtabs por si quedan visibles
-    const monRow = document.getElementById('admin-subtabs-monitoreo');
-    const segRow = document.getElementById('admin-subtabs-seguridad');
-    if (monRow) monRow.style.display = 'none';
-    if (segRow) segRow.style.display = 'none';
-  }
+  // SEGURIDAD por GRUPO:
+  //   - "seguridad" : SOLO admin principal (audit + IPs + quotas)
+  //   - "monitoreo" : admin principal Y admin-campus (este último ve solo su campus)
+  //   - Responsable : ni monitoreo ni seguridad
+  const showMonitoreo = isAdminRole() || isAdminCampusRole();
+  const showSeguridad = isAdminRole();
+  document.querySelectorAll('.admin-tab-group').forEach(btn => {
+    const g = btn.dataset.group;
+    if (g === 'seguridad' && !showSeguridad) btn.style.display = 'none';
+    if (g === 'monitoreo' && !showMonitoreo) btn.style.display = 'none';
+  });
+  const monRow = document.getElementById('admin-subtabs-monitoreo');
+  const segRow = document.getElementById('admin-subtabs-seguridad');
+  if (segRow && !showSeguridad) segRow.style.display = 'none';
+  if (monRow && !showMonitoreo) monRow.style.display = 'none';
 
   // Ocultar tabs prohibidas para admin-campus
   if (isAdminCampusRole()) {
