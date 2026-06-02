@@ -1002,7 +1002,7 @@ async function showMeasurementDetail(measId) {
         ${m.health_score != null ? `<div style="font-size:2.5rem;font-weight:700;color:${m.health_score >= 70 ? '#4CAF50' : m.health_score >= 40 ? '#FFC107' : '#f44336'};">${m.health_score}%</div><div class="text-muted">Salud Estimada</div>` : ''}
       </div>
 
-      ${resolvedPhotoUrl ? `<div style="text-align:center;margin-bottom:1rem;"><img src="${resolvedPhotoUrl}" alt="Foto del árbol" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>` : ''}
+      ${resolvedPhotoUrl ? `<div style="text-align:center;margin-bottom:1rem;"><img src="${escapeHtml(resolvedPhotoUrl)}" alt="Foto del árbol" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>` : ''}
 
       ${(m.height_cm || m.trunk_diameter_cm || m.crown_diameter_cm) ? `<div style="display:grid;grid-template-columns:repeat(${[m.height_cm, m.trunk_diameter_cm, m.crown_diameter_cm].filter(Boolean).length},1fr);gap:0.75rem;margin-bottom:1rem;">
         ${m.height_cm ? `<div style="text-align:center;padding:0.75rem;background:var(--bg);border-radius:8px;"><div class="text-small text-muted">Altura</div><strong style="font-size:1.2rem;">${m.height_cm} cm</strong></div>` : ''}
