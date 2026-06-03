@@ -1185,6 +1185,7 @@ function _renderAdminTreesRows(trees) {
         <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>` : '';
     const deleteButton = canDelete ? `
         <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>` : '';
+    const hasPhoto = tree.photo_url && String(tree.photo_url).length > 0;
     row.innerHTML = `
       <td>${escapeHtml(tree.tree_code || '-')}</td>
       <td>${escapeHtml(tree.species || '-')}</td>
@@ -1192,6 +1193,7 @@ function _renderAdminTreesRows(trees) {
       <td>
         <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
         ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
+        ${hasPhoto ? '<span title="Foto registrada" style="margin-left:4px;">📷</span>' : '<span title="Sin foto registrada — se capturará en próxima medición" style="margin-left:4px;opacity:0.4;">📷</span>'}
       </td>
       <td>${tree.health_score || 0}%${co2Tag}</td>
       <td>${editButtons}
