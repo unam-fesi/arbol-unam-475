@@ -811,7 +811,23 @@ async function saveAdminUser(e) {
   let role = document.getElementById('admin-user-role')?.value || 'user';
 
   if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
-  if (!password || password.length < 6) { showToast('Contraseña de al menos 6 caracteres', 'error'); return; }
+  // Política de password (debe coincidir EXACTO con la del edge function create-user
+  // y con la del cambio de password en el perfil): ≥8 chars + 1 mayúscula + 1 dígito.
+  if (!password || password.length < 8) {
+    showToast('La contraseña debe tener al menos 8 caracteres', 'error');
+    document.getElementById('admin-user-password')?.focus();
+    return;
+  }
+  if (!/[A-Z]/.test(password)) {
+    showToast('La contraseña debe incluir al menos una letra mayúscula', 'error');
+    document.getElementById('admin-user-password')?.focus();
+    return;
+  }
+  if (!/[0-9]/.test(password)) {
+    showToast('La contraseña debe incluir al menos un número', 'error');
+    document.getElementById('admin-user-password')?.focus();
+    return;
+  }
 
   let campus = document.getElementById('admin-user-campus')?.value || 'Iztacala';
 
@@ -851,8 +867,26 @@ async function saveAdminUser(e) {
       }
     });
 
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    // supabase-js v2 envuelve respuestas no-2xx como FunctionsHttpError y NO
+    // expone el body por default. Hay que extraerlo de error.context para
+    // ver el {error, diagCode} real que mandó el edge function.
+    if (error) {
+      let realMsg = error.message || 'Error en create-user';
+      let diagCode = '';
+      try {
+        const ctx = error.context;
+        if (ctx && typeof ctx.json === 'function') {
+          const body = await ctx.json();
+          if (body?.error) realMsg = body.error;
+          if (body?.diagCode) diagCode = ' [' + body.diagCode + ']';
+        } else if (ctx && typeof ctx.text === 'function') {
+          const txt = await ctx.text();
+          if (txt) realMsg = txt;
+        }
+      } catch (_) { /* fallback al mensaje genérico */ }
+      throw new Error(realMsg + diagCode);
+    }
+    if (data?.error) throw new Error(data.error + (data.diagCode ? ' [' + data.diagCode + ']' : ''));
 
     // If user is a specialist, save the extra fields directly to user_profiles
     if (role === 'specialist' && data?.userId) {

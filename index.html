@@ -386,7 +386,8 @@
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label for="admin-user-password">Contraseña</label>
-                                                <input type="password" id="admin-user-password">
+                                                <input type="password" id="admin-user-password" pattern="(?=.*[A-Z])(?=.*[0-9]).{8,}" title="Mínimo 8 caracteres, al menos una mayúscula y un número" autocomplete="new-password">
+                                                <small style="color:#666;display:block;margin-top:4px;font-size:0.78rem;">Mín. 8 caracteres, 1 mayúscula y 1 número</small>
                                             </div>
                                             <div class="form-group">
                                                 <label for="admin-user-num-cuenta">Número de Cuenta</label>
