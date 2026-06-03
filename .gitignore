@@ -10,3 +10,13 @@ docs/
 PROPUESTAS-INNOVACION.md
 scripts/node_modules/
 scripts/package-lock.json
+
+# Dumps de BD y archivos sensibles
+backups/
+
+# Proyecto iOS (Xcode project + signing local + DerivedData) — no se versiona
+# El árbol de Swift sin nada de Xcode se puede mantener en ios-source-tree/ si querés.
+ios/
+
+# Si tampoco querés versionar el source tree de los .swift, descomentá:
+# ios-source-tree/
