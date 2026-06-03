@@ -28,53 +28,6 @@ Plataforma web para el registro, monitoreo y seguimiento del estado de salud de 
 
 ---
 
-## 📁 Estructura del repositorio
-
-```
-arbol-unam-475/
-├── index.html                  # Aplicación SPA — punto de entrada
-├── manifest.json               # PWA manifest
-├── sw.js                       # Service Worker
-├── README.md                   # Este archivo
-├── CHANGELOG.md                # Historial de cambios
-├── PROPUESTAS-INNOVACION.md    # Roadmap de futuras mejoras
-├── js/                         # Módulos JavaScript
-│   ├── config.js               # Configuración Supabase
-│   ├── auth.js                 # Login, signup, sesión, deep links, SW register
-│   ├── navigation.js           # Switch entre secciones, gating por rol
-│   ├── utils.js                # Helpers (toast, modal, escape, compresión)
-│   ├── mi-arbol.js             # Vista de árbol asignado, seguimiento, badges
-│   ├── pumai.js                # Chat con Gemini para diagnóstico
-│   ├── ar-height.js            # Medición AR con giroscopio
-│   ├── admin.js                # Panel admin (7 pestañas)
-│   └── offline-queue.js        # Cola IndexedDB para offline
-├── icons/                      # Iconos PWA
-│   ├── icon-192.png
-│   └── icon-512.png
-├── img/                        # Assets gráficos
-├── video/                      # Video de bienvenida (opcional)
-├── supabase-functions/         # Código de Edge Functions (no se sube a GH Pages, sólo al dashboard)
-│   ├── 01-hardening.sql        # Migración de seguridad RLS
-│   ├── 02-innovations.sql      # Schema de innovaciones
-│   ├── create-user/index.ts    # Edge Function — alta de usuarios
-│   ├── send-telegram-notification/index.ts
-│   ├── notification-cron/index.ts
-│   ├── weather-sync/index.ts
-│   └── backup-export/index.ts
-└── docs/                       # Documentación
-    ├── 01-ARQUITECTURA.md
-    ├── 02-MANUAL-USUARIO.md
-    ├── 03-MANUAL-ADMIN.md
-    ├── 04-MANUAL-ESPECIALISTA.md
-    ├── 05-API-REFERENCE.md
-    ├── 06-DEPLOYMENT.md
-    ├── 07-SEGURIDAD.md
-    ├── 08-TROUBLESHOOTING.md
-    └── screenshots/            # Imágenes de los manuales
-```
-
----
-
 ## 🚀 Quick start
 
 ### Para usuarios finales
@@ -90,26 +43,6 @@ Pide tu cuenta admin al equipo del proyecto. Una vez dentro, ve al [Manual de Ad
 1. Lee la [Arquitectura](docs/01-ARQUITECTURA.md) primero.
 2. Para desplegar: [Deployment](docs/06-DEPLOYMENT.md).
 3. Reportes de bugs: [Troubleshooting](docs/08-TROUBLESHOOTING.md) primero.
-
----
-
-## 🛠️ Stack técnico
-
-| Capa | Tecnología |
-|---|---|
-| Frontend | Vanilla JavaScript (sin framework), HTML5, CSS3 |
-| Backend | Supabase (PostgreSQL + Auth + Storage + Edge Functions Deno) |
-| IA | Google Gemini (vía Edge Function `pum-ai`) |
-| Mapas | Leaflet.js + OpenStreetMap |
-| Charts | Chart.js |
-| AR | Web DeviceOrientation API (giroscopio) |
-| QR | qrcode.js (CDN) |
-| PDF | jsPDF + autoTable |
-| Excel | SheetJS |
-| Telegram | Bot API `@Pumai_treebot` |
-| Hosting | GitHub Pages |
-| Notificaciones push | Telegram (planeado: Web Push) |
-| Offline | Service Worker + IndexedDB |
 
 ---
 
