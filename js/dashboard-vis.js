@@ -405,15 +405,22 @@
     (async () => {
       try {
         const treeIds = (trees || []).map(t => t.id);
+        // Para cada árbol, buscar la foto MÁS RECIENTE disponible.
+        // Orden de prioridad:
+        //   1) Seguimiento más reciente con foto (sea cual sea: primer seguimiento o último)
+        //   2) Fallback: foto del alta del árbol (tree.photo_url)
         let lastMeasByTree = {};
         if (treeIds.length > 0 && typeof sb !== 'undefined') {
           const { data: meas } = await sb
             .from('tree_measurements')
             .select('tree_id, photo_url, measurement_date')
             .in('tree_id', treeIds)
+            .not('photo_url', 'is', null)   // ← filtro server-side: solo seguimientos CON foto
+            .neq('photo_url', '')           // ← rechazar string vacío también
             .order('measurement_date', { ascending: false });
           (meas || []).forEach(m => {
-            if (!lastMeasByTree[m.tree_id] && m.photo_url) {
+            // Primer match por tree_id = el más reciente (ya ordenamos DESC)
+            if (!lastMeasByTree[m.tree_id]) {
               lastMeasByTree[m.tree_id] = m;
             }
           });
@@ -436,11 +443,20 @@
         const placeholdersByPath = new Map();
         for (const placeholder of placeholders) {
           const tree = placeholder.userData.tree;
-          const photoUrl = lastMeasByTree[tree.id]?.photo_url || tree.photo_url;
+          const lastMeas = lastMeasByTree[tree.id];
+          const photoUrl = lastMeas?.photo_url || tree.photo_url;
           if (!photoUrl) continue;
           // Guardar el path ORIGINAL en userData para que el modal de detalle
           // pueda pedir la versión full-res (no el thumb que se ve en el carrusel)
           placeholder.userData.photoPath = photoUrl;
+          // Origen + fecha para que el modal pueda mostrar contexto al usuario.
+          if (lastMeas) {
+            placeholder.userData.photoSource = 'seguimiento';
+            placeholder.userData.photoDate = lastMeas.measurement_date;
+          } else {
+            placeholder.userData.photoSource = 'alta';
+            placeholder.userData.photoDate = null;
+          }
           if (/^https?:\/\//.test(photoUrl)) {
             placeholder.userData.resolvedUrl = photoUrl;
             continue;
@@ -647,7 +663,9 @@
         showMosaicoPhotoModal(
           hit.userData.tree,
           hit.material.map,
-          hit.userData.photoPath  // path original — para cargar full-res
+          hit.userData.photoPath,         // path original — para cargar full-res
+          hit.userData.photoSource,       // 'seguimiento' | 'alta'
+          hit.userData.photoDate          // measurement_date si vino de seguimiento
         );
       }
     };
@@ -747,7 +765,7 @@
   // Modal cuando se hace click en una foto del carrete.
   // texture: THREE.Texture del carrusel (thumb 400px — preview instantáneo)
   // photoPath: path original en Storage (ej. "424/123.jpg") — para cargar full-res
-  function showMosaicoPhotoModal(tree, texture, photoPath) {
+  function showMosaicoPhotoModal(tree, texture, photoPath, photoSource, photoDate) {
     let modal = document.getElementById('mosaico-photo-modal');
     if (modal) modal.remove();
     modal = document.createElement('div');
@@ -783,6 +801,17 @@
             ${score != null ? `<span style="background:${color};color:#fff;padding:4px 12px;border-radius:14px;font-weight:600;font-size:0.85rem;">${score}/100</span>` : ''}
           </div>
           ${tree.tree_code ? `<div style="color:#999;font-family:ui-monospace,monospace;font-size:0.78rem;margin-top:0.4rem;">${tree.tree_code}</div>` : ''}
+          ${(() => {
+            // Badge informativo: de dónde viene esta foto
+            if (photoSource === 'seguimiento' && photoDate) {
+              const d = new Date(photoDate);
+              const fmt = isNaN(d) ? photoDate : d.toLocaleDateString('es-MX', { day:'numeric', month:'short', year:'numeric' });
+              return `<div style="margin-top:0.7rem;padding:6px 10px;background:rgba(46,125,50,0.08);border-left:3px solid #2E7D32;border-radius:6px;font-size:0.78rem;color:#2E7D32;"><i class="fas fa-camera"></i> Foto del seguimiento del ${fmt}</div>`;
+            } else if (photoSource === 'alta') {
+              return `<div style="margin-top:0.7rem;padding:6px 10px;background:rgba(123,79,33,0.08);border-left:3px solid #8B6F47;border-radius:6px;font-size:0.78rem;color:#8B6F47;"><i class="fas fa-seedling"></i> Foto del alta inicial — aún sin seguimientos con foto</div>`;
+            }
+            return '';
+          })()}
           <div style="display:flex;gap:0.5rem;margin-top:1.2rem;justify-content:flex-end;">
             <button onclick="document.getElementById('mosaico-photo-modal').remove()" style="background:#f0f0f0;color:#444;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:500;cursor:pointer;">Cerrar</button>
             ${photoSrc ? `<button onclick="window.open('${photoSrc}','_blank')" style="background:#1976D2;color:#fff;border:none;padding:0.6rem 1.1rem;border-radius:10px;font-weight:600;cursor:pointer;"><i class="fas fa-expand"></i> Ver foto completa</button>` : ''}
