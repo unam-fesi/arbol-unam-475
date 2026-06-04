@@ -19,9 +19,9 @@ window.IztacalaJuanFicus = (function() {
 
   const TARGET_TREE_ID = 861;     // ID en BD del árbol "Juan Ficus"
   const PALOMA_GLB_PATH = 'data/paloma.glb';
-  const PALOMA_SCALE = 0.6;       // ajustable: relativo al GLB original
-  const ORBIT_HEIGHT = 8;         // metros sobre el suelo
-  const ORBIT_RADIUS = 6;         // metros desde el centro del árbol
+  const PALOMA_SCALE = 1.5;       // multiplier sobre el auto-size de 2.5m
+  const ORBIT_HEIGHT = 14;        // metros sobre el suelo (encima de la copa)
+  const ORBIT_RADIUS = 12;        // metros — órbita ancha para verse desde lejos
   const ORBIT_SPEED = 0.18;       // rad/s (~lento, vuelta cada ~35s)
   const FLY_DURATION_MIN = 15;    // s entre aterrizajes
   const FLY_DURATION_MAX = 30;
@@ -85,24 +85,50 @@ window.IztacalaJuanFicus = (function() {
   // ─────────────────────────────────────────────────────────────────────────
 
   function _treeCenter() {
-    return targetGroup ? targetGroup.position.clone() : new THREE.Vector3(0, 0, 0);
+    // El targetGroup wrapper queda en (0,0,0); el árbol real está dentro como
+    // child con su posición seteada por dashboard-iztacala.js. Usamos el
+    // bounding box para sacar el centro REAL en coordenadas mundiales.
+    if (!targetGroup) return new THREE.Vector3(0, 0, 0);
+    const box = new THREE.Box3().setFromObject(targetGroup);
+    const c = new THREE.Vector3();
+    box.getCenter(c);
+    c.y = 0;   // queremos las coords del suelo, no a media altura del árbol
+    return c;
   }
 
   function _addHalo(scene) {
     const c = _treeCenter();
-    // Anillo dorado pulsante en la base del árbol
-    const ringGeo = new THREE.RingGeometry(2.5, 4.5, 64);
+    // Anillo dorado pulsante GRANDE en la base — debe verse desde altura
+    // de cámara aérea del Iztacala 3D (~80m). RingGeometry de 6 a 10m radio.
+    const ringGeo = new THREE.RingGeometry(6, 10, 64);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffd866,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.75,
+      depthWrite: false,                     // que no oculte cosas detrás
     });
     halo = new THREE.Mesh(ringGeo, ringMat);
-    halo.rotation.x = -Math.PI / 2;          // horizontal en el suelo
-    halo.position.set(c.x, 0.05, c.z);        // un pelín sobre el suelo
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.set(c.x, 0.10, c.z);
     halo.userData = { type: 'juanFicusHalo' };
+    halo.renderOrder = 2;
     scene.add(halo);
+
+    // Halo interior más pequeño y más sólido para hacer el "centro" más rico
+    const innerGeo = new THREE.CircleGeometry(5.5, 64);
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0xffeb99,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+    });
+    const inner = new THREE.Mesh(innerGeo, innerMat);
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.set(c.x, 0.08, c.z);
+    inner.renderOrder = 1;
+    scene.add(inner);
   }
 
   function _addGlowLight(scene) {
@@ -153,21 +179,30 @@ window.IztacalaJuanFicus = (function() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function _loadPaloma(scene) {
-    if (!window.GLTFLoader) {
-      // GLTFLoader debería estar global desde three.min + GLTFLoader.js
+    // En este proyecto el GLTFLoader vive en THREE.GLTFLoader (cargado via
+    // <script src="...examples/js/loaders/GLTFLoader.js">), NO en window.
+    if (typeof THREE === 'undefined' || !THREE.GLTFLoader) {
       console.warn('[IztacalaJuanFicus] THREE.GLTFLoader no disponible');
       return;
     }
-    const loader = new window.GLTFLoader();
+    const loader = new THREE.GLTFLoader();
     const gltf = await new Promise((resolve, reject) => {
       loader.load(PALOMA_GLB_PATH, resolve, undefined, reject);
     });
     palomaMesh = gltf.scene;
-    palomaMesh.scale.setScalar(PALOMA_SCALE);
+
+    // Auto-escalar al tamaño deseado (~1.2m wingspan) sin depender del
+    // tamaño con el que se exportó el GLB.
+    const box = new THREE.Box3().setFromObject(palomaMesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    const targetSize = 2.5;                  // 2.5m de envergadura visible
+    palomaMesh.scale.setScalar(targetSize / maxDim * PALOMA_SCALE);
+
     palomaMesh.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
-        // Asegurar look blanco brillante incluso si el GLB trae texturas
         if (o.material) {
           o.material.color = new THREE.Color(0xffffff);
           o.material.emissive = new THREE.Color(0x222222);
@@ -178,6 +213,7 @@ window.IztacalaJuanFicus = (function() {
     const c = _treeCenter();
     palomaMesh.position.set(c.x + ORBIT_RADIUS, ORBIT_HEIGHT, c.z);
     scene.add(palomaMesh);
+    console.log(`[IztacalaJuanFicus] paloma plantada en órbita | center=(${c.x.toFixed(1)}, ${c.z.toFixed(1)}) | size=${(targetSize).toFixed(1)}m`);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
