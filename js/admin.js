@@ -632,14 +632,15 @@ function _renderUsers(users) {
   }
   users.forEach(user => {
     const row = document.createElement('tr');
+    // data-label hace que el CSS mobile muestre cada celda como "Label: valor"
     row.innerHTML = `
-      <td>${escapeHtml(user.full_name || '-')}</td>
-      <td>${escapeHtml(user.account_number || '-')}</td>
-      <td><span style="background:var(--primary);color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${user.role || 'user'}</span></td>
-      <td><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
-      <td>${escapeHtml(user.campus || '-')}</td>
-      <td>${user.telegram_chat_id ? '✅' : '❌'}</td>
-      <td style="white-space:nowrap;">
+      <td data-label="Nombre">${escapeHtml(user.full_name || '-')}</td>
+      <td data-label="No. Cuenta">${escapeHtml(user.account_number || '-')}</td>
+      <td data-label="Rol"><span style="background:var(--primary);color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${user.role || 'user'}</span></td>
+      <td data-label="Estatus"><span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(user.academic_status || '-')}</span></td>
+      <td data-label="Campus">${escapeHtml(user.campus || '-')}</td>
+      <td data-label="Telegram">${user.telegram_chat_id ? '✅' : '❌'}</td>
+      <td data-label="Acciones" style="white-space:nowrap;">
         <button class="btn btn-sm btn-secondary" onclick="editAdminUser('${user.id}')" title="Editar">✏️</button>
         <button class="btn btn-sm btn-danger" onclick="deleteAdminUser('${user.id}','${safeJsAttr(user.full_name || user.email || '')}')" title="Borrar usuario">🗑️</button>
       </td>
@@ -2698,13 +2699,13 @@ function _renderTreeAssignments(rows) {
   rows.forEach(r => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>🌳 ${escapeHtml(r.tree.tree_code || '-')} - ${escapeHtml(r.tree.common_name || '')}</td>
-      <td>${escapeHtml(r.campus || '-')}</td>
-      <td>${escapeHtml(r.targetName)}</td>
-      <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
-      <td>${escapeHtml(r.specialist)}</td>
-      <td>${formatDate(r.raw.assigned_at)}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${r.raw.id}')">Quitar</button></td>
+      <td data-label="Árbol">🌳 ${escapeHtml(r.tree.tree_code || '-')} - ${escapeHtml(r.tree.common_name || '')}</td>
+      <td data-label="Campus">${escapeHtml(r.campus || '-')}</td>
+      <td data-label="Asignado a">${escapeHtml(r.targetName)}</td>
+      <td data-label="Tipo"><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
+      <td data-label="Especialista">${escapeHtml(r.specialist)}</td>
+      <td data-label="Fecha">${formatDate(r.raw.assigned_at)}</td>
+      <td data-label="Acciones"><button class="btn btn-sm btn-danger" onclick="removeTreeAssignment('${r.raw.id}')">Quitar</button></td>
     `;
     tbody.appendChild(row);
   });
@@ -2721,12 +2722,12 @@ function _renderGardenAssignments(rows) {
   rows.forEach(r => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>🌿 ${escapeHtml(r.garden.name || '-')}</td>
-      <td>${escapeHtml(r.campus || '-')}</td>
-      <td>${escapeHtml(r.targetName)}</td>
-      <td><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
-      <td>${formatDate(r.raw.assigned_at)}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${r.raw.id}')">Quitar</button></td>
+      <td data-label="Jardín">🌿 ${escapeHtml(r.garden.name || '-')}</td>
+      <td data-label="Campus">${escapeHtml(r.campus || '-')}</td>
+      <td data-label="Asignado a">${escapeHtml(r.targetName)}</td>
+      <td data-label="Tipo"><span class="assignment-badge ${r.badgeClass}">${r.type}</span></td>
+      <td data-label="Fecha">${formatDate(r.raw.assigned_at)}</td>
+      <td data-label="Acciones"><button class="btn btn-sm btn-danger" onclick="removeGardenAssignment('${r.raw.id}')">Quitar</button></td>
     `;
     tbody.appendChild(row);
   });

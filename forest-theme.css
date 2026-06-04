@@ -1237,3 +1237,73 @@ a:hover { color: var(--primary-dark); }
   body { background: white !important; }
   .navbar, .login-container { display: none !important; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   RESPONSIVE ADMIN TABLES — mobile (≤700px)
+   Convierte cada <tr> en card vertical. Esconde <thead> con filtros (que
+   se encimaban). Cada <td> muestra su data-label como prefijo en mayúsculas.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .admin-table,
+  .admin-table thead,
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table th,
+  .admin-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .admin-table thead {
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+  }
+  .admin-table tr {
+    background: white;
+    margin: 0 0 1rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .admin-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+    text-align: right;
+    word-break: break-word;
+    min-height: auto;
+  }
+  .admin-table td:last-child {
+    border-bottom: none;
+    justify-content: center;
+  }
+  .admin-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    width: 40%;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    color: var(--text-light, #777);
+    align-self: center;
+  }
+  .admin-table td:last-child::before { display: none; }
+  .admin-table td:last-child button {
+    margin: 2px 4px;
+    min-width: 80px;
+    padding: 0.5rem 0.75rem;
+  }
+  .admin-table tr td[colspan]::before { display: none; }
+  .admin-table tr td[colspan] { justify-content: center; }
+  #admin-section, .admin-tab, .tab-pane {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+}
