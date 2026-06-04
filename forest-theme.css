@@ -1239,6 +1239,63 @@ a:hover { color: var(--primary-dark); }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   ROL RECTORIA — read-only en todo el admin
+   El rector ve TODOS los tabs pero NO puede crear/editar/borrar fuera de
+   su árbol asignado. La excepción "su árbol" vive en mi-arbol.js (form
+   normal de seguimiento). PUM-AI y exportar reportes siguen disponibles.
+   ───────────────────────────────────────────────────────────────────────── */
+body.role-rectoria #section-admin .btn-danger,
+body.role-rectoria #section-admin .btn-primary[onclick*="save"],
+body.role-rectoria #section-admin .btn-primary[onclick*="Save"],
+body.role-rectoria #section-admin .btn-primary[onclick*="create"],
+body.role-rectoria #section-admin .btn-primary[onclick*="Create"],
+body.role-rectoria #section-admin .btn-primary[onclick*="add"],
+body.role-rectoria #section-admin .btn-primary[onclick*="Add"],
+body.role-rectoria #section-admin button[onclick*="edit"],
+body.role-rectoria #section-admin button[onclick*="Edit"],
+body.role-rectoria #section-admin button[onclick*="delete"],
+body.role-rectoria #section-admin button[onclick*="Delete"],
+body.role-rectoria #section-admin button[onclick*="remove"],
+body.role-rectoria #section-admin button[onclick*="Remove"],
+body.role-rectoria #section-admin button[onclick*="assign"],
+body.role-rectoria #section-admin button[onclick*="Assign"],
+body.role-rectoria #section-admin button[onclick*="suggest"],
+body.role-rectoria #section-admin button[onclick*="Suggest"],
+body.role-rectoria #section-admin .admin-form,
+body.role-rectoria #section-admin details.admin-collapsible {
+  display: none !important;
+}
+/* Excepciones que rectoria SÍ debe poder usar */
+body.role-rectoria #section-admin button[onclick*="export"],
+body.role-rectoria #section-admin button[onclick*="Export"],
+body.role-rectoria #section-admin button[onclick*="download"],
+body.role-rectoria #section-admin button[onclick*="Download"],
+body.role-rectoria #section-admin button[onclick*="QR"],
+body.role-rectoria #section-admin button[onclick*="qr"],
+body.role-rectoria #section-admin button[onclick*="print"],
+body.role-rectoria #section-admin button[onclick*="Print"] {
+  display: inline-flex !important;
+}
+/* Inputs/selects de filtros siguen activos (lectura) */
+body.role-rectoria #section-admin .filter-input { display: block !important; }
+/* PUM-AI tab siempre visible */
+body.role-rectoria #section-pumai { display: block; }
+/* Badge "Solo lectura" arriba del admin para rectoria */
+body.role-rectoria #section-admin::before {
+  content: "🛡️  Modo solo lectura — Rectoría UNAM";
+  display: block;
+  background: linear-gradient(135deg, #2e5117, #4a7c2a);
+  color: #ffd866;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
    RESPONSIVE ADMIN TABLES — mobile (≤700px)
    Convierte cada <tr> en card vertical. Esconde <thead> con filtros (que
    se encimaban). Cada <td> muestra su data-label como prefijo en mayúsculas.

@@ -1237,6 +1237,15 @@ window.IztacalaMap = (function() {
 
       console.log(`🌳 Iztacala: ${valid.length} árboles con coordenadas plotteados (de ${(trees || []).length} totales en BD)`);
       updateTreeCountHUD(valid.length, (trees || []).length);
+
+      // Caso especial Juan Ficus + paloma. Se ejecuta async después de que los
+      // árboles GLB hayan terminado de cargar (los GLB son async, pequeño delay).
+      if (window.IztacalaJuanFicus?.enhance) {
+        setTimeout(() => {
+          try { window.IztacalaJuanFicus.enhance(scene, treeMeshes); }
+          catch (err) { console.warn('JuanFicus enhance err:', err); }
+        }, 1200);
+      }
     } catch (e) {
       console.error('loadTrees error:', e);
       updateTreeCountHUD(0, 0, true);

@@ -1371,6 +1371,35 @@ async function loadInfoSection() {
   }
 }
 
+// ============================================================================
+// Acceso especial: Mapa 3D de FES Iztacala para usuarios con extra_features.iztacala_3d
+// (caso: Sara Ramírez Ceja, hija del responsable a quien se dedicó "Juan Ficus")
+// ============================================================================
+let _userIztacala3dInitialized = false;
+function maybeShowUserIztacala3D() {
+  const section = document.getElementById('user-iztacala-3d-section');
+  if (!section) return;
+  const features = currentUserProfile?.extra_features || {};
+  if (!features.iztacala_3d) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  // Lazy init solo la primera vez para no pegarle al GPU desde el inicio
+  if (_userIztacala3dInitialized) return;
+  _userIztacala3dInitialized = true;
+  if (window.IztacalaMap?.init) {
+    Promise.resolve(window.IztacalaMap.init('#user-iztacala-3d-vis'))
+      .catch(err => {
+        console.warn('IztacalaMap init falló:', err);
+        const c = document.getElementById('user-iztacala-3d-vis');
+        if (c) c.innerHTML =
+          '<div style="padding:2rem;text-align:center;color:#777;">No se pudo cargar el mapa 3D. Recarga la página.</div>';
+      });
+  }
+}
+window.maybeShowUserIztacala3D = maybeShowUserIztacala3D;
+
 // ========== EXPOSE ==========
 window.loadMyTree = loadMyTree;
 window.switchMiArbolTab = switchMiArbolTab;

@@ -194,6 +194,18 @@
                     <div id="mi-arbol-content">
                         <!-- Dynamically filled by JS -->
                     </div>
+
+                    <!-- Acceso especial a Mapa 3D de FES Iztacala (solo si extra_features.iztacala_3d) -->
+                    <!-- Lo activa renderSpecialIztacala3D() en mi-arbol.js cuando el usuario lo tiene -->
+                    <div id="user-iztacala-3d-section" style="display:none;margin-top:2.5rem;">
+                        <h3 style="display:flex;align-items:center;gap:0.6rem;color:var(--primary-dark);margin-bottom:0.4rem;">
+                            <i class="fas fa-university" style="color:var(--primary);"></i> Mapa 3D · FES Iztacala
+                        </h3>
+                        <p class="text-muted text-small" style="margin-bottom:1rem;">
+                            Acceso especial — recorrido del campus con tu árbol destacado.
+                        </p>
+                        <div id="user-iztacala-3d-vis" style="width:100%;height:540px;border-radius:12px;overflow:hidden;background:#c7e0f2;position:relative;"></div>
+                    </div>
                 </section>
 
                 <!-- ========== INFORMACIÓN SECTION ========== -->
@@ -422,6 +434,7 @@
                                                     <option value="responsable">Responsable (pasante coordinador)</option>
                                                     <option value="specialist">Especialista</option>
                                                     <option value="admin-campus">Admin de campus</option>
+                                                    <option value="rectoria">Rectoría UNAM (solo lectura + su árbol)</option>
                                                     <option value="admin">Administrador principal</option>
                                                 </select>
                                             </div>
@@ -1546,6 +1559,7 @@
     <script src="js/iztacala-letras.js"></script>
     <script src="js/iztacala-ahuehuete475.js"></script>
     <script src="js/iztacala-mariposas.js"></script>
+    <script src="js/iztacala-juanficus-special.js"></script>
     <script src="js/iztacala-calibrator.js"></script>
     <script src="js/splash-video.js"></script>
     <script src="js/session-timeout.js"></script>

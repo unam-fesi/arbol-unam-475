@@ -5,9 +5,10 @@
 function showSection(sectionId) {
   const role = (currentUserProfile?.role || 'user').toLowerCase();
 
-  // SECURITY: admin section accesible para admin (principal) y admin-campus
+  // SECURITY: admin section accesible para admin, admin-campus, responsable
+  // y rectoria (este último en modo solo lectura — gating via CSS body.role-rectoria)
   if (sectionId === 'section-admin') {
-    if (!['admin', 'admin-campus', 'responsable'].includes(role)) {
+    if (!['admin', 'admin-campus', 'responsable', 'rectoria'].includes(role)) {
       showToast('Acceso denegado', 'error');
       showSection('section-mi-arbol');
       return;
@@ -57,6 +58,8 @@ function showSection(sectionId) {
       // si no, fallback al loader original de árbol
       if (typeof loadMyPortfolio === 'function') loadMyPortfolio();
       else if (typeof loadMyTree === 'function') loadMyTree();
+      // Acceso especial al mapa 3D Iztacala (extra_features.iztacala_3d)
+      if (typeof maybeShowUserIztacala3D === 'function') maybeShowUserIztacala3D();
     }
     else if (sectionId === 'section-info') loadInfoSection();
     else if (sectionId === 'section-pumai') initPumAI();
@@ -76,9 +79,11 @@ function setupRoleBasedNav(role) {
   const isAdmin = r === 'admin';
   const isAdminCampus = r === 'admin-campus';
   const isResponsable = r === 'responsable';
+  const isRectoria = r === 'rectoria';
   const isSpecialist = r === 'specialist';
-  // admin, admin-campus y responsable pueden ver el tab admin (con restricciones internas)
-  const canSeeAdmin = isAdmin || isAdminCampus || isResponsable;
+  // admin, admin-campus, responsable y rectoria pueden ver el tab admin
+  // (rectoria queda en read-only por CSS body.role-rectoria + reglas en admin.js)
+  const canSeeAdmin = isAdmin || isAdminCampus || isResponsable || isRectoria;
 
   document.querySelectorAll('#navbarNav .nav-link[data-section]').forEach(link => {
     const section = link.dataset.section;

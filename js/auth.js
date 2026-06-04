@@ -478,6 +478,8 @@ async function loadUserProfile(forceReload) {
       currentUserProfile = data;
       setupRoleBasedNav(data.role);
       updateUserDisplay();
+      // Marca body con role-* para que CSS pueda gatear UI por rol
+      if (typeof applyRoleBodyClass === 'function') applyRoleBodyClass();
     }
   } catch (err) {
     console.error('Profile load error:', err);

@@ -15,10 +15,21 @@ function isAdminRole()         { return _userRole() === 'admin'; }
 function isAdminCampusRole()   { return _userRole() === 'admin-campus'; }
 function isResponsableRole()   { return _userRole() === 'responsable'; }
 function isSpecialistRole()    { return _userRole() === 'specialist'; }
-// admin, admin-campus y responsable pueden entrar al panel admin
-// (cada uno con tabs diferentes — el responsable solo ve "Coordinación")
+/** Rol especial del Rector UNAM: ve TODO en admin pero solo-lectura,
+ *  con excepción de SU árbol asignado donde sí edita.
+ *  Mantiene PUM-AI y exportar reportes. */
+function isRectoriaRole()      { return _userRole() === 'rectoria'; }
+
+// admin, admin-campus y responsable pueden entrar al panel admin.
+// rectoria también entra pero en modo read-only (el CSS body.role-rectoria
+// esconde los botones de mutación; la lógica de edición permite solo SU árbol).
 function canAccessAdminPanel() {
+  return isAdminRole() || isAdminCampusRole() || isResponsableRole() || isRectoriaRole();
+}
+/** True si el rol puede MUTAR datos en el panel admin (crear/editar/borrar). */
+function canMutateAdmin() {
   return isAdminRole() || isAdminCampusRole() || isResponsableRole();
+  // rectoria: NO. Tiene su edición específica solo en su árbol.
 }
 // Solo el admin PRINCIPAL puede gestionar jardines, configuración global y auditoría completa.
 function canManageGardens()    { return isAdminRole(); }
@@ -38,8 +49,21 @@ window._userCampus = _userCampus;
 window.isAdminRole = isAdminRole;
 window.isAdminCampusRole = isAdminCampusRole;
 window.isResponsableRole = isResponsableRole;
+window.isRectoriaRole = isRectoriaRole;
 window.canAccessAdminPanel = canAccessAdminPanel;
+window.canMutateAdmin = canMutateAdmin;
 window.effectiveCampusFilter = effectiveCampusFilter;
+
+// ── Aplicar la clase body.role-rectoria al cargar el perfil ──
+// El CSS (forest-theme.css §rectoria-readonly) usa esta clase para esconder
+// botones de creación/edición/borrado en todo el admin.
+function applyRoleBodyClass() {
+  document.body.classList.toggle('role-rectoria', isRectoriaRole());
+  document.body.classList.toggle('role-admin', isAdminRole());
+  document.body.classList.toggle('role-admin-campus', isAdminCampusRole());
+  document.body.classList.toggle('role-responsable', isResponsableRole());
+}
+window.applyRoleBodyClass = applyRoleBodyClass;
 
 // ---- TAB SWITCHING ----
 // Tabs restringidas para admin-campus:
