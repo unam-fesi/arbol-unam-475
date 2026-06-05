@@ -19,14 +19,18 @@ window.IztacalaJuanFicus = (function() {
 
   const TARGET_TREE_ID = 861;     // ID en BD del árbol "Juan Ficus"
   const PALOMA_GLB_PATH = 'data/paloma.glb';
-  const PALOMA_SCALE = 1.5;       // multiplier sobre el auto-size de 2.5m
-  const ORBIT_HEIGHT = 14;        // metros sobre el suelo (encima de la copa)
-  const ORBIT_RADIUS = 12;        // metros — órbita ancha para verse desde lejos
-  const ORBIT_SPEED = 0.18;       // rad/s (~lento, vuelta cada ~35s)
-  const FLY_DURATION_MIN = 15;    // s entre aterrizajes
-  const FLY_DURATION_MAX = 30;
+  // Tamaño visible desde la cámara aérea (~80m). Una paloma de 1m casi no
+  // se distingue; subimos a 9m de envergadura para que tenga presencia
+  // SIMBÓLICA — es un memorial, debe imponer.
+  const PALOMA_WINGSPAN_M = 9;
+  const ORBIT_HEIGHT = 18;        // metros sobre el suelo (bien encima de la copa)
+  const ORBIT_RADIUS = 16;        // metros — órbita ancha
+  const ORBIT_SPEED = 0.14;       // rad/s — vuelo majestuoso lento (~45s vuelta)
+  const WING_FLAP_HZ = 1.6;       // aleteo manual (1.6 Hz ≈ paloma real)
+  const FLY_DURATION_MIN = 20;
+  const FLY_DURATION_MAX = 35;
   const PERCH_DURATION_MIN = 3;
-  const PERCH_DURATION_MAX = 5;
+  const PERCH_DURATION_MAX = 6;
 
   let enhanced = false;
   let palomaMesh = null;
@@ -38,7 +42,11 @@ window.IztacalaJuanFicus = (function() {
   let stateDuration = 0;
   let perchPosition = new THREE.Vector3();
   let baselineY = ORBIT_HEIGHT;
-  let randomNextFly;
+  // Animación de aleteo. Si el GLB trae animations las usamos; si no, animamos
+  // bones manualmente buscando "wing"/"ala" en el nombre.
+  let mixer = null;
+  let flapAction = null;
+  let wingBones = [];      // bones cuyo nombre contiene wing/ala/feather
 
   /**
    * Engancha los efectos al árbol target si está presente en la escena.
@@ -179,8 +187,6 @@ window.IztacalaJuanFicus = (function() {
   // ─────────────────────────────────────────────────────────────────────────
 
   async function _loadPaloma(scene) {
-    // En este proyecto el GLTFLoader vive en THREE.GLTFLoader (cargado via
-    // <script src="...examples/js/loaders/GLTFLoader.js">), NO en window.
     if (typeof THREE === 'undefined' || !THREE.GLTFLoader) {
       console.warn('[IztacalaJuanFicus] THREE.GLTFLoader no disponible');
       return;
@@ -191,29 +197,49 @@ window.IztacalaJuanFicus = (function() {
     });
     palomaMesh = gltf.scene;
 
-    // Auto-escalar al tamaño deseado (~1.2m wingspan) sin depender del
-    // tamaño con el que se exportó el GLB.
+    // Auto-escalar para que la envergadura quede en PALOMA_WINGSPAN_M
     const box = new THREE.Box3().setFromObject(palomaMesh);
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    const targetSize = 2.5;                  // 2.5m de envergadura visible
-    palomaMesh.scale.setScalar(targetSize / maxDim * PALOMA_SCALE);
+    palomaMesh.scale.setScalar(PALOMA_WINGSPAN_M / maxDim);
 
     palomaMesh.traverse(o => {
       if (o.isMesh) {
         o.castShadow = true;
         if (o.material) {
           o.material.color = new THREE.Color(0xffffff);
-          o.material.emissive = new THREE.Color(0x222222);
+          o.material.emissive = new THREE.Color(0x444444);   // glow blanco más fuerte
+          o.material.emissiveIntensity = 0.8;
         }
       }
+      // Detectar bones de alas para aleteo manual si no hay animación GLB
+      const n = (o.name || '').toLowerCase();
+      if (o.isBone && (n.includes('wing') || n.includes('ala') || n.includes('feather') || n.includes('pluma'))) {
+        wingBones.push(o);
+      }
     });
-    // Posición inicial en órbita
+
+    // Si el GLB trae animaciones (idle_fly, flap, etc.) las usamos
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(palomaMesh);
+      // Buscar la animación que parezca de aleteo
+      const flapClip = gltf.animations.find(a => /flap|fly|wing|ala/i.test(a.name)) || gltf.animations[0];
+      if (flapClip) {
+        flapAction = mixer.clipAction(flapClip);
+        flapAction.setLoop(THREE.LoopRepeat).play();
+        console.log('[IztacalaJuanFicus] usando animación del GLB:', flapClip.name);
+      }
+    } else if (wingBones.length > 0) {
+      console.log('[IztacalaJuanFicus] aleteo manual con ' + wingBones.length + ' bones de alas');
+    } else {
+      console.log('[IztacalaJuanFicus] GLB sin animación ni bones — aleteamos el mesh completo (fallback)');
+    }
+
     const c = _treeCenter();
     palomaMesh.position.set(c.x + ORBIT_RADIUS, ORBIT_HEIGHT, c.z);
     scene.add(palomaMesh);
-    console.log(`[IztacalaJuanFicus] paloma plantada en órbita | center=(${c.x.toFixed(1)}, ${c.z.toFixed(1)}) | size=${(targetSize).toFixed(1)}m`);
+    console.log(`[IztacalaJuanFicus] paloma plantada | center=(${c.x.toFixed(1)}, ${c.z.toFixed(1)}) | wingspan=${PALOMA_WINGSPAN_M}m`);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -238,7 +264,30 @@ window.IztacalaJuanFicus = (function() {
     if (halo) {
       const pulse = 0.55 + Math.sin(t * 1.5) * 0.20;
       halo.material.opacity = pulse;
-      halo.rotation.z = t * 0.15;            // gira lento
+      halo.rotation.z = t * 0.15;
+    }
+
+    // ── ALETEO ──
+    // Velocidad: rápido cuando vuela, lento cuando aterriza, quieto cuando posada.
+    const flapping = (state === 'flying' || state === 'descending' || state === 'ascending');
+    if (mixer) {
+      // GLB con animación embebida
+      const speed = flapping ? 1.0 : 0.0;
+      if (flapAction) flapAction.setEffectiveTimeScale(speed);
+      mixer.update(dt);
+    } else if (wingBones.length > 0) {
+      // Aleteo manual rotando bones (eje Z, simétrico izq/der)
+      const amp = flapping ? 0.6 : 0.05;
+      const angle = Math.sin(t * Math.PI * 2 * WING_FLAP_HZ) * amp;
+      wingBones.forEach((b, i) => {
+        // Asume orden alternado izquierda/derecha — invertir para una de las dos
+        const side = (i % 2 === 0) ? 1 : -1;
+        b.rotation.z = angle * side;
+      });
+    } else {
+      // Fallback sin bones: "respira" el mesh entero verticalmente para sugerir aleteo
+      const breath = flapping ? Math.sin(t * Math.PI * 2 * WING_FLAP_HZ) * 0.08 : 0;
+      palomaMesh.scale.y = (PALOMA_WINGSPAN_M / palomaMesh.userData._maxDim || 1) * (1 + breath);
     }
 
     switch (state) {
