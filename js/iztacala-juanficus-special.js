@@ -148,26 +148,42 @@ window.IztacalaJuanFicus = (function() {
   }
 
   function _addLabel(scene) {
-    // Sprite con texto "Juan Ficus 🕊️" flotando encima del árbol
+    // Sprite con texto "Juan Ficus 🕊️" flotando encima del árbol.
+    // Canvas alta resolución (1024x256, ratio 4:1) + sprite escalado grande
+    // para que sea legible desde lejos en el mapa 3D.
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 128;
+    canvas.width = 1024; canvas.height = 256;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'rgba(46,81,23,0.92)';
-    _roundRect(ctx, 8, 8, 496, 112, 24);
+    // Fondo verde UNAM con borde redondeado más grueso
+    ctx.fillStyle = 'rgba(46,81,23,0.94)';
+    _roundRect(ctx, 12, 12, 1000, 232, 40);
     ctx.fill();
-    ctx.font = 'bold 56px -apple-system, "SF Pro Display", system-ui, sans-serif';
+    // Borde dorado interior para realzar el rótulo
+    ctx.strokeStyle = '#ffd866';
+    ctx.lineWidth = 4;
+    _roundRect(ctx, 14, 14, 996, 228, 38);
+    ctx.stroke();
+    // Texto dorado, grande, con sombra para legibilidad
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+    ctx.font = 'bold 112px -apple-system, "SF Pro Display", system-ui, sans-serif';
     ctx.fillStyle = '#ffd866';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Juan Ficus 🕊️', canvas.width / 2, canvas.height / 2 + 4);
+    ctx.fillText('Juan Ficus 🕊️', canvas.width / 2, canvas.height / 2 + 6);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.needsUpdate = true;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    tex.anisotropy = 4;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(8, 2, 1);
+    // Etiqueta mucho más grande (antes 8x2). 18x4.5 mantiene ratio 4:1.
+    sprite.scale.set(18, 4.5, 1);
+    sprite.renderOrder = 999;  // siempre por encima
     const c = _treeCenter();
-    sprite.position.set(c.x, 22, c.z);
+    // Sube el sprite un poco más para que no choque con la copa del árbol
+    sprite.position.set(c.x, 26, c.z);
     sprite.userData = { type: 'juanFicusLabel' };
     scene.add(sprite);
   }
@@ -195,52 +211,93 @@ window.IztacalaJuanFicus = (function() {
     const gltf = await new Promise((resolve, reject) => {
       loader.load(PALOMA_GLB_PATH, resolve, undefined, reject);
     });
-    palomaMesh = gltf.scene;
 
-    // Auto-escalar para que la envergadura quede en PALOMA_WINGSPAN_M.
-    // IMPORTANTE: guardamos la escala uniforme base. Cualquier "respiración"
-    // posterior debe multiplicar TODA la escala — NO solo scale.y — porque
-    // eso aplastaría verticalmente al mesh y separaría visualmente la cabeza
-    // del cuerpo si están modelados como sub-meshes contiguos.
-    const box = new THREE.Box3().setFromObject(palomaMesh);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    const baseScale = PALOMA_WINGSPAN_M / maxDim;
-    palomaMesh.scale.setScalar(baseScale);
-    palomaMesh.userData._baseScale = baseScale;
+    // ── Defensa contra "cabeza separada del cuerpo" ────────────────────────
+    // Estrategia: NO escalamos directamente `gltf.scene`. En su lugar, lo
+    // metemos como hijo de un Group "rig" y centramos su pivote. Esto evita
+    // que offsets internos heredados del GLB (cuando algún sub-mesh tiene
+    // position/scale propios) se amplifiquen al escalar el root y separen
+    // visualmente cabeza y cuerpo.
+    const inner = gltf.scene;
+    inner.updateMatrixWorld(true);
 
-    // Loguear estructura del GLB para diagnosticar problemas de cabeza/cuerpo
+    // Limpieza por mesh: resetear morph targets (a veces vienen con valores
+    // != 0 que distorsionan cabeza/pico), normalizar skin weights, materiales
+    // double-sided, y mantener todo dentro del frustum.
     const meshNames = [];
     const boneNames = [];
-    palomaMesh.traverse(o => {
-      if (o.isMesh) {
-        meshNames.push(o.name || '(unnamed mesh)');
+    inner.traverse(o => {
+      if (o.isMesh || o.isSkinnedMesh) {
+        meshNames.push((o.isSkinnedMesh ? '[skinned] ' : '') + (o.name || '(unnamed mesh)'));
         o.castShadow = true;
-        o.frustumCulled = false;  // evita que partes desaparezcan al rotar
+        o.frustumCulled = false;
+        // Reset morph targets — la causa más común de "cabeza desplazada"
+        if (Array.isArray(o.morphTargetInfluences) && o.morphTargetInfluences.length) {
+          o.morphTargetInfluences.fill(0);
+        }
+        // Normalizar pesos de skinning para que las uniones (cuello) no se
+        // estiren cuando hay bones interpolados con suma de pesos != 1
+        if (o.isSkinnedMesh && typeof o.normalizeSkinWeights === 'function') {
+          try { o.normalizeSkinWeights(); } catch (_) {}
+        }
         if (o.material) {
-          // Algunos GLBs traen materiales con doubleSide=false y normales raras.
-          // Forzamos doubleSide para evitar "agujeros" entre cabeza y cuerpo.
-          o.material.side = THREE.DoubleSide;
-          o.material.color = new THREE.Color(0xffffff);
-          o.material.emissive = new THREE.Color(0x444444);   // glow blanco más fuerte
-          o.material.emissiveIntensity = 0.8;
-          o.material.needsUpdate = true;
+          // Algunos materials vienen como array (multimaterial)
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach(m => {
+            m.side = THREE.DoubleSide;
+            m.color = new THREE.Color(0xffffff);
+            m.emissive = new THREE.Color(0x444444);
+            m.emissiveIntensity = 0.8;
+            m.transparent = false;
+            m.opacity = 1;
+            m.needsUpdate = true;
+          });
         }
       }
       if (o.isBone) boneNames.push(o.name || '(unnamed bone)');
-      // Detectar bones de alas para aleteo manual si no hay animación GLB
       const n = (o.name || '').toLowerCase();
       if (o.isBone && (n.includes('wing') || n.includes('ala') || n.includes('feather') || n.includes('pluma'))) {
         wingBones.push(o);
       }
     });
-    console.log('[IztacalaJuanFicus] paloma GLB → meshes:', meshNames, '| bones:', boneNames);
+
+    // Recentrar el GLB: medimos el bounding box ANTES de escalar, restamos el
+    // centro a `inner.position` para que el pivote del Group quede en el
+    // centro geométrico (no donde el modelador haya puesto el origen).
+    const preBox = new THREE.Box3().setFromObject(inner);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    preBox.getSize(size);
+    preBox.getCenter(center);
+    inner.position.sub(center);   // ahora el centro del modelo está en (0,0,0) del rig
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    const baseScale = PALOMA_WINGSPAN_M / maxDim;
+
+    // Rig padre: la escala vive aquí, no en el inner. Toda animación de
+    // bobbing / scale futura se hace sobre `palomaMesh` (= rig).
+    palomaMesh = new THREE.Group();
+    palomaMesh.name = 'palomaRig';
+    palomaMesh.add(inner);
+    palomaMesh.scale.setScalar(baseScale);
+    palomaMesh.userData._baseScale = baseScale;
+    palomaMesh.userData._inner = inner;
+
+    // Si hay skeletons, forzar update después de los cambios
+    inner.traverse(o => {
+      if (o.isSkinnedMesh && o.skeleton) {
+        o.skeleton.calculateInverses && o.skeleton.calculateInverses();
+        o.skeleton.update && o.skeleton.update();
+      }
+    });
     palomaMesh.updateMatrixWorld(true);
 
-    // Si el GLB trae animaciones (idle_fly, flap, etc.) las usamos
+    console.log('[IztacalaJuanFicus] paloma GLB → meshes:', meshNames, '| bones (' + boneNames.length + '):', boneNames.slice(0, 12));
+    console.log('[IztacalaJuanFicus] modelo size pre-scale:', size.toArray().map(n => n.toFixed(2)), '→ baseScale=', baseScale.toFixed(3));
+
+    // Si el GLB trae animaciones (idle_fly, flap, etc.) las usamos.
+    // El mixer va al `inner` (donde viven los bones), no al rig escalado.
     if (gltf.animations && gltf.animations.length) {
-      mixer = new THREE.AnimationMixer(palomaMesh);
+      mixer = new THREE.AnimationMixer(inner);
       // Buscar la animación que parezca de aleteo
       const flapClip = gltf.animations.find(a => /flap|fly|wing|ala/i.test(a.name)) || gltf.animations[0];
       if (flapClip) {
