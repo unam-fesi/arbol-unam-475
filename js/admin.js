@@ -3968,10 +3968,24 @@ async function _resolveStoragePhoto(photoUrl, bucket) {
   if (!photoUrl) return null;
   if (/^https?:\/\//.test(photoUrl)) return photoUrl;
   try {
-    const { data } = await sb.storage.from(bucket).createSignedUrl(photoUrl, 3600);
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(photoUrl, 3600);
+    if (error) {
+      // Antes ignorábamos el error → la foto se veía "deshabilitada" sin pista
+      console.warn('[_resolveStoragePhoto] signed URL error', { bucket, photoUrl, error });
+      if (typeof logError === 'function') {
+        logError({
+          severity: 'warning', source: 'frontend_web',
+          action: '_resolveStoragePhoto',
+          error_message: error.message || String(error),
+          error_code: error.statusCode || error.code || null,
+          context: { bucket, photoUrl }
+        });
+      }
+      return null;
+    }
     return data?.signedUrl || null;
   } catch (e) {
-    console.warn('Signed URL error', bucket, photoUrl, e);
+    console.warn('Signed URL exception', bucket, photoUrl, e);
     return null;
   }
 }
@@ -3985,7 +3999,7 @@ async function viewTreeMeasurementsAdmin(treeId) {
     if (!tree) { showToast('Árbol no encontrado', 'error'); return; }
 
     const { data: meas } = await sb.from('tree_measurements')
-      .select('id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score, photo_url, observations, user_id')
+      .select('id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score, photo_url, observations, user_id, location_lat, location_lng')
       .eq('tree_id', treeId)
       .order('measurement_date', { ascending: false });
 
@@ -4032,13 +4046,31 @@ async function viewTreeMeasurementsAdmin(treeId) {
         let cleanObs = (m.observations || '').replace(/\[RUBROS\]\s*\{[^}]*\}/g, '').replace(/\[PLANTACION\]\s*\{[^}]*\}/g, '').trim();
         if (cleanObs.length > 120) cleanObs = cleanObs.substring(0, 120) + '…';
 
-        const photoTag = m._photoSrc
-          ? `<img src="${escapeHtml(m._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`
-          : '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:1.4rem;">📷</div>';
+        // ── Foto ──
+        // Si _photoSrc carga: imagen real. Si NO carga (error de signed URL),
+        // todavía sabemos que TENÍA foto (m.photo_url no es null) → mostramos
+        // ícono con badge ⚠ para indicar "tiene foto pero no se pudo cargar".
+        let photoTag;
+        if (m._photoSrc) {
+          photoTag = `<img src="${escapeHtml(m._photoSrc)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:zoom-in;" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`;
+        } else if (m.photo_url) {
+          photoTag = '<div style="width:64px;height:64px;background:#fff5e6;border:1px dashed #d97706;border-radius:8px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#d97706;font-size:1.1rem;" title="Tiene foto pero no se pudo cargar la URL firmada">📷<span style="font-size:0.55rem;margin-top:2px;">⚠ link</span></div>';
+        } else {
+          photoTag = '<div style="width:64px;height:64px;background:#eee;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:1.4rem;" title="Sin foto">📷</div>';
+        }
+
+        // ── Indicador de ubicación ──
+        const hasLoc = (m.location_lat != null && m.location_lng != null);
+        const locTag = hasLoc
+          ? `<a href="https://www.google.com/maps?q=${m.location_lat},${m.location_lng}" target="_blank" title="Ver ubicación en Google Maps (${m.location_lat.toFixed(5)}, ${m.location_lng.toFixed(5)})" style="width:64px;height:30px;background:rgba(46,125,50,0.12);color:#1b5e20;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:0.2rem;font-size:0.78rem;text-decoration:none;flex-shrink:0;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> GPS</a>`
+          : `<div title="Sin ubicación registrada en este seguimiento" style="width:64px;height:30px;background:#eee;color:#bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:0.2rem;font-size:0.78rem;flex-shrink:0;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> —</div>`;
+
+        // Wrapper foto + pin (columna)
+        const mediaCol = `<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">${photoTag}${locTag}</div>`;
 
         return `
           <div style="display:flex;gap:0.9rem;padding:0.9rem;border-bottom:1px solid #f0f0f0;align-items:flex-start;${i === 0 ? 'background:rgba(46,125,50,0.04);' : ''}">
-            ${photoTag}
+            ${mediaCol}
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
                 <div>
