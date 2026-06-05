@@ -205,7 +205,8 @@ Responde ÚNICAMENTE con el texto del párrafo (sin markdown, sin JSON, sin comi
     const heightGrowth = (last.height_cm && first.height_cm) ? (last.height_cm - first.height_cm) : null;
     const startHealth = first.health_score;
     const endHealth = last.health_score;
-    const months = new Set(meas.map(m => new Date(m.measurement_date).getMonth())).size;
+    // Extraer mes del string sin TZ (evita off-by-one en seguimientos cerca de medianoche)
+    const months = new Set(meas.map(m => String(m.measurement_date || '').slice(5, 7))).size;
     const avgHealth = Math.round(meas.reduce((s, m) => s + (m.health_score || 0), 0) / meas.length);
 
     const co2 = window.CO2Calculator?.calculateCO2Stored(tree) || 0;

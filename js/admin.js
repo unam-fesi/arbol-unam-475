@@ -2385,6 +2385,198 @@ async function removeGroupMember(groupId, userId, groupName) {
 }
 
 // ---- NOTIFICATIONS (fix check constraint) ----
+// ============================================================================
+// TELEGRAM BLAST (envío masivo @Pumai_treebot)
+// ============================================================================
+const TG_ROLES = ['admin','admin-campus','responsable','specialist','user','rectoria'];
+
+function onTgFilterChange() {
+  const f = document.getElementById('tg-filter')?.value;
+  const wrap = document.getElementById('tg-value-wrap');
+  const sel = document.getElementById('tg-value-select');
+  const inp = document.getElementById('tg-value-input');
+  const label = document.getElementById('tg-value-label');
+  if (!wrap) return;
+  // Reset
+  wrap.style.display = 'none';
+  sel.style.display = 'none';
+  inp.style.display = 'none';
+  sel.innerHTML = '';
+  inp.value = '';
+
+  if (f === 'all') return;
+
+  wrap.style.display = '';
+
+  if (f === 'role') {
+    label.textContent = 'Rol';
+    sel.style.display = '';
+    sel.innerHTML = TG_ROLES.map(r => `<option value="${r}">${r}</option>`).join('');
+  } else if (f === 'campus') {
+    label.textContent = 'Campus';
+    sel.style.display = '';
+    const opts = ['Iztacala','Acatlan','Aragon','Cuautitlan1','Cuautitlan','Zaragoza','CU'];
+    sel.innerHTML = opts.map(c => `<option value="${c}">${c}</option>`).join('');
+    if (isAdminCampusRole()) {
+      sel.value = _userCampus();
+      sel.disabled = true;
+    }
+  } else if (f === 'group') {
+    label.textContent = 'Grupo';
+    sel.style.display = '';
+    sel.innerHTML = '<option value="">Cargando grupos…</option>';
+    sb.from('user_groups').select('id, name, campus').order('name')
+      .then(({ data }) => {
+        const campusFilter = isAdminCampusRole() ? _userCampus() : null;
+        const groups = (data || []).filter(g => !campusFilter || g.campus === campusFilter);
+        sel.innerHTML = groups.length
+          ? groups.map(g => `<option value="${g.id}">${g.name} (${g.campus||'—'})</option>`).join('')
+          : '<option value="">No hay grupos</option>';
+      });
+  } else if (f === 'user') {
+    label.textContent = 'Email o ID del usuario';
+    inp.style.display = '';
+    inp.placeholder = 'correo@unam.mx o UUID';
+  }
+}
+
+function _tgGetFilterValue() {
+  const f = document.getElementById('tg-filter').value;
+  if (f === 'all') return { filter: 'all', value: null };
+  const sel = document.getElementById('tg-value-select');
+  const inp = document.getElementById('tg-value-input');
+  let value = (sel.style.display !== 'none' ? sel.value : inp.value).trim();
+  return { filter: f, value };
+}
+
+async function previewTelegramBlast() {
+  const status = document.getElementById('tg-status');
+  status.textContent = 'Calculando…';
+  try {
+    const { filter, value } = _tgGetFilterValue();
+    let v = value;
+    // Para 'user' por email, resolver a id primero (la edge espera UUID)
+    if (filter === 'user' && value && value.includes('@')) {
+      const { data: u } = await sb.from('user_profiles')
+        .select('id').eq('id', value).maybeSingle();
+      // Email → id: no podemos buscar por email en user_profiles directo;
+      // simpler: enviar el email a un endpoint para resolver. Por ahora dejamos
+      // que el caller pase UUID y mostramos error.
+      if (!u) {
+        status.innerHTML = '<span style="color:var(--danger);">Para destino "Usuario específico" pega el UUID del user_profile (no email). Lo puedes ver en el tab Usuarios.</span>';
+        return;
+      }
+      v = u.id;
+    }
+    const { data, error } = await sb.functions.invoke('send-telegram-notification', {
+      body: { filter, value: v, message: '__preview__', dry_run: true }
+    });
+    if (error) throw error;
+    const sample = (data?.recipients_sample || [])
+      .map(r => `• ${escapeHtml(r.name || '?')} (${escapeHtml(r.role||'')} · ${escapeHtml(r.campus||'')})`).join('<br>');
+    status.innerHTML = `
+      <strong style="color:#229ED9;">${data?.recipients_total ?? 0}</strong>
+      destinatarios con Telegram vinculado.
+      ${sample ? '<details style="margin-top:0.3rem;"><summary>Muestra (primeros 10)</summary><div style="font-size:0.78rem;color:#555;margin-top:0.3rem;">' + sample + '</div></details>' : ''}
+    `;
+  } catch (err) {
+    status.innerHTML = '<span style="color:var(--danger);">Error: ' + escapeHtml(err.message || err) + '</span>';
+    if (typeof logError === 'function') logError({ action: 'previewTelegramBlast', error: err });
+  }
+}
+
+async function sendTelegramBlast() {
+  const status = document.getElementById('tg-status');
+  const message = document.getElementById('tg-message').value.trim();
+  if (!message) { showToast('Escribe un mensaje', 'warning'); return; }
+  if (message.length > 4000) { showToast('Máximo 4000 caracteres', 'warning'); return; }
+
+  const { filter, value } = _tgGetFilterValue();
+  if (filter !== 'all' && !value) { showToast('Elige un destinatario', 'warning'); return; }
+
+  const photoUrl = (document.getElementById('tg-photo-url').value || '').trim() || null;
+
+  // Confirmación con conteo previo
+  status.textContent = 'Calculando destinatarios…';
+  try {
+    const { data: pre } = await sb.functions.invoke('send-telegram-notification', {
+      body: { filter, value, message: '__preview__', dry_run: true }
+    });
+    const total = pre?.recipients_total ?? 0;
+    if (total === 0) {
+      status.innerHTML = '<span style="color:var(--danger);">0 destinatarios — nadie con Telegram vinculado coincide con el filtro.</span>';
+      return;
+    }
+    if (!confirm(`¿Enviar este mensaje a ${total} usuarios vía Telegram?\n\nEsto NO se puede deshacer.`)) {
+      status.textContent = '';
+      return;
+    }
+
+    status.innerHTML = `<span style="color:#229ED9;">Enviando a ${total}…</span>`;
+    const { data, error } = await sb.functions.invoke('send-telegram-notification', {
+      body: { filter, value, message, photo_url: photoUrl, parse_mode: 'HTML' }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
+    const sent = data?.sent ?? 0;
+    const failed = data?.failed ?? 0;
+    status.innerHTML = `
+      <span style="color:var(--success);">✅ Enviados: <b>${sent}</b></span>
+      ${failed > 0 ? ` · <span style="color:var(--danger);">Fallaron: <b>${failed}</b></span>` : ''}
+      · ${Math.round((data?.duration_ms||0)/1000)}s
+    `;
+    showToast(`Enviado a ${sent} usuarios. ${failed > 0 ? failed + ' fallaron.' : ''}`,
+              failed > 0 ? 'warning' : 'success');
+    document.getElementById('tg-message').value = '';
+    document.getElementById('tg-photo-url').value = '';
+  } catch (err) {
+    status.innerHTML = '<span style="color:var(--danger);">Error: ' + escapeHtml(err.message || err) + '</span>';
+    if (typeof logError === 'function') logError({ action: 'sendTelegramBlast', error: err });
+  }
+}
+
+async function loadTelegramHistory() {
+  const c = document.getElementById('tg-history-container');
+  if (!c) return;
+  c.innerHTML = '<p class="text-muted">Cargando…</p>';
+  try {
+    const { data, error } = await sb.from('telegram_messages_log')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      c.innerHTML = '<p class="text-muted">Sin envíos previos.</p>';
+      return;
+    }
+    let html = '<table class="admin-table"><thead><tr>' +
+      '<th>Fecha</th><th>Quién</th><th>Destino</th><th>Mensaje</th><th>Enviados</th><th>Estado</th>' +
+      '</tr></thead><tbody>';
+    data.forEach(r => {
+      const date = new Date(r.created_at).toLocaleString('es-MX', { dateStyle:'short', timeStyle:'short' });
+      const preview = escapeHtml((r.message_text || '').slice(0, 100)) + ((r.message_text||'').length > 100 ? '…' : '');
+      const stateColor = r.status === 'completed' ? 'var(--success)' : (r.status === 'failed' ? 'var(--danger)' : '#777');
+      html += `<tr>
+        <td data-label="Fecha"><span style="font-family:monospace;font-size:0.78rem;">${date}</span></td>
+        <td data-label="Quién">${escapeHtml(r.sent_by_email||'—')}<br><small>${escapeHtml(r.sent_by_role||'')} · ${escapeHtml(r.sent_by_campus||'')}</small></td>
+        <td data-label="Destino">${escapeHtml(r.target_label||r.target_filter)}</td>
+        <td data-label="Mensaje"><span style="font-size:0.85rem;">${preview}</span></td>
+        <td data-label="Enviados"><b>${r.recipients_sent}</b>/${r.recipients_total}${r.recipients_failed>0?` <span style="color:var(--danger);">(${r.recipients_failed} fail)</span>`:''}</td>
+        <td data-label="Estado"><span style="color:${stateColor};font-weight:600;">${r.status}</span></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+  } catch (err) {
+    c.innerHTML = '<p style="color:var(--danger);">Error: ' + escapeHtml(err.message) + '</p>';
+    if (typeof logError === 'function') logError({ action: 'loadTelegramHistory', error: err });
+  }
+}
+
+window.onTgFilterChange = onTgFilterChange;
+window.previewTelegramBlast = previewTelegramBlast;
+window.sendTelegramBlast = sendTelegramBlast;
+window.loadTelegramHistory = loadTelegramHistory;
+
 async function loadAdminNotifications() {
   try {
     const { data: groups } = await sb.from('user_groups').select('id, name').order('name');
@@ -3827,9 +4019,11 @@ async function viewTreeMeasurementsAdmin(treeId) {
       rowsHtml = '<div style="padding:2rem;text-align:center;color:#888;">Este árbol aún no tiene seguimientos.</div>';
     } else {
       rowsHtml = meas.map((m, i) => {
-        const dt = new Date(m.measurement_date);
-        const dateStr = dt.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
-        const timeStr = dt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        // formatDayLocal extrae solo el día del string (evita el bug de TZ
+        // donde "2026-06-05 00:00 UTC" se ve como "4 jun 18:00" en México)
+        const dateStr = formatDayLocal(m.measurement_date);
+        // La hora ya no es informativa (era 00:00 UTC por el bug). La omitimos.
+        const timeStr = '';
         const score = m.health_score;
         const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
         const userName = userMap[m.user_id] || 'Usuario';
@@ -3994,14 +4188,16 @@ window.viewGardenVisitsAdmin = viewGardenVisitsAdmin;
 async function editAdminMeasurement(measId, treeId) {
   const { data: m } = await sb.from('tree_measurements').select('*').eq('id', measId).single();
   if (!m) { showToast('Medición no encontrada', 'error'); return; }
-  const dateLocal = m.measurement_date ? new Date(m.measurement_date).toISOString().slice(0, 16) : '';
+  // Extraer YYYY-MM-DD del string sin convertir TZ (evita el bug de mostrar
+  // "4 jun" cuando en BD dice "2026-06-05 00:00 UTC").
+  const dateOnly = m.measurement_date ? String(m.measurement_date).slice(0, 10) : '';
 
   showModal('Editar medición', `
     <form id="edit-meas-form">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem;">
         <div class="form-group">
-          <label>Fecha y hora</label>
-          <input type="datetime-local" id="em-date" value="${dateLocal}" style="width:100%;padding:0.5rem;">
+          <label>Fecha del seguimiento</label>
+          <input type="date" id="em-date" value="${dateOnly}" max="${todayLocalYMD()}" style="width:100%;padding:0.5rem;">
         </div>
         <div class="form-group">
           <label>Salud (0-100)</label>
@@ -4036,7 +4232,8 @@ async function editAdminMeasurement(measId, treeId) {
   document.getElementById('edit-meas-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const updates = {
-      measurement_date: new Date(document.getElementById('em-date').value).toISOString(),
+      // Fijar mediodía hora México (-06:00) en lugar de UTC midnight
+      measurement_date: dateInputToMexicoNoon(document.getElementById('em-date').value),
       health_score: parseInt(document.getElementById('em-health').value) || null,
       height_cm: parseFloat(document.getElementById('em-height').value) || null,
       trunk_diameter_cm: parseFloat(document.getElementById('em-trunk').value) || null,

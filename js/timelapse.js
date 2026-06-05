@@ -138,8 +138,8 @@ window.TreeTimelapse = (function() {
       const w = img.width * sc, h = img.height * sc;
       ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
 
-      // Overlay con fecha + salud
-      const date = new Date(meta.measurement_date).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+      // Overlay con fecha + salud (helper formatDayLocal evita bug timezone)
+      const date = formatDayLocal(meta.measurement_date);
       // Banda inferior
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
       ctx.fillRect(0, canvas.height - 70, canvas.width, 70);
@@ -255,7 +255,7 @@ window.TreeTimelapse = (function() {
         tctx.fillStyle = '#fff';
         tctx.font = 'bold 24px sans-serif';
         tctx.textAlign = 'left';
-        const date = new Date(meta.measurement_date).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+        const date = formatDayLocal(meta.measurement_date);
         tctx.fillText(date, 16, 558);
         if (meta.health_score != null) {
           const col = meta.health_score >= 70 ? '#4CAF50' : meta.health_score >= 40 ? '#FFA726' : '#EF5350';

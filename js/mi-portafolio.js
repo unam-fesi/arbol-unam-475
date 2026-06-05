@@ -553,7 +553,7 @@ function _renderGardenSeguimiento(trees, visits) {
       const color = score >= 70 ? '#4CAF50' : score >= 40 ? '#FFA726' : score != null ? '#EF5350' : '#9e9e9e';
       const scoreText = score != null ? `${score}/100` : 's/d';
       const lastDate = t.last_measurement?.measurement_date
-        ? new Date(t.last_measurement.measurement_date).toLocaleDateString()
+        ? formatDayLocal(t.last_measurement.measurement_date)
         : 'Nunca';
       return `
         <tr>
