@@ -1058,6 +1058,12 @@ async function editAdminUser(userId) {
 // Cache global de árboles cargados — se usa para filtrado client-side
 let _adminTreesCache = [];
 
+// Sets que indican qué árboles tienen foto / GPS en *alguna* medición
+// (incluye el caso legacy donde la ubicación estaba codificada en observations
+// como "[PLANTACION] {\"lat\":..,\"lng\":..}"). Se pueblan por _hydrateAdminTreesMedia.
+let _adminTreesHasPhoto = new Set();
+let _adminTreesHasLoc = new Set();
+
 async function loadAdminTrees() {
   // SEGURIDAD UX: admin-campus, responsable y specialist NO pueden crear/editar/borrar
   // árboles. La sección colapsable "Agregar/Editar Árbol" se oculta para ellos.
@@ -1077,8 +1083,65 @@ async function loadAdminTrees() {
     _adminTreesCache = data || [];
     _setupAdminTreesFilters();
     _renderAdminTreesRows(_adminTreesCache);
+    // Hidratar info de foto/GPS desde tree_measurements (incluye legacy
+    // [PLANTACION] en observations). No bloquea el primer render.
+    _hydrateAdminTreesMedia(_adminTreesCache).catch(e => console.warn('[adminTrees] hydrate media:', e));
   } catch (err) {
     showToast('Error cargando árboles: ' + err.message, 'error');
+  }
+}
+
+// Consulta tree_measurements y arma los sets _adminTreesHasPhoto / _adminTreesHasLoc.
+// Después re-renderiza los rows para que los iconos 📷 / 📍 de la columna Estado
+// reflejen también los datos que viven en mediciones (no solo en trees_catalog).
+async function _hydrateAdminTreesMedia(trees) {
+  if (!Array.isArray(trees) || trees.length === 0) return;
+  const ids = trees.map(t => t.id).filter(x => x != null);
+  if (ids.length === 0) return;
+  try {
+    // Traemos solo las columnas necesarias. RLS aplica según rol.
+    // Nota: chunking por si la lista es muy larga (límite de URL para .in()).
+    const CHUNK = 400;
+    const photoSet = new Set();
+    const locSet = new Set();
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const { data, error } = await sb
+        .from('tree_measurements')
+        .select('tree_id, photo_url, location_lat, location_lng, observations')
+        .in('tree_id', slice);
+      if (error) {
+        console.warn('[adminTrees] tree_measurements query error:', error);
+        continue;
+      }
+      (data || []).forEach(m => {
+        if (m.photo_url && String(m.photo_url).trim().length > 0) {
+          photoSet.add(m.tree_id);
+        }
+        if (m.location_lat != null && m.location_lng != null) {
+          locSet.add(m.tree_id);
+        } else if (typeof m.observations === 'string'
+          && /\[PLANTACION\]\s*\{[^}]*"lat"\s*:\s*-?\d/.test(m.observations)) {
+          // Legacy: la ubicación está embebida en el texto de observations.
+          locSet.add(m.tree_id);
+        }
+      });
+    }
+    _adminTreesHasPhoto = photoSet;
+    _adminTreesHasLoc = locSet;
+    // Re-render respetando filtros actuales si los hay.
+    if (typeof _filterAdminTrees === 'function'
+      && (document.getElementById('ft-code')?.value
+        || document.getElementById('ft-species')?.value
+        || document.getElementById('ft-campus')?.value
+        || document.getElementById('ft-status')?.value
+        || document.getElementById('ft-health-min')?.value)) {
+      _filterAdminTrees();
+    } else {
+      _renderAdminTreesRows(_adminTreesCache);
+    }
+  } catch (e) {
+    console.warn('[adminTrees] hydrate media exception:', e);
   }
 }
 
@@ -1233,7 +1296,23 @@ function _renderAdminTreesRows(trees) {
   trees.forEach(tree => {
     const row = document.createElement('tr');
     const statusLabel = TREE_STATUS_LABELS[tree.status] || tree.status || '—';
-    const hasLocation = tree.location_lat != null && tree.location_lng != null;
+    // Foto / ubicación: el árbol puede tenerlas en trees_catalog (campos directos)
+    // O en alguna medición posterior (incluso embebida como [PLANTACION] {...} en
+    // observations para datos legacy). _adminTreesHasPhoto / _adminTreesHasLoc
+    // se hidratan después del primer render con la info de tree_measurements.
+    const hasLocOnTree  = tree.location_lat != null && tree.location_lng != null;
+    const hasLocOnMeas  = _adminTreesHasLoc instanceof Set && _adminTreesHasLoc.has(tree.id);
+    const hasLocation   = hasLocOnTree || hasLocOnMeas;
+    const hasPhotoOnTree = tree.photo_url && String(tree.photo_url).length > 0;
+    const hasPhotoOnMeas = _adminTreesHasPhoto instanceof Set && _adminTreesHasPhoto.has(tree.id);
+    const hasPhoto       = hasPhotoOnTree || hasPhotoOnMeas;
+    // Tooltips claros para distinguir origen del dato.
+    const locTooltip = hasLocOnTree
+      ? 'Ubicación capturada (catálogo)'
+      : (hasLocOnMeas ? 'Ubicación capturada en seguimiento' : 'Sin ubicación — se capturará en primer seguimiento');
+    const photoTooltip = hasPhotoOnTree
+      ? 'Foto registrada (catálogo)'
+      : (hasPhotoOnMeas ? 'Foto registrada en seguimiento' : 'Sin foto registrada — se capturará en próxima medición');
     const co2 = window.CO2Calculator?.calculateCO2Stored(tree) || 0;
     const co2Tag = co2 > 0
       ? ` <small style="color:#1976D2;font-weight:500;" title="CO₂ capturado estimado">·💨${window.CO2Calculator.formatCO2(co2, 0)}</small>`
@@ -1245,15 +1324,18 @@ function _renderAdminTreesRows(trees) {
         <button class="btn btn-sm" style="background:#2e7d32;color:white;" onclick="editAdminTreeLocation(${tree.id})" title="Editar ubicación en mapa">📍</button>` : '';
     const deleteButton = canDelete ? `
         <button class="btn btn-sm btn-danger" onclick="deleteAdminTree(${tree.id})" title="Eliminar">🗑️</button>` : '';
-    const hasPhoto = tree.photo_url && String(tree.photo_url).length > 0;
     row.innerHTML = `
       <td>${escapeHtml(tree.tree_code || '-')}</td>
       <td>${escapeHtml(tree.species || '-')}</td>
       <td>${escapeHtml(tree.campus || '-')}</td>
       <td>
         <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${escapeHtml(statusLabel)}</span>
-        ${hasLocation ? '<span title="Ubicación capturada" style="margin-left:4px;">📍</span>' : '<span title="Sin ubicación — se capturará en primer seguimiento" style="margin-left:4px;opacity:0.4;">📍</span>'}
-        ${hasPhoto ? '<span title="Foto registrada" style="margin-left:4px;">📷</span>' : '<span title="Sin foto registrada — se capturará en próxima medición" style="margin-left:4px;opacity:0.4;">📷</span>'}
+        ${hasLocation
+          ? `<span title="${escapeHtml(locTooltip)}" style="margin-left:4px;">📍</span>`
+          : `<span title="${escapeHtml(locTooltip)}" style="margin-left:4px;opacity:0.4;">📍</span>`}
+        ${hasPhoto
+          ? `<span title="${escapeHtml(photoTooltip)}" style="margin-left:4px;">📷</span>`
+          : `<span title="${escapeHtml(photoTooltip)}" style="margin-left:4px;opacity:0.4;">📷</span>`}
       </td>
       <td>${tree.health_score || 0}%${co2Tag}</td>
       <td>${editButtons}
