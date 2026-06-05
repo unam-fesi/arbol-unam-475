@@ -4480,6 +4480,117 @@ let _auditCache = [];
 // ============================================================================
 let _appLogsCache = [];
 
+// ─── Traductor de acciones snake_case → texto natural ES ───
+const _APP_LOG_ACTION_LABELS = {
+  // Frontend web
+  'window.onerror': 'Error JS no manejado en el navegador',
+  'unhandledrejection': 'Promesa rechazada sin .catch()',
+  'saveAdminUser': 'Crear usuario desde admin',
+  'updateAdminUser': 'Editar usuario desde admin',
+  'deleteAdminUser': 'Borrar usuario desde admin',
+  'saveAdminTree': 'Crear árbol desde admin',
+  'editAdminTree': 'Editar árbol desde admin',
+  'deleteAdminTree': 'Borrar árbol desde admin',
+  'saveAdminGarden': 'Crear jardín desde admin',
+  'saveMeasurement': 'Guardar seguimiento de árbol',
+  'saveMeasurement.uploadPhoto': 'Subir foto del seguimiento',
+  'saveGardenVisit': 'Guardar visita al jardín',
+  'uploadPhotoWithThumb': 'Subir foto con thumbnail',
+  'uploadPhotoWithThumb.thumb': 'Subir miniatura de foto',
+  'analyzePhotoWithAI': 'Analizar foto con PUM-AI',
+  'sendPumaiMessage': 'Enviar mensaje a PUM-AI',
+  'login': 'Iniciar sesión',
+  'secure-login': 'Iniciar sesión (rate-limited)',
+  'logout': 'Cerrar sesión',
+  'loadMyTree': 'Cargar mi árbol',
+  'loadMyPortfolio': 'Cargar mi portafolio',
+  'loadAdminUsers': 'Cargar lista de usuarios',
+  'loadAdminTrees': 'Cargar lista de árboles',
+  'loadAppLogs': 'Cargar logs (este mismo)',
+  'markAppLogResolved': 'Marcar log como resuelto',
+  'create-user': 'Edge function: crear usuario',
+  'update-user': 'Edge function: editar usuario',
+  'delete-user': 'Edge function: borrar usuario',
+  'pum-ai': 'Edge function: PUM-AI',
+  'submit-public-report': 'Reporte ciudadano público',
+  'weather-sync': 'Sincronización del clima',
+  'unknown': 'Acción desconocida',
+};
+function _humanizeAction(action) {
+  if (!action) return '—';
+  if (_APP_LOG_ACTION_LABELS[action]) return _APP_LOG_ACTION_LABELS[action];
+  // Fallback: snake_case/dot.path → Title Case con espacios
+  return action.replace(/[._]/g, ' ')
+               .replace(/([A-Z])/g, ' $1')
+               .replace(/\s+/g, ' ').trim()
+               .replace(/^./, c => c.toUpperCase());
+}
+
+// ─── Traductor de códigos de error → causa probable humana ───
+const _APP_LOG_ERROR_TRANSLATIONS = [
+  // Postgres SQLSTATE codes
+  { match: /^23505$/i, label: 'Duplicado: un código o identificador único ya existe en BD',
+    advice: 'Cambia el código o verifica si el registro ya está creado.' },
+  { match: /^23503$/i, label: 'Referencia rota: el row vinculado no existe (FK)',
+    advice: 'El usuario/árbol/jardín al que se hace referencia fue borrado.' },
+  { match: /^23502$/i, label: 'Falta un campo obligatorio (NOT NULL)',
+    advice: 'Revisa qué columna del payload viene en blanco.' },
+  { match: /^23514$/i, label: 'Valor fuera del rango permitido (CHECK constraint)',
+    advice: 'Suele ser un rol/estatus que no está en la lista válida.' },
+  { match: /^42501$/i, label: 'Permiso denegado por RLS (Row-Level Security)',
+    advice: 'El usuario actual no tiene rol o policy para esta operación.' },
+  { match: /^42P01$/i, label: 'Tabla no encontrada',
+    advice: 'Falta la tabla en BD — quizás una migración no se aplicó.' },
+  { match: /^42703$/i, label: 'Columna no encontrada en la tabla',
+    advice: 'El frontend está enviando una columna que ya no existe.' },
+  { match: /^22P02$/i, label: 'Tipo de dato inválido (parse error)',
+    advice: 'Un texto donde se esperaba número, UUID malformado, etc.' },
+  { match: /^PGRST(.+)$/i, label: 'Error de PostgREST (la API REST de Supabase)',
+    advice: 'PGRST116 = no se encontró ningún row; PGRST301 = JWT expirado.' },
+
+  // Errores nuestros (edge functions con diagCode)
+  { match: /^NO_AUTH$/i, label: 'Usuario no autenticado (sin sesión válida)' },
+  { match: /^NO_PROFILE$/i, label: 'El usuario no tiene perfil en user_profiles' },
+  { match: /^NOT_ALLOWED_ROLE$/i, label: 'Tu rol no tiene permiso para esta operación' },
+  { match: /^WEAK_PASSWORD$/i, label: 'Contraseña no cumple política',
+    advice: 'Debe tener ≥8 caracteres, al menos 1 mayúscula y 1 dígito.' },
+  { match: /^BAD_EMAIL$/i, label: 'Email con formato inválido' },
+  { match: /^BAD_ROLE$/i, label: 'Rol no válido' },
+  { match: /^AC_NO_ADMIN$/i, label: 'admin-campus intentó crear admin principal' },
+  { match: /^RECTORIA_ADMIN_ONLY$/i, label: 'Solo el admin principal puede asignar rectoría' },
+  { match: /^AUTH_CREATE_FAIL$/i, label: 'Auth rechazó crear el usuario',
+    advice: 'Suele ser email duplicado o password rechazado por Supabase Auth.' },
+  { match: /^PROFILE_UPSERT_FAIL$/i, label: 'No se pudo guardar el perfil',
+    advice: 'auth.user se creó pero user_profiles falló — revisa CHECK constraints.' },
+
+  // HTTP genéricos
+  { match: /401/, label: 'Sesión expirada o token inválido',
+    advice: 'Pide al usuario que cierre y vuelva a iniciar sesión.' },
+  { match: /403/, label: 'Acceso denegado por permisos' },
+  { match: /404/, label: 'Recurso no encontrado' },
+  { match: /409/, label: 'Conflicto (suele ser duplicado o estado inconsistente)' },
+  { match: /413/, label: 'Archivo demasiado grande' },
+  { match: /429/, label: 'Muchas peticiones — rate limit excedido' },
+  { match: /5\d\d/, label: 'Error del servidor (5xx)' },
+
+  // Storage
+  { match: /already exists|duplicate.*object/i, label: 'El archivo ya existe en Storage',
+    advice: 'Usar upsert:true o cambiar el nombre del archivo.' },
+  { match: /Network|Failed to fetch|TypeError.*fetch/i, label: 'Sin conexión a internet',
+    advice: 'El usuario perdió la red durante la operación.' },
+  { match: /timeout|timed? out/i, label: 'La operación tardó demasiado y se canceló' },
+];
+
+function _translateError(errCode, errMsg, httpStatus) {
+  const haystack = `${errCode || ''} ${errMsg || ''} ${httpStatus || ''}`;
+  for (const t of _APP_LOG_ERROR_TRANSLATIONS) {
+    if (t.match.test(errCode || '') || t.match.test(errMsg || '') || t.match.test(String(httpStatus || ''))) {
+      return { label: t.label, advice: t.advice || null };
+    }
+  }
+  return null;
+}
+
 async function loadAppLogs() {
   const container = document.getElementById('logs-container');
   if (!container) return;
@@ -4526,35 +4637,76 @@ async function loadAppLogs() {
         <span style="background:#eee;color:#555;padding:4px 10px;border-radius:8px;">Total mostrados: <b>${rows.length}</b></span>
       </div>`;
 
-    // Tabla responsive (usa el patrón data-label del CSS responsive)
+    // Tabla responsive con traductor de acciones y causas probables.
     let html = stats + `
       <table class="admin-table" data-sort-table="logs">
         <thead><tr>
-          <th>Fecha</th><th>Severidad</th><th>Origen</th><th>Usuario</th>
-          <th>Acción</th><th>Mensaje</th><th>Acciones</th>
+          <th>Cuándo</th>
+          <th>Severidad</th>
+          <th>Usuario · Campus</th>
+          <th>Qué intentó hacer</th>
+          <th>Causa probable</th>
+          <th>Mensaje técnico</th>
+          <th>Acciones</th>
         </tr></thead>
         <tbody>`;
     rows.forEach(r => {
       const date = r.created_at ? new Date(r.created_at).toLocaleString('es-MX', { dateStyle:'short', timeStyle:'medium' }) : '—';
       const sevBadge = _appLogSeverityBadge(r.severity);
-      const srcBadge = _appLogSourceBadge(r.source);
-      const userLabel = r.user_email
-        ? `<span title="${escapeHtml(r.user_role||'')} · ${escapeHtml(r.user_campus||'')}">${escapeHtml(r.user_email)}</span>`
-        : '<span style="color:#999;">(anónimo)</span>';
-      const errCode = r.error_code ? `<code style="background:#fef3c7;padding:0 4px;border-radius:3px;font-size:0.78rem;">${escapeHtml(r.error_code)}</code> ` : '';
-      const msg = escapeHtml((r.error_message || '').slice(0, 120)) + ((r.error_message||'').length > 120 ? '…' : '');
+      const srcMini = _appLogSourceBadge(r.source);
+
+      // Usuario: nombre completo grande + email + rol/campus pequeños
+      const fullName = r.user_full_name || (r.user_email ? r.user_email.split('@')[0] : null);
+      const campusLabel = r.user_campus
+        ? (typeof CAMPUS_LABELS !== 'undefined' && CAMPUS_LABELS[r.user_campus]) || ('FES ' + r.user_campus)
+        : '';
+      const userBlock = fullName
+        ? `<div style="line-height:1.2;">
+             <div style="font-weight:600;">${escapeHtml(fullName)}</div>
+             <div style="font-size:0.72rem;color:#888;">${escapeHtml(r.user_email||'—')}</div>
+             <div style="font-size:0.72rem;color:#555;">
+               <span style="background:rgba(46,81,23,0.10);padding:1px 6px;border-radius:6px;">${escapeHtml(r.user_role||'sin rol')}</span>
+               ${campusLabel ? ' · ' + escapeHtml(campusLabel) : ''}
+             </div>
+           </div>`
+        : '<span style="color:#999;font-style:italic;">(anónimo / sin sesión)</span>';
+
+      // Acción humanizada
+      const actionHuman = _humanizeAction(r.action);
+      const actionBlock = `
+        <div style="line-height:1.25;">
+          <div style="font-weight:500;">${escapeHtml(actionHuman)}</div>
+          <div style="font-size:0.7rem;color:#999;font-family:monospace;">${escapeHtml(r.action||'—')}</div>
+          <div style="margin-top:2px;">${srcMini}</div>
+        </div>`;
+
+      // Causa probable (traducción de error)
+      const translation = _translateError(r.error_code, r.error_message, r.http_status);
+      const causeBlock = translation
+        ? `<div style="line-height:1.3;">
+             <div style="font-weight:500;color:var(--danger);">${escapeHtml(translation.label)}</div>
+             ${translation.advice ? `<div style="font-size:0.72rem;color:#666;margin-top:2px;">💡 ${escapeHtml(translation.advice)}</div>` : ''}
+           </div>`
+        : '<span style="color:#999;font-size:0.78rem;">— Sin traducción —</span>';
+
+      // Mensaje técnico
+      const errCode = r.error_code ? `<code style="background:#fef3c7;padding:0 4px;border-radius:3px;font-size:0.72rem;">${escapeHtml(r.error_code)}</code> ` : '';
+      const httpSt = r.http_status ? `<code style="background:#fee2e2;padding:0 4px;border-radius:3px;font-size:0.72rem;">HTTP ${r.http_status}</code> ` : '';
+      const msg = escapeHtml((r.error_message || '').slice(0, 140)) + ((r.error_message||'').length > 140 ? '…' : '');
+      const msgBlock = `<div style="font-size:0.78rem;">${errCode}${httpSt}<span style="color:#555;">${msg}</span></div>`;
+
       html += `
         <tr ${r.resolved ? 'style="opacity:0.55;"' : ''}>
-          <td data-label="Fecha"><span style="font-family:monospace;font-size:0.78rem;">${date}</span></td>
+          <td data-label="Cuándo"><span style="font-family:monospace;font-size:0.75rem;color:#555;">${date}</span></td>
           <td data-label="Severidad">${sevBadge}</td>
-          <td data-label="Origen">${srcBadge}</td>
-          <td data-label="Usuario">${userLabel}</td>
-          <td data-label="Acción"><code style="background:#e8f5e9;padding:0 4px;border-radius:3px;font-size:0.78rem;">${escapeHtml(r.action || '—')}</code></td>
-          <td data-label="Mensaje">${errCode}${msg}</td>
+          <td data-label="Usuario">${userBlock}</td>
+          <td data-label="Qué intentó hacer">${actionBlock}</td>
+          <td data-label="Causa probable">${causeBlock}</td>
+          <td data-label="Mensaje técnico">${msgBlock}</td>
           <td data-label="Acciones" style="white-space:nowrap;">
-            <button class="btn btn-sm btn-secondary" onclick="showAppLogDetail('${r.id}')" title="Detalle">🔍</button>
+            <button class="btn btn-sm btn-secondary" onclick="showAppLogDetail('${r.id}')" title="Ver detalle completo">🔍</button>
             ${r.resolved
-              ? '<span style="font-size:0.78rem;color:var(--success);">✓ Resuelto</span>'
+              ? '<span style="font-size:0.78rem;color:var(--success);">✓</span>'
               : `<button class="btn btn-sm" style="background:#e8f5e9;color:#2e7d32;" onclick="markAppLogResolved('${r.id}')" title="Marcar como resuelto">✓</button>`}
           </td>
         </tr>`;
@@ -4597,27 +4749,58 @@ function showAppLogDetail(id) {
   const ctx = r.context ? JSON.stringify(r.context, null, 2) : '(vacío)';
   const stack = r.stack_trace || '(sin stack trace)';
   const date = r.created_at ? new Date(r.created_at).toLocaleString('es-MX') : '—';
-  const html = `
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:0.4rem 1rem;margin-bottom:1rem;font-size:0.88rem;">
-      <strong>Fecha:</strong>           <span>${date}</span>
+  const translation = _translateError(r.error_code, r.error_message, r.http_status);
+  const campusLabel = r.user_campus
+    ? (typeof CAMPUS_LABELS !== 'undefined' && CAMPUS_LABELS[r.user_campus]) || ('FES ' + r.user_campus)
+    : '—';
+
+  // Resumen humanizado arriba (lo más útil)
+  const summary = `
+    <div style="background:linear-gradient(135deg,rgba(46,81,23,0.06),rgba(255,253,247,0.6));padding:1rem;border-radius:10px;border-left:4px solid var(--primary);margin-bottom:1rem;">
+      <div style="font-size:0.78rem;color:#777;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Qué intentó hacer</div>
+      <div style="font-size:1.1rem;font-weight:600;color:#222;margin-bottom:0.6rem;">${escapeHtml(_humanizeAction(r.action))}</div>
+      ${translation ? `
+        <div style="font-size:0.78rem;color:#777;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;">Causa probable</div>
+        <div style="font-size:1rem;color:var(--danger);font-weight:500;margin-bottom:0.3rem;">${escapeHtml(translation.label)}</div>
+        ${translation.advice ? `<div style="background:rgba(255,193,7,0.10);padding:0.5rem 0.8rem;border-radius:6px;border-left:3px solid #FFA726;font-size:0.88rem;color:#5a4730;">💡 <strong>Sugerencia:</strong> ${escapeHtml(translation.advice)}</div>` : ''}
+      ` : ''}
+    </div>
+  `;
+
+  // Bloque de usuario destacado
+  const userBlock = `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:0.4rem 1rem;margin-bottom:1rem;font-size:0.9rem;">
+      <strong>Nombre:</strong>          <span>${escapeHtml(r.user_full_name || '(no disponible — usuario anónimo o nuevo)')}</span>
+      <strong>Email:</strong>           <span>${escapeHtml(r.user_email || '—')}</span>
+      <strong>Rol:</strong>             <code style="background:rgba(46,81,23,0.10);padding:2px 6px;border-radius:4px;">${escapeHtml(r.user_role || '(sin rol)')}</code>
+      <strong>Campus:</strong>          <span>${escapeHtml(campusLabel)}</span>
+      <strong>Cuándo:</strong>          <span style="font-family:monospace;">${date}</span>
+      <strong>IP:</strong>              <code style="font-size:0.78rem;">${escapeHtml(r.ip_address||'—')}</code>
+    </div>
+  `;
+
+  // Bloque técnico
+  const techBlock = `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:0.4rem 1rem;margin-bottom:1rem;font-size:0.85rem;">
       <strong>Severidad:</strong>       <span>${_appLogSeverityBadge(r.severity)}</span>
       <strong>Origen:</strong>          <span>${_appLogSourceBadge(r.source)}</span>
-      <strong>Acción:</strong>          <code style="background:#e8f5e9;padding:2px 6px;border-radius:4px;">${escapeHtml(r.action||'—')}</code>
-      <strong>Código:</strong>          <code>${escapeHtml(r.error_code||'—')}</code>
+      <strong>Acción (código):</strong> <code style="background:#e8f5e9;padding:2px 6px;border-radius:4px;">${escapeHtml(r.action||'—')}</code>
+      <strong>Error code:</strong>      <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;">${escapeHtml(r.error_code||'—')}</code>
       <strong>HTTP status:</strong>     <span>${r.http_status||'—'}</span>
-      <strong>Usuario:</strong>         <span>${escapeHtml(r.user_email||'(anónimo)')} · ${escapeHtml(r.user_role||'')} · ${escapeHtml(r.user_campus||'')}</span>
-      <strong>IP:</strong>              <code>${escapeHtml(r.ip_address||'—')}</code>
-      <strong>URL:</strong>             <code style="word-break:break-all;font-size:0.78rem;">${escapeHtml(r.url||'—')}</code>
-      <strong>User-Agent:</strong>      <span style="font-size:0.78rem;color:#666;">${escapeHtml((r.user_agent||'').slice(0,120))}</span>
+      <strong>URL:</strong>             <code style="word-break:break-all;font-size:0.75rem;">${escapeHtml(r.url||'—')}</code>
+      <strong>User-Agent:</strong>      <span style="font-size:0.75rem;color:#666;">${escapeHtml((r.user_agent||'').slice(0,160))}</span>
     </div>
-    <h5 style="margin:0.8rem 0 0.3rem;">Mensaje</h5>
-    <pre style="background:#fff5f5;padding:0.8rem;border-radius:6px;white-space:pre-wrap;border-left:3px solid var(--danger);font-size:0.85rem;">${escapeHtml(r.error_message||'')}</pre>
+  `;
+
+  const html = summary + userBlock + techBlock + `
+    <h5 style="margin:0.8rem 0 0.3rem;">Mensaje técnico completo</h5>
+    <pre style="background:#fff5f5;padding:0.8rem;border-radius:6px;white-space:pre-wrap;border-left:3px solid var(--danger);font-size:0.85rem;max-height:200px;overflow-y:auto;">${escapeHtml(r.error_message||'')}</pre>
     <h5 style="margin:0.8rem 0 0.3rem;">Stack trace</h5>
-    <pre style="background:#1e1e1e;color:#dcdcdc;padding:0.8rem;border-radius:6px;overflow-x:auto;font-size:0.75rem;max-height:240px;">${escapeHtml(stack)}</pre>
-    <h5 style="margin:0.8rem 0 0.3rem;">Context</h5>
-    <pre style="background:#f7f3e8;padding:0.8rem;border-radius:6px;overflow-x:auto;font-size:0.78rem;max-height:240px;">${escapeHtml(ctx)}</pre>
+    <pre style="background:#1e1e1e;color:#dcdcdc;padding:0.8rem;border-radius:6px;overflow:auto;font-size:0.72rem;max-height:240px;">${escapeHtml(stack)}</pre>
+    <h5 style="margin:0.8rem 0 0.3rem;">Context (JSON)</h5>
+    <pre style="background:#f7f3e8;padding:0.8rem;border-radius:6px;overflow:auto;font-size:0.78rem;max-height:240px;">${escapeHtml(ctx)}</pre>
     ${r.resolved
-      ? `<p style="color:var(--success);margin-top:1rem;">✓ Marcado como resuelto ${r.resolved_at ? 'el ' + new Date(r.resolved_at).toLocaleString('es-MX') : ''}.</p>`
+      ? `<p style="color:var(--success);margin-top:1rem;">✓ Marcado como resuelto ${r.resolved_at ? 'el ' + new Date(r.resolved_at).toLocaleString('es-MX') : ''} por ${escapeHtml((r.resolved_by||'').slice(0,8))}.</p>`
       : `<button class="btn btn-primary" onclick="markAppLogResolved('${r.id}', true)" style="margin-top:1rem;">✓ Marcar como resuelto</button>`}
   `;
   showModal('Detalle del log', html);
