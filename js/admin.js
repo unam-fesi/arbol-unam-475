@@ -149,6 +149,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'kpis') loadKpis();
     else if (tabName === 'security') loadSecurityDashboard();
     else if (tabName === 'quotas') loadQuotasDashboard();
+    else if (tabName === 'logs') loadAppLogs();
   }
   // Tabs que son SIEMPRE globales (no filtran por campus) → esconder el dropdown del filter
   // El dropdown solo lo ve admin global; admin-campus tiene su campus fijo (lo dice el banner).
@@ -4474,6 +4475,173 @@ async function exportDashboardToPDF() {
 // INNOVACIÓN #18 — Vista de Audit Log (admin)
 // =============================================================
 let _auditCache = [];
+// ============================================================================
+// LOGS DE APLICACIÓN (tabla app_logs)
+// ============================================================================
+let _appLogsCache = [];
+
+async function loadAppLogs() {
+  const container = document.getElementById('logs-container');
+  if (!container) return;
+  container.innerHTML = '<p class="text-muted">Cargando…</p>';
+  try {
+    const sev   = document.getElementById('logs-filter-severity')?.value || '';
+    const src   = document.getElementById('logs-filter-source')?.value || '';
+    const res   = document.getElementById('logs-filter-resolved')?.value || 'open';
+    const q     = (document.getElementById('logs-filter-search')?.value || '').trim().toLowerCase();
+
+    let query = sb.from('app_logs').select('*').order('created_at', { ascending: false }).limit(500);
+    if (sev) query = query.eq('severity', sev);
+    if (src) query = query.eq('source', src);
+    if (res === 'open') query = query.eq('resolved', false);
+    else if (res === 'resolved') query = query.eq('resolved', true);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    _appLogsCache = data || [];
+
+    // Filtro client-side por texto (action o error_message)
+    const rows = q
+      ? _appLogsCache.filter(r =>
+          (r.action || '').toLowerCase().includes(q) ||
+          (r.error_message || '').toLowerCase().includes(q) ||
+          (r.error_code || '').toLowerCase().includes(q))
+      : _appLogsCache;
+
+    if (rows.length === 0) {
+      container.innerHTML = '<p class="text-muted text-center" style="padding:2rem;">Sin logs que coincidan con los filtros.</p>';
+      return;
+    }
+
+    // Stats compactas
+    const totals = { critical:0, error:0, warning:0, info:0 };
+    rows.forEach(r => { if (totals[r.severity] !== undefined) totals[r.severity]++; });
+
+    const stats = `
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;font-size:0.78rem;">
+        <span style="background:#7a1f1f;color:white;padding:4px 10px;border-radius:8px;">🚨 Crítico: <b>${totals.critical}</b></span>
+        <span style="background:#b54f3a;color:white;padding:4px 10px;border-radius:8px;">❌ Error: <b>${totals.error}</b></span>
+        <span style="background:#d4a047;color:#222;padding:4px 10px;border-radius:8px;">⚠️ Warning: <b>${totals.warning}</b></span>
+        <span style="background:#5b8b7d;color:white;padding:4px 10px;border-radius:8px;">ℹ️ Info: <b>${totals.info}</b></span>
+        <span style="background:#eee;color:#555;padding:4px 10px;border-radius:8px;">Total mostrados: <b>${rows.length}</b></span>
+      </div>`;
+
+    // Tabla responsive (usa el patrón data-label del CSS responsive)
+    let html = stats + `
+      <table class="admin-table" data-sort-table="logs">
+        <thead><tr>
+          <th>Fecha</th><th>Severidad</th><th>Origen</th><th>Usuario</th>
+          <th>Acción</th><th>Mensaje</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>`;
+    rows.forEach(r => {
+      const date = r.created_at ? new Date(r.created_at).toLocaleString('es-MX', { dateStyle:'short', timeStyle:'medium' }) : '—';
+      const sevBadge = _appLogSeverityBadge(r.severity);
+      const srcBadge = _appLogSourceBadge(r.source);
+      const userLabel = r.user_email
+        ? `<span title="${escapeHtml(r.user_role||'')} · ${escapeHtml(r.user_campus||'')}">${escapeHtml(r.user_email)}</span>`
+        : '<span style="color:#999;">(anónimo)</span>';
+      const errCode = r.error_code ? `<code style="background:#fef3c7;padding:0 4px;border-radius:3px;font-size:0.78rem;">${escapeHtml(r.error_code)}</code> ` : '';
+      const msg = escapeHtml((r.error_message || '').slice(0, 120)) + ((r.error_message||'').length > 120 ? '…' : '');
+      html += `
+        <tr ${r.resolved ? 'style="opacity:0.55;"' : ''}>
+          <td data-label="Fecha"><span style="font-family:monospace;font-size:0.78rem;">${date}</span></td>
+          <td data-label="Severidad">${sevBadge}</td>
+          <td data-label="Origen">${srcBadge}</td>
+          <td data-label="Usuario">${userLabel}</td>
+          <td data-label="Acción"><code style="background:#e8f5e9;padding:0 4px;border-radius:3px;font-size:0.78rem;">${escapeHtml(r.action || '—')}</code></td>
+          <td data-label="Mensaje">${errCode}${msg}</td>
+          <td data-label="Acciones" style="white-space:nowrap;">
+            <button class="btn btn-sm btn-secondary" onclick="showAppLogDetail('${r.id}')" title="Detalle">🔍</button>
+            ${r.resolved
+              ? '<span style="font-size:0.78rem;color:var(--success);">✓ Resuelto</span>'
+              : `<button class="btn btn-sm" style="background:#e8f5e9;color:#2e7d32;" onclick="markAppLogResolved('${r.id}')" title="Marcar como resuelto">✓</button>`}
+          </td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p style="color:var(--danger);padding:1rem;">Error: ${escapeHtml(err.message)}</p>`;
+    if (typeof logError === 'function') {
+      logError({ action: 'loadAppLogs', error: err });
+    }
+  }
+}
+
+function _appLogSeverityBadge(s) {
+  const map = {
+    critical: { bg:'#7a1f1f', fg:'white', label:'🚨 Crítico' },
+    error:    { bg:'#b54f3a', fg:'white', label:'❌ Error' },
+    warning:  { bg:'#d4a047', fg:'#222',  label:'⚠️ Warning' },
+    info:     { bg:'#5b8b7d', fg:'white', label:'ℹ️ Info' },
+  };
+  const c = map[s] || { bg:'#999', fg:'white', label: s||'—' };
+  return `<span style="background:${c.bg};color:${c.fg};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:600;">${c.label}</span>`;
+}
+
+function _appLogSourceBadge(s) {
+  const labels = {
+    frontend_web: '🌐 Web',
+    frontend_ios: '📱 iOS',
+    edge_function: '⚡ Edge',
+    database: '💾 DB',
+    unknown: '— Desconocido',
+  };
+  return `<span style="font-size:0.78rem;color:#555;">${labels[s] || s}</span>`;
+}
+
+function showAppLogDetail(id) {
+  const r = _appLogsCache.find(x => x.id === id);
+  if (!r) return;
+  const ctx = r.context ? JSON.stringify(r.context, null, 2) : '(vacío)';
+  const stack = r.stack_trace || '(sin stack trace)';
+  const date = r.created_at ? new Date(r.created_at).toLocaleString('es-MX') : '—';
+  const html = `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:0.4rem 1rem;margin-bottom:1rem;font-size:0.88rem;">
+      <strong>Fecha:</strong>           <span>${date}</span>
+      <strong>Severidad:</strong>       <span>${_appLogSeverityBadge(r.severity)}</span>
+      <strong>Origen:</strong>          <span>${_appLogSourceBadge(r.source)}</span>
+      <strong>Acción:</strong>          <code style="background:#e8f5e9;padding:2px 6px;border-radius:4px;">${escapeHtml(r.action||'—')}</code>
+      <strong>Código:</strong>          <code>${escapeHtml(r.error_code||'—')}</code>
+      <strong>HTTP status:</strong>     <span>${r.http_status||'—'}</span>
+      <strong>Usuario:</strong>         <span>${escapeHtml(r.user_email||'(anónimo)')} · ${escapeHtml(r.user_role||'')} · ${escapeHtml(r.user_campus||'')}</span>
+      <strong>IP:</strong>              <code>${escapeHtml(r.ip_address||'—')}</code>
+      <strong>URL:</strong>             <code style="word-break:break-all;font-size:0.78rem;">${escapeHtml(r.url||'—')}</code>
+      <strong>User-Agent:</strong>      <span style="font-size:0.78rem;color:#666;">${escapeHtml((r.user_agent||'').slice(0,120))}</span>
+    </div>
+    <h5 style="margin:0.8rem 0 0.3rem;">Mensaje</h5>
+    <pre style="background:#fff5f5;padding:0.8rem;border-radius:6px;white-space:pre-wrap;border-left:3px solid var(--danger);font-size:0.85rem;">${escapeHtml(r.error_message||'')}</pre>
+    <h5 style="margin:0.8rem 0 0.3rem;">Stack trace</h5>
+    <pre style="background:#1e1e1e;color:#dcdcdc;padding:0.8rem;border-radius:6px;overflow-x:auto;font-size:0.75rem;max-height:240px;">${escapeHtml(stack)}</pre>
+    <h5 style="margin:0.8rem 0 0.3rem;">Context</h5>
+    <pre style="background:#f7f3e8;padding:0.8rem;border-radius:6px;overflow-x:auto;font-size:0.78rem;max-height:240px;">${escapeHtml(ctx)}</pre>
+    ${r.resolved
+      ? `<p style="color:var(--success);margin-top:1rem;">✓ Marcado como resuelto ${r.resolved_at ? 'el ' + new Date(r.resolved_at).toLocaleString('es-MX') : ''}.</p>`
+      : `<button class="btn btn-primary" onclick="markAppLogResolved('${r.id}', true)" style="margin-top:1rem;">✓ Marcar como resuelto</button>`}
+  `;
+  showModal('Detalle del log', html);
+}
+
+async function markAppLogResolved(id, closeModalAfter) {
+  try {
+    const { error } = await sb.from('app_logs')
+      .update({ resolved: true, resolved_at: new Date().toISOString(), resolved_by: currentUser?.id })
+      .eq('id', id);
+    if (error) throw error;
+    showToast('Log marcado como resuelto', 'success');
+    if (closeModalAfter && typeof closeModal === 'function') closeModal();
+    loadAppLogs();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+    if (typeof logError === 'function') logError({ action: 'markAppLogResolved', error: err, context: { logId: id } });
+  }
+}
+
+window.loadAppLogs = loadAppLogs;
+window.showAppLogDetail = showAppLogDetail;
+window.markAppLogResolved = markAppLogResolved;
+
 async function loadAuditLog() {
   const container = document.getElementById('audit-log-container');
   if (!container) return;

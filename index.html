@@ -377,6 +377,7 @@
                             <button class="admin-tab" data-tab="audit" data-group="seguridad" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditoría</button>
                             <button class="admin-tab" data-tab="security" data-group="seguridad" onclick="switchAdminTab('security')"><i class="fas fa-shield-alt"></i> Acceso e IPs</button>
                             <button class="admin-tab" data-tab="quotas" data-group="seguridad" onclick="switchAdminTab('quotas')"><i class="fas fa-gauge-high"></i> Cuotas y alertas</button>
+                            <button class="admin-tab" data-tab="logs" data-group="seguridad" onclick="switchAdminTab('logs')"><i class="fas fa-bug"></i> Logs</button>
                         </div>
 
                         <div class="admin-content">
@@ -1417,6 +1418,54 @@
                                     &Uacute;ltimas 100 acciones (insert/update/delete) en tablas cr&iacute;ticas.
                                 </p>
                                 <div id="audit-log-container">Cargando...</div>
+                            </div>
+
+                            <!-- LOGS TAB -->
+                            <div id="logsTab" class="tab-pane">
+                                <h4 style="margin-bottom:0.4rem;"><i class="fas fa-bug"></i> Logs de errores</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    Errores y advertencias capturados de la app (frontend, iOS, edge functions). El admin de campus solo ve logs de su propio campus.
+                                </p>
+                                <div class="form-row" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label style="font-size:0.78rem;">Severidad</label>
+                                        <select id="logs-filter-severity" onchange="loadAppLogs()" style="padding:0.4rem;">
+                                            <option value="">— Todas —</option>
+                                            <option value="critical">Crítica</option>
+                                            <option value="error" selected>Error</option>
+                                            <option value="warning">Advertencia</option>
+                                            <option value="info">Info</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label style="font-size:0.78rem;">Origen</label>
+                                        <select id="logs-filter-source" onchange="loadAppLogs()" style="padding:0.4rem;">
+                                            <option value="">— Todos —</option>
+                                            <option value="frontend_web">Web</option>
+                                            <option value="frontend_ios">iOS</option>
+                                            <option value="edge_function">Edge function</option>
+                                            <option value="database">Database</option>
+                                            <option value="unknown">Desconocido</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label style="font-size:0.78rem;">Resueltos</label>
+                                        <select id="logs-filter-resolved" onchange="loadAppLogs()" style="padding:0.4rem;">
+                                            <option value="open" selected>Pendientes</option>
+                                            <option value="resolved">Resueltos</option>
+                                            <option value="">Todos</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin:0;flex:1;min-width:160px;">
+                                        <label style="font-size:0.78rem;">Buscar (acción o mensaje)</label>
+                                        <input type="text" id="logs-filter-search" placeholder="🔍 ej. save_tree, RLS, 23505"
+                                               oninput="loadAppLogs()" autocomplete="off" style="padding:0.4rem;">
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" onclick="loadAppLogs()" style="white-space:nowrap;">
+                                        <i class="fas fa-rotate"></i> Refrescar
+                                    </button>
+                                </div>
+                                <div id="logs-container">Cargando…</div>
                             </div>
                         </div>
                     </div>

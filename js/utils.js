@@ -344,3 +344,107 @@ function isMobile() {
 
 window.applyMobileTableLabels = applyMobileTableLabels;
 window.isMobile = isMobile;
+
+// ============================================================================
+// logError(): envía errores a la tabla app_logs vía edge function log-error
+// ============================================================================
+// Uso:
+//   logError({ source: 'frontend_web', action: 'save_tree', error: err, context: {...} });
+//   logError({ severity: 'warning', action: 'photo_upload', error_message: 'timeout' });
+//
+// Captura automática (sin llamada manual):
+//   - window.onerror — errores JS no manejados
+//   - unhandledrejection — promises rejected sin .catch
+//
+// Anti-flood: throttle de 30 envíos/minuto y dedup por (action+message+5min).
+
+const _logErrorDedup = new Map();
+let _logErrorBudget = 30;
+setInterval(() => { _logErrorBudget = 30; }, 60_000);
+
+async function logError(opts = {}) {
+  try {
+    if (_logErrorBudget <= 0) return;
+
+    const action = opts.action || 'unknown';
+    const errMsg = opts.error_message
+                || opts.message
+                || (opts.error && (opts.error.message || String(opts.error)))
+                || '(sin mensaje)';
+
+    const dedupKey = action + '||' + errMsg.slice(0, 80);
+    const lastReport = _logErrorDedup.get(dedupKey);
+    if (lastReport && Date.now() - lastReport < 5 * 60_000) return;
+    _logErrorDedup.set(dedupKey, Date.now());
+    _logErrorBudget--;
+
+    // Obtener token (best-effort; si no hay sesión, va con anon key)
+    let accessToken = null;
+    try {
+      if (typeof sb !== 'undefined' && sb.auth?.getSession) {
+        const { data } = await sb.auth.getSession();
+        accessToken = data?.session?.access_token || null;
+      }
+    } catch (_) {}
+
+    const payload = {
+      severity: opts.severity || 'error',
+      source: opts.source || 'frontend_web',
+      action,
+      error_message: errMsg,
+      error_code: opts.error_code
+                 || (opts.error && (opts.error.code || opts.error.statusCode))
+                 || null,
+      http_status: opts.http_status
+                  || (opts.error && opts.error.status)
+                  || null,
+      stack_trace: opts.stack_trace
+                  || (opts.error && opts.error.stack)
+                  || null,
+      url: opts.url || window.location.href,
+      context: {
+        ...(opts.context || {}),
+        viewport: window.innerWidth + 'x' + window.innerHeight,
+        ts: new Date().toISOString(),
+        user_campus: (typeof currentUserProfile !== 'undefined' && currentUserProfile?.campus) || null,
+      },
+    };
+
+    const url = (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '') + '/functions/v1/log-error';
+    const anonKey = (typeof SUPABASE_KEY !== 'undefined') ? SUPABASE_KEY : '';
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': 'Bearer ' + (accessToken || anonKey),
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => { /* silent */ });
+  } catch (_) { /* nunca propagamos: el logger no puede romper la app */ }
+}
+
+// Captura automática de errores no manejados
+window.addEventListener('error', (e) => {
+  logError({
+    severity: 'error',
+    source: 'frontend_web',
+    action: 'window.onerror',
+    error_message: e.message || 'window error',
+    stack_trace: e.error?.stack,
+    url: e.filename ? (e.filename + ':' + e.lineno + ':' + e.colno) : window.location.href,
+  });
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  logError({
+    severity: 'error',
+    source: 'frontend_web',
+    action: 'unhandledrejection',
+    error_message: (r && (r.message || r.toString())) || 'Promise rejected sin handler',
+    stack_trace: r && r.stack,
+  });
+});
+
+window.logError = logError;
