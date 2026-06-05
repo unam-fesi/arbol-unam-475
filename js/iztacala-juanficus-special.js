@@ -197,28 +197,46 @@ window.IztacalaJuanFicus = (function() {
     });
     palomaMesh = gltf.scene;
 
-    // Auto-escalar para que la envergadura quede en PALOMA_WINGSPAN_M
+    // Auto-escalar para que la envergadura quede en PALOMA_WINGSPAN_M.
+    // IMPORTANTE: guardamos la escala uniforme base. Cualquier "respiración"
+    // posterior debe multiplicar TODA la escala — NO solo scale.y — porque
+    // eso aplastaría verticalmente al mesh y separaría visualmente la cabeza
+    // del cuerpo si están modelados como sub-meshes contiguos.
     const box = new THREE.Box3().setFromObject(palomaMesh);
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    palomaMesh.scale.setScalar(PALOMA_WINGSPAN_M / maxDim);
+    const baseScale = PALOMA_WINGSPAN_M / maxDim;
+    palomaMesh.scale.setScalar(baseScale);
+    palomaMesh.userData._baseScale = baseScale;
 
+    // Loguear estructura del GLB para diagnosticar problemas de cabeza/cuerpo
+    const meshNames = [];
+    const boneNames = [];
     palomaMesh.traverse(o => {
       if (o.isMesh) {
+        meshNames.push(o.name || '(unnamed mesh)');
         o.castShadow = true;
+        o.frustumCulled = false;  // evita que partes desaparezcan al rotar
         if (o.material) {
+          // Algunos GLBs traen materiales con doubleSide=false y normales raras.
+          // Forzamos doubleSide para evitar "agujeros" entre cabeza y cuerpo.
+          o.material.side = THREE.DoubleSide;
           o.material.color = new THREE.Color(0xffffff);
           o.material.emissive = new THREE.Color(0x444444);   // glow blanco más fuerte
           o.material.emissiveIntensity = 0.8;
+          o.material.needsUpdate = true;
         }
       }
+      if (o.isBone) boneNames.push(o.name || '(unnamed bone)');
       // Detectar bones de alas para aleteo manual si no hay animación GLB
       const n = (o.name || '').toLowerCase();
       if (o.isBone && (n.includes('wing') || n.includes('ala') || n.includes('feather') || n.includes('pluma'))) {
         wingBones.push(o);
       }
     });
+    console.log('[IztacalaJuanFicus] paloma GLB → meshes:', meshNames, '| bones:', boneNames);
+    palomaMesh.updateMatrixWorld(true);
 
     // Si el GLB trae animaciones (idle_fly, flap, etc.) las usamos
     if (gltf.animations && gltf.animations.length) {
@@ -285,9 +303,15 @@ window.IztacalaJuanFicus = (function() {
         b.rotation.z = angle * side;
       });
     } else {
-      // Fallback sin bones: "respira" el mesh entero verticalmente para sugerir aleteo
-      const breath = flapping ? Math.sin(t * Math.PI * 2 * WING_FLAP_HZ) * 0.08 : 0;
-      palomaMesh.scale.y = (PALOMA_WINGSPAN_M / palomaMesh.userData._maxDim || 1) * (1 + breath);
+      // Fallback sin bones ni anim: NO modificamos scale.y solo (eso aplastaba la
+      // paloma y separaba visualmente la cabeza del cuerpo). Mejor un "bobbing"
+      // vertical de la POSICIÓN — sugiere vuelo sin deformar geometría.
+      const base = palomaMesh.userData._baseScale || 1;
+      // Asegurar escala uniforme cada frame (defensivo contra cualquier mutación previa)
+      if (palomaMesh.scale.x !== base || palomaMesh.scale.y !== base || palomaMesh.scale.z !== base) {
+        palomaMesh.scale.setScalar(base);
+      }
+      // El bobbing real se aplica en el switch de estados más abajo modificando .position.y
     }
 
     switch (state) {
