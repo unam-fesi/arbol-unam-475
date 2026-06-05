@@ -511,8 +511,105 @@ function openProfileModal() {
       placeholder.style.display = 'flex';
       placeholder.textContent = (currentUserProfile.full_name || 'U').charAt(0).toUpperCase();
     }
+
+    // Refrescar UI de Telegram (vinculado / no)
+    refreshTelegramLinkUI();
   }
 }
+
+// ============================================================================
+// Vinculación con Telegram @Pumai_treebot
+// ============================================================================
+const TELEGRAM_BOT_USERNAME = 'Pumai_treebot';
+
+function refreshTelegramLinkUI() {
+  const status = document.getElementById('profile-telegram-status');
+  const explain = document.getElementById('profile-telegram-explain');
+  const linkBtn = document.getElementById('profile-telegram-link-btn');
+  const unlinkBtn = document.getElementById('profile-telegram-unlink-btn');
+  if (!status || !linkBtn) return;
+
+  if (currentUserProfile?.telegram_chat_id) {
+    status.innerHTML = '<span style="color:#2e7d32;font-weight:600;">✅ Vinculado</span>';
+    explain.textContent = 'Estás recibiendo notificaciones del proyecto en Telegram.';
+    linkBtn.querySelector('span').textContent = 'Re-vincular (otro Telegram)';
+    if (unlinkBtn) unlinkBtn.style.display = 'inline-flex';
+  } else {
+    status.innerHTML = '<span style="color:#777;">⊘ Sin vincular</span>';
+    explain.textContent = 'Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.';
+    linkBtn.querySelector('span').textContent = 'Vincular Telegram';
+    if (unlinkBtn) unlinkBtn.style.display = 'none';
+  }
+}
+
+/// Genera token corto, lo inserta en telegram_link_tokens y abre el deep link
+async function startTelegramLink() {
+  if (!currentUser) { showToast('Debes iniciar sesión primero', 'error'); return; }
+  try {
+    // Token corto único — usamos un slice del UUID para que entre en el deep link
+    const token = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36)).replace(/-/g, '').slice(0, 12);
+    const { error } = await sb.from('telegram_link_tokens').insert({
+      token,
+      user_id: currentUser.id,
+    });
+    if (error) throw error;
+
+    const deepLink = `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${token}`;
+    // Abre Telegram (móvil) o tab web según dispositivo
+    window.open(deepLink, '_blank');
+    showToast('Te enviamos a Telegram. Presiona "Start" en el bot para completar la vinculación.', 'info');
+
+    // Cada 3s revisar si ya se vinculó (se cierra solo cuando éxito o expira 15 min)
+    pollTelegramLink(token);
+  } catch (err) {
+    showToast('Error iniciando vinculación: ' + (err.message || err), 'error');
+    if (typeof logError === 'function') logError({ action: 'startTelegramLink', error: err });
+  }
+}
+
+let _tgPollTimer = null;
+function pollTelegramLink(token) {
+  if (_tgPollTimer) clearInterval(_tgPollTimer);
+  const start = Date.now();
+  _tgPollTimer = setInterval(async () => {
+    if (Date.now() - start > 15 * 60 * 1000) {     // 15 min timeout = token expirado
+      clearInterval(_tgPollTimer); _tgPollTimer = null;
+      return;
+    }
+    try {
+      const { data } = await sb.from('telegram_link_tokens')
+        .select('used_at').eq('token', token).maybeSingle();
+      if (data?.used_at) {
+        clearInterval(_tgPollTimer); _tgPollTimer = null;
+        // Recargar perfil para tener el chat_id nuevo
+        await loadUserProfile(true);
+        refreshTelegramLinkUI();
+        showToast('✅ Telegram vinculado correctamente', 'success');
+      }
+    } catch (_) {}
+  }, 3000);
+}
+
+async function unlinkTelegram() {
+  if (!currentUser || !currentUserProfile?.telegram_chat_id) return;
+  if (!confirm('¿Quieres dejar de recibir notificaciones de Telegram?')) return;
+  try {
+    const { error } = await sb.from('user_profiles')
+      .update({ telegram_chat_id: null })
+      .eq('id', currentUser.id);
+    if (error) throw error;
+    currentUserProfile.telegram_chat_id = null;
+    refreshTelegramLinkUI();
+    showToast('Desvinculaste Telegram. Ya no recibirás avisos.', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+    if (typeof logError === 'function') logError({ action: 'unlinkTelegram', error: err });
+  }
+}
+
+window.startTelegramLink = startTelegramLink;
+window.unlinkTelegram = unlinkTelegram;
+window.refreshTelegramLinkUI = refreshTelegramLinkUI;
 
 function closeProfileModal() {
   const modal = document.getElementById('profile-modal');

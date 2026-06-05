@@ -2,7 +2,7 @@
 <html lang="es-MX">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Proyecto Árbol UNAM 475 — FES Iztacala</title>
 
     <!-- Security Headers (frame-ancestors y X-Frame-Options se setean a nivel HTTP en GH Pages) -->
@@ -988,6 +988,77 @@
 
                             <!-- NOTIFICATIONS TAB -->
                             <div id="notificationsTab" class="tab-pane">
+                                <!-- ═══════════════════════════════════════════════════════════════ -->
+                                <!-- BLOQUE TELEGRAM masivo (@Pumai_treebot)                          -->
+                                <!-- ═══════════════════════════════════════════════════════════════ -->
+                                <div class="admin-form" style="border-left:4px solid #229ED9;background:linear-gradient(135deg,#e8f5fe,#f5fcff);">
+                                    <h4 style="display:flex;align-items:center;gap:0.5rem;color:#0d2d5c;">
+                                        <i class="fab fa-telegram" style="color:#229ED9;"></i>
+                                        Telegram — envío masivo
+                                    </h4>
+                                    <p class="text-muted text-small" style="margin:0 0 1rem;">
+                                        Manda un mensaje a todos los usuarios con Telegram vinculado, filtrado por rol, campus, grupo o usuario.
+                                        <strong>Solo recibe quien vinculó previamente su Telegram</strong> a <code>@Pumai_treebot</code>.
+                                    </p>
+                                    <form id="form-telegram-blast" onsubmit="return false;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="tg-filter">Destinatarios</label>
+                                                <select id="tg-filter" onchange="onTgFilterChange()">
+                                                    <option value="all">Todos los usuarios vinculados</option>
+                                                    <option value="role">Por rol</option>
+                                                    <option value="campus">Por campus</option>
+                                                    <option value="group">Por grupo</option>
+                                                    <option value="user">Usuario específico</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" id="tg-value-wrap" style="display:none;">
+                                                <label id="tg-value-label" for="tg-value">Valor</label>
+                                                <select id="tg-value-select" style="display:none;"></select>
+                                                <input type="text" id="tg-value-input" placeholder="" style="display:none;">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="grid-column: 1 / -1;">
+                                                <label for="tg-message">Mensaje (admite HTML simple: &lt;b&gt;, &lt;i&gt;, &lt;a&gt;, emojis)</label>
+                                                <textarea id="tg-message" rows="4" maxlength="4000"
+                                                    placeholder="Ej: 🌳 ¡Recordatorio! Esta semana tienen seguimientos pendientes en sus árboles asignados. Tómalos antes del viernes."></textarea>
+                                                <div class="text-muted text-small" style="margin-top:0.2rem;">
+                                                    Máximo 4000 caracteres. Soporta <strong>&lt;b&gt;negrita&lt;/b&gt;</strong>, <em>&lt;i&gt;cursiva&lt;/i&gt;</em>, <code>&lt;code&gt;</code>, &lt;a href=&quot;url&quot;&gt;enlace&lt;/a&gt;.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="grid-column: 1 / -1;">
+                                                <label for="tg-photo-url">URL de foto (opcional)</label>
+                                                <input type="url" id="tg-photo-url" placeholder="https://… (jpg/png, máx 5MB)">
+                                            </div>
+                                        </div>
+                                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-top:0.8rem;">
+                                            <button type="button" class="btn btn-outline" onclick="previewTelegramBlast()">
+                                                <i class="fas fa-eye"></i> Vista previa de destinatarios
+                                            </button>
+                                            <button type="button" class="btn" style="background:#229ED9;color:white;" onclick="sendTelegramBlast()">
+                                                <i class="fab fa-telegram"></i> Enviar por Telegram
+                                            </button>
+                                            <span id="tg-status" style="font-size:0.85rem;color:#555;"></span>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Histórico de Telegram (telegram_messages_log) -->
+                                <details class="admin-collapsible" style="margin:1.5rem 0 1rem;">
+                                    <summary><h4 style="margin:0;"><i class="fab fa-telegram" style="color:#229ED9;"></i> Historial de Telegram</h4></summary>
+                                    <div id="tg-history-container" style="margin-top:1rem;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadTelegramHistory()">
+                                            <i class="fas fa-refresh"></i> Cargar historial
+                                        </button>
+                                    </div>
+                                </details>
+
+                                <!-- ═══════════════════════════════════════════════════════════════ -->
+                                <!-- FORM EXISTENTE de notificaciones internas (no se toca)           -->
+                                <!-- ═══════════════════════════════════════════════════════════════ -->
                                 <div class="admin-form">
                                     <h4>Enviar Notificación</h4>
                                     <form id="form-notification">
@@ -1533,6 +1604,29 @@
                     <button type="button" class="btn btn-outline" onclick="closeProfileModal()" style="flex:0 0 auto;">Cancelar</button>
                 </div>
             </form>
+
+            <!-- ╔══════════════════════════════════════════════════════════════╗ -->
+            <!-- ║  VINCULAR TELEGRAM                                            ║ -->
+            <!-- ║  Notificaciones del proyecto vía @Pumai_treebot              ║ -->
+            <!-- ╚══════════════════════════════════════════════════════════════╝ -->
+            <div style="margin-top:1.5rem;padding:1rem;background:linear-gradient(135deg,#e8f5fe,#f5fcff);border-radius:10px;border-left:4px solid #229ED9;">
+                <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                    <i class="fab fa-telegram" style="font-size:1.5rem;color:#229ED9;"></i>
+                    <strong style="color:#0d2d5c;">Notificaciones Telegram</strong>
+                    <span id="profile-telegram-status" style="margin-left:auto;font-size:0.78rem;"></span>
+                </div>
+                <p id="profile-telegram-explain" style="margin:0 0 0.7rem;font-size:0.85rem;color:#555;line-height:1.4;">
+                    Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.
+                </p>
+                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                    <button type="button" id="profile-telegram-link-btn" class="btn btn-sm" style="background:#229ED9;color:white;" onclick="startTelegramLink()">
+                        <i class="fab fa-telegram"></i> <span>Vincular Telegram</span>
+                    </button>
+                    <button type="button" id="profile-telegram-unlink-btn" class="btn btn-sm btn-outline" onclick="unlinkTelegram()" style="display:none;">
+                        Desvincular
+                    </button>
+                </div>
+            </div>
 
             <!-- Seguridad: cambio de contraseña dentro del propio perfil -->
             <div style="margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid #eee;">
