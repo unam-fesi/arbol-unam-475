@@ -514,7 +514,7 @@ async function loadMyTree(forceReload, specificTreeId) {
             <!-- FECHA DE REGISTRO -->
             <div class="form-group" style="margin-bottom:1.5rem;">
               <label><i class="fas fa-calendar-alt"></i> Fecha ${meas.length === 0 ? 'de plantación' : 'del registro'}</label>
-              <input type="date" id="meas-date" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:0.5rem;" required>
+              <input type="date" id="meas-date" max="${todayLocalYMD()}" value="${todayLocalYMD()}" style="width:100%;padding:0.5rem;" required>
               <small class="text-muted">No se permiten fechas futuras</small>
             </div>
 
@@ -736,7 +736,7 @@ async function saveMeasurement(e) {
   if (!currentTreeData || !currentUser) return;
 
   const measDate = document.getElementById('meas-date')?.value;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocalYMD();   // YYYY-MM-DD en hora LOCAL del browser
   if (measDate && measDate > today) {
     showToast('No se permiten fechas futuras', 'warning');
     return;
@@ -847,7 +847,10 @@ async function saveMeasurement(e) {
     const measRow = {
       tree_id: currentTreeData.id,
       user_id: currentUser.id,
-      measurement_date: measDate || today,
+      // Fija mediodía hora México (-06:00) → evita el bug clásico de TZ
+      // donde "2026-06-05" se interpreta como UTC midnight y se ve como
+      // "4 jun 18:00" en hora local mexicana.
+      measurement_date: dateInputToMexicoNoon(measDate || today),
       height_cm: height,
       trunk_diameter_cm: trunk,
       crown_diameter_cm: crown,
@@ -910,8 +913,8 @@ async function saveMeasurement(e) {
 // ========== TIMELINE ==========
 function buildTimeline(measurements) {
   return measurements.map((m, i) => {
-    const date = new Date(m.measurement_date);
-    const dateStr = date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+    // Usar formatDayLocal para evitar bug timezone (UTC midnight → día anterior 6pm en México)
+    const dateStr = formatDayLocal(m.measurement_date);
     const hasPhoto = !!m.photo_url;
 
     // Parse rubric scores from observations
@@ -971,8 +974,7 @@ async function showMeasurementDetail(measId) {
     const m = rows && rows.length > 0 ? rows[0] : null;
     if (error || !m) { showToast('Error cargando detalle', 'error'); return; }
 
-    const date = new Date(m.measurement_date);
-    const dateStr = date.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dateStr = formatDayLocal(m.measurement_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     // Resolve photo URL (signed URL for private bucket)
     const resolvedPhotoUrl = await resolvePhotoUrl(m.photo_url);
@@ -1427,7 +1429,7 @@ function renderHealthTimeline(measurements) {
   if (_healthChartInstance) { _healthChartInstance.destroy(); _healthChartInstance = null; }
   if (!measurements || measurements.length < 2) return;
   const sorted = [...measurements].sort((a,b) => new Date(a.measurement_date) - new Date(b.measurement_date));
-  const labels = sorted.map(m => new Date(m.measurement_date).toLocaleDateString('es-MX', { month:'short', day:'numeric' }));
+  const labels = sorted.map(m => formatDayLocal(m.measurement_date, { month:'short', day:'numeric' }));
   const data = sorted.map(m => m.health_score || 0);
   const heights = sorted.map(m => m.height_cm || null);
   _healthChartInstance = new Chart(ctx, {

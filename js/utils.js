@@ -363,6 +363,51 @@ window.applyMobileTableLabels = applyMobileTableLabels;
 window.isMobile = isMobile;
 
 // ============================================================================
+// Fechas: helpers que evitan el bug de zona horaria
+// ============================================================================
+// Bug clásico: un date string como "2026-06-05T00:00:00+00" interpretado
+// con new Date() y mostrado con toLocaleString en México (UTC-6) sale como
+// "4 jun 18:00". Para fechas que representan un DÍA del calendario (no un
+// instante exacto), sólo nos importa el día — ignoramos la hora.
+
+// Toma cualquier representación de fecha (ISO con TZ, Date, "2026-06-05") y
+// devuelve string "5 jun 2026" usando el DÍA tal cual viene en el string,
+// sin convertir a otra zona horaria.
+function formatDayLocal(input, opts = {}) {
+  if (!input) return '—';
+  const s = (input instanceof Date) ? input.toISOString() : String(input);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return s;
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return dt.toLocaleDateString('es-MX', Object.assign({
+    day: 'numeric', month: 'short', year: 'numeric'
+  }, opts));
+}
+
+// "2026-06-05" → "2026-06-05T12:00:00-06:00" (mediodía hora México).
+// Garantiza que el día se preserva sin importar dónde corra el código.
+function dateInputToMexicoNoon(dateStr) {
+  if (!dateStr) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  return dateStr + 'T12:00:00-06:00';
+}
+
+// "YYYY-MM-DD" de HOY en zona horaria LOCAL del navegador (para inputs date).
+// new Date().toISOString().split('T')[0] daba UTC → cerca de medianoche
+// México pasaba al día siguiente. Esto da la fecha correcta siempre.
+function todayLocalYMD() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+window.formatDayLocal = formatDayLocal;
+window.dateInputToMexicoNoon = dateInputToMexicoNoon;
+window.todayLocalYMD = todayLocalYMD;
+
+// ============================================================================
 // logError(): envía errores a la tabla app_logs vía edge function log-error
 // ============================================================================
 // Uso:
