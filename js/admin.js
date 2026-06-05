@@ -1304,10 +1304,11 @@ async function populateGardenDropdown(selectId, currentValue) {
 
 async function saveAdminTree(e) {
   if (e) e.preventDefault();
-  // SEGURIDAD: solo admin global puede crear/editar árboles.
-  // (Doble defensa: la RLS de trees_catalog rechaza igual si forzaran el form.)
-  if (!isAdminRole()) {
-    showToast('Solo el administrador principal puede crear o editar árboles', 'error');
+  // SEGURIDAD: admin global (cualquier campus) o admin-campus (solo de SU campus)
+  // pueden crear/editar árboles. La policy RLS de trees_catalog ya hace cumplir
+  // la regla en BD; aquí solo evitamos llamadas inútiles que sabemos que fallarán.
+  if (!isAdminRole() && !isAdminCampusRole()) {
+    showToast('Solo administradores pueden crear o editar árboles', 'error');
     return;
   }
 
