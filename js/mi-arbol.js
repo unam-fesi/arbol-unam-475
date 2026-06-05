@@ -811,14 +811,18 @@ async function saveMeasurement(e) {
         const fullPath = baseFileName + '.jpg';
         const thumbPath = baseFileName + '_thumb.jpg';
 
-        // Subir ambas en paralelo
+        // Subir ambas en paralelo. upsert:true → reintentos no truenan con 409
         const [fullRes, thumbRes] = await Promise.all([
-          sb.storage.from('tree-photos').upload(fullPath, fullBlob, { contentType: 'image/jpeg' }),
-          sb.storage.from('tree-photos').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' })
+          sb.storage.from('tree-photos').upload(fullPath, fullBlob, { contentType: 'image/jpeg', upsert: true }),
+          sb.storage.from('tree-photos').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg', upsert: true })
         ]);
         if (fullRes.error) {
           console.error('Photo upload error:', fullRes.error);
           showToast('Error subiendo foto, se guardará sin ella', 'warning');
+          if (typeof logError === 'function') {
+            logError({ action: 'saveMeasurement.uploadPhoto', error: fullRes.error,
+              context: { fullPath, fileSize: pendingPhotoFile?.size } });
+          }
         } else {
           if (thumbRes.error) console.warn('Thumb upload failed (no crítico):', thumbRes.error);
           photoUrl = fullPath;  // photo_url apunta al original; thumb se deriva con thumbPathFor()

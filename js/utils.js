@@ -231,20 +231,37 @@ async function uploadPhotoWithThumb(file, bucket, baseFileName, opts) {
   const fullPath = baseFileName + '.jpg';
   const thumbPath = baseFileName + '_thumb.jpg';
 
-  // Subir en paralelo
+  // Subir en paralelo. upsert:true → si el mismo path ya existe (reintento por
+  // doble-click o timeout), se sobrescribe en lugar de fallar con 409 conflict.
+  // Esto evita el bug "a veces no me deja subir foto" cuando hubo un reintento.
   const [fullRes, thumbRes] = await Promise.all([
     sb.storage.from(bucket).upload(fullPath, fullBlob, {
-      cacheControl: '3600', upsert: false, contentType: 'image/jpeg'
+      cacheControl: '3600', upsert: true, contentType: 'image/jpeg'
     }),
     sb.storage.from(bucket).upload(thumbPath, thumbBlob, {
-      cacheControl: '3600', upsert: false, contentType: 'image/jpeg'
+      cacheControl: '3600', upsert: true, contentType: 'image/jpeg'
     })
   ]);
 
-  if (fullRes.error) throw fullRes.error;
-  // No fallar si solo el thumb falla — el original es lo crítico
+  if (fullRes.error) {
+    // Loguear el error con context útil antes de propagar
+    if (typeof logError === 'function') {
+      logError({
+        severity: 'error', source: 'frontend_web', action: 'uploadPhotoWithThumb',
+        error: fullRes.error,
+        context: { bucket, fullPath, fileSize: file.size, fileName: file.name }
+      });
+    }
+    throw fullRes.error;
+  }
   if (thumbRes.error) {
     console.warn('Thumb upload failed (fallback al original):', thumbRes.error);
+    if (typeof logError === 'function') {
+      logError({
+        severity: 'warning', source: 'frontend_web', action: 'uploadPhotoWithThumb.thumb',
+        error: thumbRes.error, context: { bucket, thumbPath }
+      });
+    }
   }
   return {
     fullPath,
