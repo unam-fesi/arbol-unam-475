@@ -148,6 +148,21 @@ async function initApp() {
     }
   }
 
+  // ── DETECCIÓN DE INVITE / RECOVERY al cargar la página ──
+  // Supabase usa el URL fragment (#type=invite&access_token=...) para entregar
+  // el magic link. El cliente JS lo consume en cuanto se inicializa y dispara
+  // SIGNED_IN. Si NO interceptamos antes, el usuario invitado entra a la app
+  // sin contraseña. Capturamos el `type` aquí, antes de que Supabase lo limpie.
+  let _inviteFlowType = null; // 'invite' | 'recovery' | null
+  try {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      const t = params.get('type');
+      if (t === 'invite' || t === 'recovery') _inviteFlowType = t;
+    }
+  } catch (e) { console.warn('[auth] hash parse error', e); }
+
   // Listen for auth state changes
   // IMPORTANTE: Supabase dispara SIGNED_IN cada vez que se refresca el token,
   // incluyendo cuando regresas a la pestaña tras estar en otra app. Para evitar
@@ -157,6 +172,17 @@ async function initApp() {
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
+      // Invitación / recuperación: forzar al usuario a establecer contraseña
+      // ANTES de entrar a la app principal. _inviteFlowType solo está set en
+      // el primer ciclo (detectado del hash al cargar la página).
+      if (_inviteFlowType && !_mainAppShown) {
+        showSetPasswordModal(_inviteFlowType, () => {
+          _inviteFlowType = null;
+          _mainAppShown = true;
+          loadUserProfile().then(() => showMainApp());
+        });
+        return;
+      }
       // Solo mostrar la app la PRIMERA vez. Subsiguientes SIGNED_IN
       // (por refresh de token) no deben tocar la UI.
       if (!_mainAppShown) {
@@ -175,6 +201,76 @@ async function initApp() {
       showLoginScreen();
     }
   });
+}
+
+// ============================================================================
+// MODAL "Establece tu contraseña" — invocado en flujos invite/recovery.
+// El usuario ya tiene sesión activa (gracias al magic link), pero no password.
+// Llamamos supabase.auth.updateUser({ password }) para fijarla.
+// ============================================================================
+function showSetPasswordModal(flowType, onDone) {
+  // Limpiar el hash de la URL para que un refresh no vuelva a triggear el modal
+  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(_) {}
+
+  // Si ya existe el modal (por algún re-trigger), no lo dupliques
+  if (document.getElementById('set-password-modal')) return;
+
+  const isInvite = flowType === 'invite';
+  const titulo = isInvite
+    ? '🌳 Bienvenido al Proyecto Árbol UNAM 475'
+    : '🔐 Establece tu nueva contraseña';
+  const subtitulo = isInvite
+    ? 'Para activar tu cuenta, crea una contraseña segura.'
+    : 'Elige una contraseña nueva para recuperar el acceso.';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'set-password-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  overlay.innerHTML = `
+    <div style="background:#fff;max-width:440px;width:100%;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,0.3);padding:2rem;font-family:'Segoe UI',sans-serif;">
+      <h2 style="margin:0 0 0.5rem;font-size:1.35rem;color:#2E7D32;">${titulo}</h2>
+      <p style="margin:0 0 1.2rem;color:#555;font-size:0.95rem;">${subtitulo}</p>
+      <label style="display:block;font-size:0.85rem;color:#444;font-weight:600;margin-bottom:0.3rem;">Nueva contraseña</label>
+      <input type="password" id="sp-pwd1" autocomplete="new-password" minlength="8"
+        style="width:100%;padding:0.7rem;border:1px solid #ccc;border-radius:8px;font-size:1rem;box-sizing:border-box;">
+      <label style="display:block;font-size:0.85rem;color:#444;font-weight:600;margin:0.8rem 0 0.3rem;">Confirmar contraseña</label>
+      <input type="password" id="sp-pwd2" autocomplete="new-password" minlength="8"
+        style="width:100%;padding:0.7rem;border:1px solid #ccc;border-radius:8px;font-size:1rem;box-sizing:border-box;">
+      <div id="sp-err" style="color:#c62828;font-size:0.85rem;margin-top:0.6rem;min-height:1.2em;"></div>
+      <p style="margin:0.8rem 0 0;font-size:0.78rem;color:#888;">
+        Mínimo 8 caracteres. Recomendado: mezcla letras, números y un símbolo.
+      </p>
+      <button id="sp-submit" type="button"
+        style="margin-top:1rem;width:100%;padding:0.8rem;background:#2E7D32;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;">
+        Activar mi cuenta
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('sp-pwd1')?.focus(), 100);
+
+  const errEl = overlay.querySelector('#sp-err');
+  const btn   = overlay.querySelector('#sp-submit');
+  const submit = async () => {
+    errEl.textContent = '';
+    const p1 = overlay.querySelector('#sp-pwd1').value;
+    const p2 = overlay.querySelector('#sp-pwd2').value;
+    if (p1.length < 8)   { errEl.textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
+    if (p1 !== p2)       { errEl.textContent = 'Las contraseñas no coinciden.'; return; }
+    btn.disabled = true; btn.textContent = 'Activando…';
+    try {
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if (error) throw error;
+      // Listo. Cerrar modal y entrar.
+      overlay.remove();
+      if (typeof onDone === 'function') onDone();
+    } catch (e) {
+      errEl.textContent = 'No se pudo actualizar la contraseña: ' + (e?.message || 'error');
+      btn.disabled = false; btn.textContent = isInvite ? 'Activar mi cuenta' : 'Establecer contraseña';
+    }
+  };
+  btn.addEventListener('click', submit);
+  overlay.querySelector('#sp-pwd2').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 }
 
 function showLoginScreen() {
