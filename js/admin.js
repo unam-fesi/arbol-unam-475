@@ -175,15 +175,16 @@ function switchAdminTab(tabName) {
     else if (tabName === 'logs') loadAppLogs();
   }
   // Tabs que son SIEMPRE globales (no filtran por campus) → esconder el dropdown del filter
-  // El dropdown solo lo ve admin global; admin-campus tiene su campus fijo (lo dice el banner).
+  // El dropdown lo ven admin global Y RECTORÍA (que necesita ver todos los campus).
+  // admin-campus tiene su campus fijo (lo dice el banner).
   const globalTabs = new Set(['kpis', 'security', 'quotas', 'audit']);
   const campusFilterWrap = document.getElementById('admin-campus-filter-wrap')
                         || document.getElementById('admin-campus-filter')?.parentElement;
   if (campusFilterWrap) {
-    if (!isAdminRole()) {
+    if (!(isAdminRole() || isRectoriaRole())) {
       campusFilterWrap.style.display = 'none';
     } else {
-      campusFilterWrap.style.display = globalTabs.has(tabName) ? 'none' : '';
+      campusFilterWrap.style.display = globalTabs.has(tabName) ? 'none' : 'flex';
     }
   }
   document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -3654,7 +3655,7 @@ async function loadKpis() {
     wrap.innerHTML = _renderKpisHtml(byCampus, { trees, gardens, users, groups, reports, treeAssigns, badges });
   } catch (err) {
     console.error('loadKpis error:', err);
-    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error cargando KPIs: ${err.message || err}</p>`;
+    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error cargando KPIs: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
 
@@ -4027,7 +4028,7 @@ async function loadSecurityDashboard() {
     `;
   } catch (err) {
     console.error('loadSecurityDashboard error:', err);
-    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${err.message || err}</p>`;
+    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
 
@@ -4292,7 +4293,7 @@ async function loadQuotasDashboard() {
     `;
   } catch (err) {
     console.error('loadQuotasDashboard error:', err);
-    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${err.message || err}</p>`;
+    wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
 window.loadQuotasDashboard = loadQuotasDashboard;
@@ -6035,7 +6036,7 @@ async function loadWeatherWidget() {
     html += '</div>';
     container.innerHTML = html;
   } catch (err) {
-    container.innerHTML = `<p class="text-small text-muted">Sin clima (${err.message})</p>`;
+    container.innerHTML = `<p class="text-small text-muted">Sin clima (${escapeHtml(err.message || String(err))})</p>`;
   }
 }
 

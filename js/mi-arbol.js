@@ -1020,7 +1020,15 @@ async function showMeasurementDetail(measId) {
 
       ${cleanObs ? `<div style="margin-top:1rem;padding:1rem;background:#f8f9fa;border-radius:8px;"><h4 style="margin-bottom:0.5rem;"><i class="fas fa-sticky-note"></i> Observaciones</h4><p>${escapeHtml(cleanObs)}</p></div>` : ''}
 
-      <div class="text-small text-muted" style="margin-top:1rem;text-align:center;">Registrado: ${date.toLocaleString('es-MX')}</div>
+      <div class="text-small text-muted" style="margin-top:1rem;text-align:center;">Registrado: ${(function(){
+        // Usar measurement_date si existe, si no created_at. Cualquiera de los
+        // dos viene del sistema (no del usuario). Si ambos son null/inválidos,
+        // mostrar "—" en lugar de reventar.
+        const raw = m.measurement_date || m.created_at;
+        if (!raw) return '—';
+        const d = new Date(raw);
+        return isNaN(d.getTime()) ? formatDayLocal(raw) : d.toLocaleString('es-MX');
+      })()}</div>
     `);
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
