@@ -64,7 +64,11 @@ function showSection(sectionId) {
     else if (sectionId === 'section-info') loadInfoSection();
     else if (sectionId === 'section-pumai') initPumAI();
     else if (sectionId === 'section-admin') {
-      switchAdminTab('users');
+      // Landing tab depende del rol — rectoría NO ve grupo "gestion"
+      // (users/trees/groups/...), así que aterriza en Monitoreo → dashboard.
+      const r = (currentUserProfile?.role || 'user').toLowerCase();
+      const landingTab = (r === 'rectoria') ? 'dashboard' : 'users';
+      if (typeof switchAdminTab === 'function') switchAdminTab(landingTab);
       // Aplicar restricciones de UI según el rol (oculta tabs prohibidas, etc.)
       if (typeof applyRoleBasedUIRestrictions === 'function') {
         setTimeout(applyRoleBasedUIRestrictions, 50);

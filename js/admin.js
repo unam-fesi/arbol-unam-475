@@ -41,8 +41,10 @@ function canSeeAllAuditLogs()  { return isAdminRole(); }
 // `_globalCampusFilter` solo lo usa el admin principal.
 let _globalCampusFilter = ''; // '' = todos los campus
 function effectiveCampusFilter() {
-  if (isAdminRole()) return _globalCampusFilter || '';   // admin: respeta el dropdown
-  return _userCampus();                                   // todos los demás: su campus
+  // admin y rectoria pueden ver TODOS los campus (rectoria solo en read-only).
+  // Ambos respetan el dropdown global para filtrar.
+  if (isAdminRole() || isRectoriaRole()) return _globalCampusFilter || '';
+  return _userCampus();                                   // demás roles: su campus
 }
 window._userRole = _userRole;
 window._userCampus = _userCampus;
@@ -91,6 +93,12 @@ const TAB_GROUP = {
   notifications: 'comunicacion', reports: 'comunicacion',
   audit: 'seguridad', security: 'seguridad', quotas: 'seguridad',
 };
+
+// Para rectoría: NUNCA ve ninguna tab del grupo "gestion".
+// Las demás (monitoreo, comunicación, seguridad) las ve en modo read-only.
+const TABS_HIDDEN_FOR_RECTORIA = new Set(
+  Object.entries(TAB_GROUP).filter(([_, g]) => g === 'gestion').map(([t]) => t)
+);
 
 // Cambia el GRUPO de tabs visibles (Gestión / Monitoreo / Comunicación / Seguridad)
 function switchAdminGroup(groupName) {
@@ -271,6 +279,30 @@ function applyRoleBasedUIRestrictions() {
       }
     });
   }
+  // RECTORÍA: NO ve ninguna tab del grupo "gestion" (usuarios, árboles,
+  // grupos, asignaciones, jardines, coordinación). Sí ve Monitoreo,
+  // Comunicación y Seguridad — todos en read-only por CSS body.role-rectoria.
+  // El botón de grupo "Gestión" en sí también se oculta porque no quedan tabs.
+  if (isRectoriaRole()) {
+    document.querySelectorAll('.admin-tab').forEach(t => {
+      if (TABS_HIDDEN_FOR_RECTORIA.has(t.dataset.tab)) {
+        t.style.display = 'none';
+      }
+    });
+    document.querySelectorAll('.admin-tab-group').forEach(btn => {
+      if (btn.dataset.group === 'gestion') btn.style.display = 'none';
+    });
+    const gestRow = document.getElementById('admin-subtabs-gestion');
+    if (gestRow) gestRow.style.display = 'none';
+    // Forzar landing en una tab visible (monitoreo > dashboard) si estaba en una de gestion
+    setTimeout(() => {
+      const active = document.querySelector('.admin-tab.active');
+      if (active && TABS_HIDDEN_FOR_RECTORIA.has(active.dataset.tab)) {
+        if (typeof switchAdminGroup === 'function') switchAdminGroup('monitoreo');
+        else if (typeof switchAdminTab === 'function') switchAdminTab('dashboard');
+      }
+    }, 100);
+  }
   // El responsable solo ve la tab "Coordinación"
   if (isResponsableRole()) {
     document.querySelectorAll('.admin-tab').forEach(t => {
@@ -286,10 +318,11 @@ function applyRoleBasedUIRestrictions() {
       }
     }, 100);
   }
-  // Mostrar/ocultar selector global de campus
+  // Mostrar/ocultar selector global de campus.
+  // Admin y rectoría pueden filtrar entre TODOS los campus.
   const sel = document.getElementById('admin-campus-filter');
   if (sel) {
-    sel.style.display = isAdminRole() ? 'flex' : 'none';
+    sel.style.display = (isAdminRole() || isRectoriaRole()) ? 'flex' : 'none';
   }
   // Banner persistente para admin-campus mostrando su campus
   const banner = document.getElementById('admin-campus-banner');
