@@ -4106,6 +4106,46 @@ async function loadSecurityDashboard() {
           </div>` : ''}
       </div>
 
+      <!-- Intentos de imágenes con deepfakes (en construcción) -->
+      <div style="background:#f8f8f8;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);margin-bottom:18px;border-left:4px solid #9e9e9e;opacity:0.65;position:relative;pointer-events:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-size:13px;font-weight:600;color:#666;">
+            🎭 Intentos de imágenes con deepfakes
+            <span style="background:#fff3cd;color:#856404;border:1px solid #ffeeba;padding:1px 8px;border-radius:10px;font-size:0.7rem;font-weight:600;margin-left:8px;text-transform:uppercase;letter-spacing:0.04em;">
+              🚧 En construcción
+            </span>
+          </div>
+          <div style="font-size:11px;color:#888;">Próximamente · Reality Defender</div>
+        </div>
+        <p style="font-size:0.82rem;color:#666;margin:0 0 0.8rem;line-height:1.5;">
+          Detección automática de imágenes generadas por IA o manipuladas (deepfakes) en las fotos
+          de seguimientos y reportes ciudadanos. Cuando esté activo, mostrará los intentos
+          detectados con score de probabilidad, tipo de manipulación detectada y la opción de
+          aceptar o rechazar la foto.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;opacity:0.6;">
+          <span style="background:#e0e0e0;color:#666;padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid #ccc;">
+            face_swap <strong>×—</strong>
+          </span>
+          <span style="background:#e0e0e0;color:#666;padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid #ccc;">
+            ai_generated <strong>×—</strong>
+          </span>
+          <span style="background:#e0e0e0;color:#666;padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid #ccc;">
+            inpainting <strong>×—</strong>
+          </span>
+          <span style="background:#e0e0e0;color:#666;padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid #ccc;">
+            metadata_strip <strong>×—</strong>
+          </span>
+        </div>
+        <div style="border:1px dashed #ccc;border-radius:6px;padding:1.5rem;text-align:center;background:#fafafa;">
+          <div style="font-size:2.5rem;margin-bottom:0.5rem;filter:grayscale(1);">🚧</div>
+          <div style="font-size:0.85rem;color:#888;font-weight:500;">Módulo en construcción</div>
+          <div style="font-size:0.75rem;color:#aaa;margin-top:0.3rem;">
+            Sprint 9 · Integración con Reality Defender API (deepfake detection)
+          </div>
+        </div>
+      </div>
+
       <!-- Últimos 50 intentos de login -->
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow-x:auto;">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🕐 Últimos 50 intentos de login (24h)</div>
