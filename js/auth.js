@@ -303,6 +303,18 @@ async function handleLogin(e) {
   // HONEYPOT: si el campo invisible viene lleno → bot. Registrar + rechazar.
   if (honeypot.trim().length > 0) {
     console.warn('[auth] honeypot triggered, rejecting');
+    // Loguear como evento de seguridad — bots/scripts rellenan el campo invisible
+    if (typeof logSecurityEvent === 'function') {
+      logSecurityEvent({
+        event_type: 'honeypot_trigger',
+        severity: 'high',
+        payload: { email_attempted: String(email).slice(0, 100), honeypot_value: honeypot.slice(0, 100) },
+        field_name: 'login-website',
+        detection_rule: 'honeypot_trigger',
+        route: '/login',
+        notes: 'Bot detectado intentando login automatizado'
+      });
+    }
     errorEl.textContent = 'Solicitud rechazada (anti-bot).';
     errorEl.style.display = 'block';
     // Disparar fetch a secure-login con bandera honeypot para que se registre

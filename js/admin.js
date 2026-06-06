@@ -3879,18 +3879,29 @@ async function loadSecurityDashboard() {
   try {
     const dayAgo  = new Date(Date.now() - 86400000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const [attemptsRes, blocksRes, weekRes] = await Promise.all([
+    const [attemptsRes, blocksRes, weekRes, secEvtsRes] = await Promise.all([
       sb.from('auth_attempts').select('*').gte('occurred_at', dayAgo).order('occurred_at', { ascending: false }).limit(200),
       sb.from('ip_blocklist').select('*').is('unlocked_at', null).order('blocked_at', { ascending: false }),
       sb.from('auth_attempts').select('id, success, occurred_at').gte('occurred_at', weekAgo),
+      sb.from('security_events').select('*').gte('occurred_at', weekAgo).order('occurred_at', { ascending: false }).limit(200),
     ]);
     const attempts = attemptsRes.data || [];
     const blocks = blocksRes.data || [];
     const weekAttempts = weekRes.data || [];
+    const secEvents = secEvtsRes.data || [];
     const fails24h = attempts.filter(a => !a.success).length;
     const ok24h = attempts.filter(a => a.success).length;
     const fails7d = weekAttempts.filter(a => !a.success).length;
     const ok7d = weekAttempts.filter(a => a.success).length;
+    // Stats de eventos de seguridad
+    const secEvents24h = secEvents.filter(e => new Date(e.occurred_at).getTime() > Date.now() - 86400000);
+    const secEventsUnreviewed = secEvents.filter(e => !e.reviewed_at).length;
+    const secByType = {};
+    secEvents24h.forEach(e => { secByType[e.event_type] = (secByType[e.event_type] || 0) + 1; });
+    const topSecTypes = Object.entries(secByType).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const secByIp = {};
+    secEvents24h.forEach(e => { if (e.ip) secByIp[e.ip] = (secByIp[e.ip] || 0) + 1; });
+    const topAttackIps = Object.entries(secByIp).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     // Top IPs fallidas (24h)
     const ipFails = {};
@@ -3923,6 +3934,7 @@ async function loadSecurityDashboard() {
         ${card('Fallos 24h', fails24h, '', '❌', fails24h > 20 ? '#b54f3a' : '#d4a574')}
         ${card('Logins 7d', ok7d, `${fails7d} fallos`, '📊', '#5b8b7d')}
         ${card('IPs bloqueadas activas', blocks.length, blocks.filter(b=>!b.blocked_until).length + ' permanentes', '🚫', blocks.length > 0 ? '#b54f3a' : '#999')}
+        ${card('Intentos de ataque 24h', secEvents24h.length, secEventsUnreviewed > 0 ? `${secEventsUnreviewed} sin revisar` : 'todos revisados', '🛡️', secEvents24h.length > 0 ? '#c62828' : '#3b7a3a')}
       </div>
 
       <!-- Timeline 24h -->
@@ -3989,9 +4001,67 @@ async function loadSecurityDashboard() {
         }).join('')}
       </div>` : ''}
 
-      <!-- Últimos 50 intentos -->
+      <!-- Intentos de ataque detectados -->
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border-left:4px solid #c62828;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-size:13px;font-weight:600;color:#333;">🛡️ Intentos de ataque detectados (7d)</div>
+          <div style="font-size:11px;color:#666;">
+            ${secEvents.length} total
+            ${secEventsUnreviewed > 0 ? `· <span style="color:#c62828;font-weight:600;">${secEventsUnreviewed} sin revisar</span>` : ''}
+          </div>
+        </div>
+
+        ${topSecTypes.length > 0 ? `
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            ${topSecTypes.map(([type, n]) => `
+              <span style="background:#fce4e4;color:#7a1f1f;padding:4px 10px;border-radius:12px;font-size:11px;border:1px solid #f5b9b9;">
+                ${escapeHtml(type)} <strong>×${n}</strong>
+              </span>`).join('')}
+          </div>
+          ${topAttackIps.length > 0 ? `
+            <div style="font-size:11px;color:#666;margin-bottom:8px;">
+              <strong>IPs atacando:</strong>
+              ${topAttackIps.map(([ip, n]) => `
+                <a href="#" onclick="showIpDetail('${escapeHtml(ip)}');return false;" style="color:#0d6acb;text-decoration:none;margin-left:6px;font-family:monospace;">
+                  ${escapeHtml(ip)} <span style="color:#c62828;font-weight:600;">(${n})</span>
+                </a>`).join('')}
+            </div>` : ''}` : '<p class="text-muted text-small" style="margin:0;">Sin intentos de ataque detectados en los últimos 7 días.</p>'}
+
+        ${secEvents.length > 0 ? `
+          <div style="max-height:260px;overflow-y:auto;border:1px solid #eee;border-radius:6px;margin-top:6px;">
+            <table class="admin-table" style="font-size:11px;width:100%;">
+              <thead><tr style="position:sticky;top:0;background:#f4f4f4;">
+                <th>Fecha</th><th>Tipo</th><th>Severidad</th><th>IP</th>
+                <th>Usuario</th><th>Campo</th><th>Snippet</th><th></th>
+              </tr></thead>
+              <tbody>
+                ${secEvents.slice(0, 80).map(ev => {
+                  const sevColor = { critical:'#7a1f1f', high:'#c62828', medium:'#d4a574', low:'#888', info:'#5b8b7d' }[ev.severity] || '#666';
+                  const snippet = (() => {
+                    try { return JSON.stringify(ev.payload || {}).slice(0, 100); }
+                    catch { return ''; }
+                  })();
+                  return `<tr style="background:${ev.reviewed_at ? '' : 'rgba(198,40,40,0.04)'};">
+                    <td style="white-space:nowrap;">${new Date(ev.occurred_at).toLocaleString('es-MX', { dateStyle:'short', timeStyle:'short' })}</td>
+                    <td><code style="font-size:0.7rem;background:#fce4e4;color:#7a1f1f;padding:1px 5px;border-radius:3px;">${escapeHtml(ev.event_type)}</code></td>
+                    <td><span style="color:${sevColor};font-weight:600;text-transform:uppercase;font-size:0.68rem;">${escapeHtml(ev.severity)}</span></td>
+                    <td style="font-family:monospace;font-size:0.7rem;">${ev.ip || '—'}</td>
+                    <td style="font-size:0.7rem;">${escapeHtml(ev.user_email || (ev.user_id ? ev.user_id.slice(0,8) : '—'))}</td>
+                    <td style="font-size:0.7rem;color:#666;">${escapeHtml(ev.field_name || '—')}</td>
+                    <td style="font-family:monospace;font-size:0.65rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(snippet)}">${escapeHtml(snippet)}</td>
+                    <td style="white-space:nowrap;">
+                      ${!ev.reviewed_at && isAdminRole() ? `<button class="btn btn-outline" style="padding:2px 6px;font-size:10px;" onclick="markSecEventReviewed('${ev.id}')" title="Marcar como revisado">✓</button>` : '✓'}
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>` : ''}
+      </div>
+
+      <!-- Últimos 50 intentos de login -->
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow-x:auto;">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🕐 Últimos 50 intentos (24h)</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">🕐 Últimos 50 intentos de login (24h)</div>
         <table class="admin-table" style="font-size:11px;width:100%;">
           <thead><tr><th>Fecha</th><th>Email</th><th>IP</th><th>Resultado</th><th>Razón</th></tr></thead>
           <tbody>
@@ -4012,6 +4082,23 @@ async function loadSecurityDashboard() {
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
+
+// Marcar un evento de seguridad como revisado (solo admin)
+async function markSecEventReviewed(eventId) {
+  if (!isAdminRole()) { showToast('Solo admin principal puede marcar eventos', 'error'); return; }
+  try {
+    const { error } = await sb.from('security_events').update({
+      reviewed_by: currentUser?.id,
+      reviewed_at: new Date().toISOString()
+    }).eq('id', eventId);
+    if (error) throw error;
+    showToast('Evento marcado como revisado', 'success');
+    loadSecurityDashboard();
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+window.markSecEventReviewed = markSecEventReviewed;
 
 async function unblockIPHandler(ip) {
   if (!confirm(`¿Desbloquear la IP ${ip}?`)) return;
