@@ -139,7 +139,7 @@ window.IztacalaLetras = (function() {
     _lastInstance = outer;
     scene.add(outer);
 
-    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${(config.position.y + liftY).toFixed(2)}, ${config.position.z}) rotX(inner)=${(config.rotationX||0).toFixed(2)} rotY(outer)=${(config.rotationY||0).toFixed(2)}  size: ${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m`);
+    console.warn(`🅵 Letras FES UNAM Iztacala en (${config.position.x}, ${(config.position.y + _liftY).toFixed(2)}, ${config.position.z}) rotX(inner)=${(config.rotationX||0).toFixed(2)} rotY(outer)=${(config.rotationY||0).toFixed(2)}  size: ${(box.max.x-box.min.x).toFixed(1)}×${(box.max.y-box.min.y).toFixed(1)}×${(box.max.z-box.min.z).toFixed(1)}m`);
     let meshNames = [];
     outer.traverse(o => { if (o.isMesh) meshNames.push(o.name || '?'); });
     console.warn(`🅵 Meshes en escena: ${meshNames.join(', ')}`);

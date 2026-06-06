@@ -1370,7 +1370,7 @@ window.IztacalaMap = (function() {
 
     const group = new THREE.Group();
     group.add(tree);
-    _addHealthMarker(group, x, y, heightM, crownColor);
+    _addHealthMarker(group, x, y, heightM, crownColor, treeData);
 
     group.userData = { type: 'tree', data: treeData };
     scene.add(group);
@@ -1381,7 +1381,7 @@ window.IztacalaMap = (function() {
 
   // Círculo grande + anillo grueso + disco central blanco + cilindro corto
   // del color de salud para que sea SUPER VISIBLE desde la cámara aérea.
-  function _addHealthMarker(group, x, y, heightM, crownColor) {
+  function _addHealthMarker(group, x, y, heightM, crownColor, treeData) {
     // Disco BASE de color (relleno sólido, muy grande para verse de lejos)
     const baseR = heightM * 0.65;
     const base = new THREE.Mesh(
@@ -1412,7 +1412,7 @@ window.IztacalaMap = (function() {
     //   🟨 #ffd866 (oro UNAM) = árboles del 475 aniversario (tree_code FES*)
     //   🟦 #005baa (azul UNAM) = árboles regulares del campus
     // Visualmente complementario al semáforo de salud sin compartir paleta.
-    const is475 = /^FES/i.test(String(treeData.tree_code || ''));
+    const is475 = /^FES/i.test(String(treeData && treeData.tree_code || ''));
     const catColor = is475 ? 0xffd866 : 0x005baa;
     const catInnerR = heightM * 0.72;
     const catOuterR = heightM * 0.84;
@@ -1563,7 +1563,7 @@ window.IztacalaMap = (function() {
       });
     }
 
-    _addHealthMarker(group, x, y, heightM, crownColor);
+    _addHealthMarker(group, x, y, heightM, crownColor, treeData);
 
     group.userData = { type: 'tree', data: treeData };
     scene.add(group);
