@@ -1261,6 +1261,10 @@ body.role-rectoria #section-admin button[onclick*="assign"],
 body.role-rectoria #section-admin button[onclick*="Assign"],
 body.role-rectoria #section-admin button[onclick*="suggest"],
 body.role-rectoria #section-admin button[onclick*="Suggest"],
+body.role-rectoria #section-admin button[onclick*="unblock"],
+body.role-rectoria #section-admin button[onclick*="Unblock"],
+body.role-rectoria #section-admin button[onclick*="resolve"],
+body.role-rectoria #section-admin button[onclick*="Resolve"],
 body.role-rectoria #section-admin .admin-form,
 body.role-rectoria #section-admin details.admin-collapsible {
   display: none !important;

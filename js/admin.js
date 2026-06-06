@@ -3531,8 +3531,8 @@ const _KPI_CAMPUS_LIST = ['Iztacala', 'Acatlan', 'Aragon', 'Cuautitlan1', 'Cuaut
 async function loadKpis() {
   const wrap = document.getElementById('kpis-container');
   if (!wrap) return;
-  if (!isAdminRole()) {
-    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal puede ver esta sección.</p>';
+  if (!(isAdminRole() || isRectoriaRole())) {
+    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal o Rectoría pueden ver esta sección.</p>';
     return;
   }
   wrap.innerHTML = '<p>Cargando métricas de todos los campus…</p>';
@@ -3890,8 +3890,8 @@ window.loadKpis = loadKpis;
 async function loadSecurityDashboard() {
   const wrap = document.getElementById('security-container');
   if (!wrap) return;
-  if (!isAdminRole()) {
-    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal puede ver esta sección.</p>';
+  if (!(isAdminRole() || isRectoriaRole())) {
+    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal o Rectoría pueden ver esta sección.</p>';
     return;
   }
   wrap.innerHTML = '<p>Cargando intentos y bloqueos…</p>';
@@ -4240,8 +4240,8 @@ window.closeIpDetail = closeIpDetail;
 async function loadQuotasDashboard() {
   const wrap = document.getElementById('quotas-container');
   if (!wrap) return;
-  if (!isAdminRole()) {
-    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal puede ver esta sección.</p>';
+  if (!(isAdminRole() || isRectoriaRole())) {
+    wrap.innerHTML = '<p class="text-muted">Solo el administrador principal o Rectoría pueden ver esta sección.</p>';
     return;
   }
   wrap.innerHTML = '<p>Cargando cuotas…</p>';
