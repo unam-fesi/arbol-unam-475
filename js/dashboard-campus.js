@@ -802,8 +802,17 @@ window.CampusMap = (function() {
         body: { query: raw, campus: currentCampus || undefined },
       });
       if (error) {
-        const msg = error?.context?.json?.error || error?.message || 'error';
-        console.warn('[campus smartSearch] pum-ai-filter error:', msg);
+        // Leer el body real del Response para ver el error específico
+        let msg = error?.message || 'error';
+        try {
+          const resp = error?.context;
+          if (resp && typeof resp.json === 'function') {
+            const errBody = await resp.json();
+            if (errBody?.error) msg = errBody.error;
+            if (errBody?.detail) msg += ' — ' + String(errBody.detail).slice(0, 120);
+          }
+        } catch (_) { /* ignore */ }
+        console.warn('[campus smartSearch] pum-ai-filter:', msg);
         return null;
       }
       const criteria = data?.criteria;

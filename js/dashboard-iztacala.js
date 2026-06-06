@@ -2033,18 +2033,19 @@ window.IztacalaMap = (function() {
         body: { query: raw, campus: 'Iztacala' },
       });
       if (error) {
-        // Supabase Functions error: el body útil viene en error.context.body si existe
-        const ctx = error?.context;
+        // FunctionsHttpError: error.context es el Response no leído. Intentamos
+        // leer el body real para mostrar al user el error específico (Gemini X,
+        // No autenticado, etc.) en vez del genérico "non-2xx status".
         let msg = error?.message || 'error';
         try {
-          if (ctx?.body && typeof ctx.body.getReader === 'function') {
-            // ReadableStream — no podemos leer aquí, dejamos el msg
-          } else if (ctx && typeof ctx === 'object') {
-            const errBody = ctx?.json || ctx?.body;
+          const resp = error?.context;
+          if (resp && typeof resp.json === 'function') {
+            const errBody = await resp.json();
             if (errBody?.error) msg = errBody.error;
+            if (errBody?.detail) msg += ' — ' + String(errBody.detail).slice(0, 120);
           }
-        } catch (_) { /* ignore */ }
-        console.warn('[smartSearch] pum-ai-filter error:', msg);
+        } catch (_) { /* ignore — nos quedamos con el message del SDK */ }
+        console.warn('[smartSearch] pum-ai-filter:', msg);
         return null;
       }
       const criteria = data?.criteria;
@@ -2052,7 +2053,7 @@ window.IztacalaMap = (function() {
       if (!criteria || typeof criteria !== 'object') return null;
       return { fn: _criteriaToPredicate(criteria), label, criteria };
     } catch (e) {
-      console.warn('[smartSearch] pum-ai-filter falló:', e?.message || e);
+      console.warn('[smartSearch] pum-ai-filter excepción:', e?.message || e);
       return null;
     }
   }
