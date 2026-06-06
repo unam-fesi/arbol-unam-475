@@ -178,11 +178,15 @@ async function initApp() {
       // sesión validada). Sin esto, el usuario invitado puede entrar sin
       // password si v227 cargó después de que Supabase consumiera el hash.
       const u = session.user;
+      // Señal DEFINITIVA: el edge function batch-invite-users mete
+      // pending_password_setup:true en user_metadata. Limpiamos el flag al
+      // completar el modal (vía updateUser data:{pending_password_setup:false}).
+      // Esto es robusto vs. Supabase pre-llenando last_sign_in_at en el /verify.
+      const pendingPwd = u?.user_metadata?.pending_password_setup === true;
       const isFreshInvite = !_mainAppShown && (
+        pendingPwd ||
         _inviteFlowType === 'invite' ||
-        _inviteFlowType === 'recovery' ||
-        (!u.last_sign_in_at && u.confirmed_at) ||
-        (u.invited_at && !u.last_sign_in_at)
+        _inviteFlowType === 'recovery'
       );
       if (isFreshInvite) {
         const flow = _inviteFlowType || 'invite';
@@ -269,9 +273,13 @@ function showSetPasswordModal(flowType, onDone) {
     if (p1 !== p2)       { errEl.textContent = 'Las contraseñas no coinciden.'; return; }
     btn.disabled = true; btn.textContent = 'Activando…';
     try {
-      const { error } = await sb.auth.updateUser({ password: p1 });
+      // Setear password Y limpiar el flag pending_password_setup en metadata.
+      // Sin esto, cada re-login del usuario re-dispararía el modal para siempre.
+      const { error } = await sb.auth.updateUser({
+        password: p1,
+        data: { pending_password_setup: false },
+      });
       if (error) throw error;
-      // Listo. Cerrar modal y entrar.
       overlay.remove();
       if (typeof onDone === 'function') onDone();
     } catch (e) {
