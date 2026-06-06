@@ -1845,10 +1845,18 @@ async function editAdminTree(treeId) {
     }
   } catch (_) { /* sin foto = no se muestra thumbnail */ }
 
-  const latestPhotoThumb = latestPhotoSrc
+  // M-5: validar que la URL sea HTTPS de Supabase Storage antes de renderizar.
+  // escapeHtml() previene HTML injection pero NO bloquea javascript:/data:/file:
+  // URIs que podrían ejecutarse en el onclick. Solo aceptamos https://*.supabase.co/
+  const _isSafePhotoUrl = (u) => typeof u === 'string'
+    && /^https:\/\/[a-zA-Z0-9-]+\.supabase\.co\//.test(u);
+  const _safePhotoSrc = (latestPhotoSrc && _isSafePhotoUrl(latestPhotoSrc))
+    ? latestPhotoSrc
+    : null;
+  const latestPhotoThumb = _safePhotoSrc
     ? `<div style="flex-shrink:0;text-align:center;">
-         <img src="${escapeHtml(latestPhotoSrc)}"
-              onclick="window.open('${safeJsAttr(latestPhotoSrc)}','_blank')"
+         <img src="${escapeHtml(_safePhotoSrc)}"
+              onclick="window.open('${safeJsAttr(_safePhotoSrc)}','_blank')"
               title="Última foto — click para ver completa"
               style="width:80px;height:80px;object-fit:cover;border-radius:10px;cursor:zoom-in;border:2px solid #2E7D32;box-shadow:0 2px 8px rgba(0,0,0,0.15);"
               onerror="this.style.display='none'">
