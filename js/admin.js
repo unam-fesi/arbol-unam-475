@@ -2964,63 +2964,10 @@ function _clearNotificationsFilters() {
 window._filterNotifications = _filterNotifications;
 window._clearNotificationsFilters = _clearNotificationsFilters;
 
-async function sendNotification(e) {
-  if (e) e.preventDefault();
-  const title = document.getElementById('notif-title')?.value.trim();
-  const message = document.getElementById('notif-message')?.value.trim();
-  const targetType = document.getElementById('notif-target-type')?.value;
-  const targetValue = document.getElementById('notifUser')?.value;
-  const sendTelegram = document.getElementById('notif-send-telegram')?.checked;
-  const notificationType = document.getElementById('notif-type')?.value || 'info';
-
-  if (!title || !message) { showToast('Título y mensaje son requeridos', 'error'); return; }
-
-  try {
-    // Parse target into clean ids
-    let targetUserId = null, targetGroupId = null;
-    if (targetType === 'user' && targetValue) {
-      targetUserId = targetValue.replace(/^(user|group):/, '');
-    } else if (targetType === 'group' && targetValue) {
-      targetGroupId = targetValue.replace(/^(user|group):/, '');
-    }
-
-    // If Telegram is requested, the Edge Function handles BOTH the BD insert
-    // (per-recipient notification rows with telegram_sent flag) AND the actual
-    // Telegram delivery. Otherwise fall back to a single in-app notification row.
-    if (sendTelegram) {
-      const payload = { title, message, notificationType };
-      if (targetGroupId) payload.groupId = targetGroupId;
-      else if (targetUserId) payload.userId = targetUserId;
-      else payload.broadcast = true;
-
-      const { data, error } = await sb.functions.invoke('send-telegram-notification', { body: payload });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      const sent = data?.sent || 0, failed = data?.failed || 0, total = data?.recipients_total || 0;
-      showToast(`Telegram: ${sent}/${total} entregados${failed ? ' (' + failed + ' fallidos)' : ''}`, sent > 0 ? 'success' : 'warning');
-    } else {
-      // In-app only: single notification row
-      const notifData = {
-        title, message,
-        sender_id: currentUser?.id || null,
-        notification_type: notificationType,
-        target_user_id: targetUserId,
-        target_group_id: targetGroupId,
-        sent_at: new Date().toISOString()
-      };
-      const { error } = await sb.from('notifications').insert([notifData]);
-      if (error) throw error;
-      showToast('Notificación enviada (en-app)', 'success');
-    }
-
-    document.getElementById('form-notification')?.reset();
-    const userField = document.getElementById('notif-user-field');
-    if (userField) userField.style.display = 'none';
-    loadAdminNotifications();
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  }
-}
+// sendNotification fue eliminada: las notificaciones in-app no se mostraban
+// en ninguna UI del usuario (no había inbox), así que quedaban huérfanas en
+// BD. Ahora toda comunicación a usuarios se hace exclusivamente vía Telegram
+// usando el bloque "Telegram — envío masivo" (sendTelegramBlast).
 
 // ---- ASSIGNMENTS TAB ----
 async function loadAssignments() {
@@ -5009,7 +4956,7 @@ window.manageGroupMembers = manageGroupMembers;
 window.addGroupMember = addGroupMember;
 window.removeGroupMember = removeGroupMember;
 window.loadAdminNotifications = loadAdminNotifications;
-window.sendNotification = sendNotification;
+// window.sendNotification eliminada — la UI ya no la usa.
 window.loadAssignments = loadAssignments;
 window.doAssignTreeFromTab = doAssignTreeFromTab;
 window.doAssignGardenFromTab = doAssignGardenFromTab;
