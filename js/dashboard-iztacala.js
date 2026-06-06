@@ -1993,54 +1993,66 @@ window.IztacalaMap = (function() {
     return null;  // capa 1 no entendió
   }
 
-  // PUM-AI fallback: convierte query NL a criterios JSON y aplica filtro.
+  // ============================================================================
+  // CRITERIA → PREDICATE
+  // ----------------------------------------------------------------------------
+  // Aplica un objeto `criteria` (devuelto por pum-ai-filter o construido manual-
+  // mente) a un array de árboles. Devuelve una función predicate t => bool.
+  // El edge function garantiza el shape vía responseSchema de Gemini.
+  // ============================================================================
+  function _criteriaToPredicate(criteria) {
+    const lc = (s) => String(s || '').toLowerCase();
+    return (t) => {
+      if (criteria.health_min != null && (t.health_score || 0) < criteria.health_min) return false;
+      if (criteria.health_max != null && (t.health_score || 0) > criteria.health_max) return false;
+      if (Array.isArray(criteria.status_in) && criteria.status_in.length && !criteria.status_in.includes(t.status)) return false;
+      if (criteria.species_like && !lc(t.species).includes(lc(criteria.species_like))) return false;
+      if (criteria.common_name_like && !lc(t.common_name).includes(lc(criteria.common_name_like))) return false;
+      if (criteria.tree_code_like && !lc(t.tree_code).includes(lc(criteria.tree_code_like))) return false;
+      if (criteria.tree_code_prefix && !lc(t.tree_code).startsWith(lc(criteria.tree_code_prefix))) return false;
+      if (criteria.campus_eq && t.campus !== criteria.campus_eq) return false;
+      if (criteria.has_photo === true && !t.photo_url) return false;
+      if (criteria.has_photo === false && t.photo_url) return false;
+      if (criteria.has_location === true && (t.location_lat == null || t.location_lng == null)) return false;
+      if (criteria.has_location === false && t.location_lat != null) return false;
+      if (Array.isArray(criteria.tree_type_in) && criteria.tree_type_in.length && !criteria.tree_type_in.includes(t.tree_type)) return false;
+      // is_475: árboles del 475 aniversario (tree_code empieza con "FES")
+      if (criteria.is_475 === true && !/^FES/i.test(String(t.tree_code || ''))) return false;
+      if (criteria.is_475 === false && /^FES/i.test(String(t.tree_code || ''))) return false;
+      return true;
+    };
+  }
+
+  // PUM-AI-FILTER: edge function dedicada que devuelve { criteria, label }.
+  // Ya NO compartimos endpoint con el chat botánico (pum-ai) — esto evita que
+  // el system prompt botánico responda en prosa cuando le pedimos JSON.
   async function _pumAiQuery(raw) {
     if (typeof sb === 'undefined' || !sb?.functions) return null;
-    const prompt = `Convierte esta consulta de búsqueda de árboles a JSON estricto. Solo responde con el JSON, nada más.
-Esquema:
-{
-  "health_min": number|null,    // 0-100
-  "health_max": number|null,
-  "status_in": ["activo"|"enfermo"|"en_tratamiento"|"seco"|"retirado"|"nuevo"]|null,
-  "species_like": string|null,
-  "common_name_like": string|null,
-  "tree_code_like": string|null,
-  "campus_eq": string|null,
-  "has_photo": true|false|null,
-  "has_location": true|false|null,
-  "tree_type_in": ["nativo"|"endemico"|"ornamental"|"frutal"]|null,
-  "description": "frase corta del filtro"
-}
-Consulta: ${JSON.stringify(raw)}`;
     try {
-      const { data, error } = await sb.functions.invoke('pum-ai', {
-        body: { message: prompt, mode: 'json', context: 'tree_filter' }
+      const { data, error } = await sb.functions.invoke('pum-ai-filter', {
+        body: { query: raw, campus: 'Iztacala' },
       });
-      if (error) throw error;
-      const reply = data?.reply || data?.response || data?.text || '';
-      // Extraer JSON del reply
-      const m = String(reply).match(/\{[\s\S]*\}/);
-      if (!m) return null;
-      const criteria = JSON.parse(m[0]);
-      // Convertir criteria a predicate
-      const fn = (t) => {
-        if (criteria.health_min != null && (t.health_score || 0) < criteria.health_min) return false;
-        if (criteria.health_max != null && (t.health_score || 0) > criteria.health_max) return false;
-        if (Array.isArray(criteria.status_in) && !criteria.status_in.includes(t.status)) return false;
-        if (criteria.species_like && !String(t.species || '').toLowerCase().includes(String(criteria.species_like).toLowerCase())) return false;
-        if (criteria.common_name_like && !String(t.common_name || '').toLowerCase().includes(String(criteria.common_name_like).toLowerCase())) return false;
-        if (criteria.tree_code_like && !String(t.tree_code || '').toLowerCase().includes(String(criteria.tree_code_like).toLowerCase())) return false;
-        if (criteria.campus_eq && t.campus !== criteria.campus_eq) return false;
-        if (criteria.has_photo === true && !t.photo_url) return false;
-        if (criteria.has_photo === false && t.photo_url) return false;
-        if (criteria.has_location === true && (t.location_lat == null || t.location_lng == null)) return false;
-        if (criteria.has_location === false && t.location_lat != null) return false;
-        if (Array.isArray(criteria.tree_type_in) && !criteria.tree_type_in.includes(t.tree_type)) return false;
-        return true;
-      };
-      return { fn, label: criteria.description || 'Filtro IA', criteria };
+      if (error) {
+        // Supabase Functions error: el body útil viene en error.context.body si existe
+        const ctx = error?.context;
+        let msg = error?.message || 'error';
+        try {
+          if (ctx?.body && typeof ctx.body.getReader === 'function') {
+            // ReadableStream — no podemos leer aquí, dejamos el msg
+          } else if (ctx && typeof ctx === 'object') {
+            const errBody = ctx?.json || ctx?.body;
+            if (errBody?.error) msg = errBody.error;
+          }
+        } catch (_) { /* ignore */ }
+        console.warn('[smartSearch] pum-ai-filter error:', msg);
+        return null;
+      }
+      const criteria = data?.criteria;
+      const label = data?.label || 'Filtro IA';
+      if (!criteria || typeof criteria !== 'object') return null;
+      return { fn: _criteriaToPredicate(criteria), label, criteria };
     } catch (e) {
-      console.warn('[smartSearch] pum-ai falló:', e?.message || e);
+      console.warn('[smartSearch] pum-ai-filter falló:', e?.message || e);
       return null;
     }
   }

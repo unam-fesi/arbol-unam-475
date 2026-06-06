@@ -769,34 +769,51 @@ window.CampusMap = (function() {
     return null;
   }
 
-  // PUM-AI fallback (mismo formato JSON que IztacalaMap)
+  // Aplica criteria (devuelto por pum-ai-filter) a un árbol. Mismo shape que
+  // IztacalaMap. Mantenemos las dos copias para no introducir dependencias
+  // cruzadas entre módulos 3D — son ~30 líneas.
+  function _criteriaToPredicate(c) {
+    const lc = (s) => String(s || '').toLowerCase();
+    return (t) => {
+      if (c.health_min != null && (t.health_score || 0) < c.health_min) return false;
+      if (c.health_max != null && (t.health_score || 0) > c.health_max) return false;
+      if (Array.isArray(c.status_in) && c.status_in.length && !c.status_in.includes(t.status)) return false;
+      if (c.species_like && !lc(t.species).includes(lc(c.species_like))) return false;
+      if (c.common_name_like && !lc(t.common_name).includes(lc(c.common_name_like))) return false;
+      if (c.tree_code_like && !lc(t.tree_code).includes(lc(c.tree_code_like))) return false;
+      if (c.tree_code_prefix && !lc(t.tree_code).startsWith(lc(c.tree_code_prefix))) return false;
+      if (c.campus_eq && t.campus !== c.campus_eq) return false;
+      if (c.has_photo === true && !t.photo_url) return false;
+      if (c.has_photo === false && t.photo_url) return false;
+      if (c.has_location === true && (t.location_lat == null || t.location_lng == null)) return false;
+      if (c.has_location === false && t.location_lat != null) return false;
+      if (Array.isArray(c.tree_type_in) && c.tree_type_in.length && !c.tree_type_in.includes(t.tree_type)) return false;
+      if (c.is_475 === true && !/^FES/i.test(String(t.tree_code || ''))) return false;
+      if (c.is_475 === false && /^FES/i.test(String(t.tree_code || ''))) return false;
+      return true;
+    };
+  }
+
+  // PUM-AI-FILTER: edge dedicada que devuelve { criteria, label }.
   async function _pumAiQuery(raw) {
     if (typeof sb === 'undefined' || !sb?.functions) return null;
-    const prompt = `Convierte esta consulta de búsqueda de árboles a JSON estricto. Solo responde con el JSON.
-Esquema: {"health_min":num|null,"health_max":num|null,"status_in":[...]|null,"species_like":str|null,"common_name_like":str|null,"tree_code_like":str|null,"has_photo":bool|null,"has_location":bool|null,"description":"frase corta"}
-Consulta: ${JSON.stringify(raw)}`;
     try {
-      const { data, error } = await sb.functions.invoke('pum-ai', { body: { message: prompt, mode: 'json', context: 'tree_filter' } });
-      if (error) throw error;
-      const reply = data?.reply || data?.response || data?.text || '';
-      const m = String(reply).match(/\{[\s\S]*\}/);
-      if (!m) return null;
-      const c = JSON.parse(m[0]);
-      const fn = (t) => {
-        if (c.health_min != null && (t.health_score || 0) < c.health_min) return false;
-        if (c.health_max != null && (t.health_score || 0) > c.health_max) return false;
-        if (Array.isArray(c.status_in) && !c.status_in.includes(t.status)) return false;
-        if (c.species_like && !String(t.species || '').toLowerCase().includes(String(c.species_like).toLowerCase())) return false;
-        if (c.common_name_like && !String(t.common_name || '').toLowerCase().includes(String(c.common_name_like).toLowerCase())) return false;
-        if (c.tree_code_like && !String(t.tree_code || '').toLowerCase().includes(String(c.tree_code_like).toLowerCase())) return false;
-        if (c.has_photo === true && !t.photo_url) return false;
-        if (c.has_photo === false && t.photo_url) return false;
-        if (c.has_location === true && (t.location_lat == null)) return false;
-        if (c.has_location === false && t.location_lat != null) return false;
-        return true;
-      };
-      return { fn, label: c.description || 'Filtro IA' };
-    } catch (e) { console.warn('[campus smartSearch] pum-ai falló:', e?.message || e); return null; }
+      const { data, error } = await sb.functions.invoke('pum-ai-filter', {
+        body: { query: raw, campus: currentCampus || undefined },
+      });
+      if (error) {
+        const msg = error?.context?.json?.error || error?.message || 'error';
+        console.warn('[campus smartSearch] pum-ai-filter error:', msg);
+        return null;
+      }
+      const criteria = data?.criteria;
+      const label = data?.label || 'Filtro IA';
+      if (!criteria || typeof criteria !== 'object') return null;
+      return { fn: _criteriaToPredicate(criteria), label, criteria };
+    } catch (e) {
+      console.warn('[campus smartSearch] pum-ai-filter falló:', e?.message || e);
+      return null;
+    }
   }
 
   async function applySmartSearch(forceAI = false) {
