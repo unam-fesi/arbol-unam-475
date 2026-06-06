@@ -1559,6 +1559,29 @@
                 <div id="profile-avatar-placeholder" style="width:100px;height:100px;border-radius:50%;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:600;margin:0 auto;">U</div>
             </div>
 
+            <!-- ╔══════════════════════════════════════════════════════════════╗ -->
+            <!-- ║  VINCULAR TELEGRAM (ARRIBA — visible para todos los roles)   ║ -->
+            <!-- ║  Notificaciones del proyecto vía @Pumai_treebot              ║ -->
+            <!-- ╚══════════════════════════════════════════════════════════════╝ -->
+            <div style="margin-bottom:1.5rem;padding:1rem;background:linear-gradient(135deg,#e8f5fe,#f5fcff);border-radius:10px;border-left:4px solid #229ED9;">
+                <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                    <i class="fab fa-telegram" style="font-size:1.5rem;color:#229ED9;"></i>
+                    <strong style="color:#0d2d5c;">Notificaciones Telegram</strong>
+                    <span id="profile-telegram-status" style="margin-left:auto;font-size:0.78rem;"></span>
+                </div>
+                <p id="profile-telegram-explain" style="margin:0 0 0.7rem;font-size:0.85rem;color:#555;line-height:1.4;">
+                    Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.
+                </p>
+                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                    <button type="button" id="profile-telegram-link-btn" class="btn btn-sm" style="background:#229ED9;color:white;" onclick="startTelegramLink()">
+                        <i class="fab fa-telegram"></i> <span>Vincular Telegram</span>
+                    </button>
+                    <button type="button" id="profile-telegram-unlink-btn" class="btn btn-sm btn-outline" onclick="unlinkTelegram()" style="display:none;">
+                        Desvincular
+                    </button>
+                </div>
+            </div>
+
             <form id="profile-form" onsubmit="saveProfile(event)">
                 <div class="form-group">
                     <label>Nombre completo</label>
@@ -1606,29 +1629,6 @@
                     <button type="button" class="btn btn-outline" onclick="closeProfileModal()" style="flex:0 0 auto;">Cancelar</button>
                 </div>
             </form>
-
-            <!-- ╔══════════════════════════════════════════════════════════════╗ -->
-            <!-- ║  VINCULAR TELEGRAM                                            ║ -->
-            <!-- ║  Notificaciones del proyecto vía @Pumai_treebot              ║ -->
-            <!-- ╚══════════════════════════════════════════════════════════════╝ -->
-            <div style="margin-top:1.5rem;padding:1rem;background:linear-gradient(135deg,#e8f5fe,#f5fcff);border-radius:10px;border-left:4px solid #229ED9;">
-                <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
-                    <i class="fab fa-telegram" style="font-size:1.5rem;color:#229ED9;"></i>
-                    <strong style="color:#0d2d5c;">Notificaciones Telegram</strong>
-                    <span id="profile-telegram-status" style="margin-left:auto;font-size:0.78rem;"></span>
-                </div>
-                <p id="profile-telegram-explain" style="margin:0 0 0.7rem;font-size:0.85rem;color:#555;line-height:1.4;">
-                    Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.
-                </p>
-                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-                    <button type="button" id="profile-telegram-link-btn" class="btn btn-sm" style="background:#229ED9;color:white;" onclick="startTelegramLink()">
-                        <i class="fab fa-telegram"></i> <span>Vincular Telegram</span>
-                    </button>
-                    <button type="button" id="profile-telegram-unlink-btn" class="btn btn-sm btn-outline" onclick="unlinkTelegram()" style="display:none;">
-                        Desvincular
-                    </button>
-                </div>
-            </div>
 
             <!-- Seguridad: cambio de contraseña dentro del propio perfil -->
             <div style="margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid #eee;">
