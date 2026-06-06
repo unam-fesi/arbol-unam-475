@@ -519,8 +519,12 @@ window.SplashVideo = (function() {
           }
         } catch (_) { /* elemento detached u otro race condition — ignorar */ }
       });
-      // Marcar overlay como "video-ready" para esconder el fondo radial decorativo
-      videoEl.addEventListener('playing', () => overlayEl.classList.add('video-ready'), { once: true });
+      // Marcar overlay como "video-ready" para esconder el fondo radial decorativo.
+      // Guard: si el usuario hizo "Saltar" antes de que el video arrancara, este
+      // evento puede dispararse después del cleanup → overlayEl ya es null.
+      videoEl.addEventListener('playing', () => {
+        if (overlayEl) overlayEl.classList.add('video-ready');
+      }, { once: true });
     }
     svgEl = overlayEl.querySelector('#splash-tree-svg');
 
@@ -552,6 +556,9 @@ window.SplashVideo = (function() {
 
     if (videoEl) {
       videoEl.addEventListener('playing', () => {
+        // Si el usuario presionó Saltar antes del primer frame, el módulo ya
+        // se limpió. No hagas nada — evita TypeError en videoEl.duration.
+        if (!videoEl || !overlayEl) return;
         clearTimeout(waitTimeout);
         videoStarted = true;
         const t = textEl();
