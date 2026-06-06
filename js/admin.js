@@ -2438,6 +2438,19 @@ function _renderGroups(rows) {
   });
 }
 
+// Mapa keys → label humanizada en minúsculas, usado por el filtro de grupos
+// (lo dejamos en módulo para evitar IIFE inline que el parser no aceptaba)
+const _GROUP_FILTER_CAMPUS_LABELS = {
+  'Iztacala':   'fes iztacala',
+  'Acatlan':    'fes acatlán',
+  'Aragon':     'fes aragón',
+  'Cuautitlan': 'fes cuautitlán',
+  'Cuautitlan1':'fes cuautitlán c1',
+  'Zaragoza':   'fes zaragoza',
+  'CU':         'ciudad universitaria',
+  'Sin campus': 'sin campus',
+};
+
 function _filterGroups() {
   const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
   const fName = get('grp-name'), fDesc = get('grp-desc'), fCampus = get('grp-campus');
@@ -2448,11 +2461,8 @@ function _filterGroups() {
       // Buscar en los nombres de campus de los miembros (key y label humanizada)
       const counts = g._campusCounts instanceof Map ? g._campusCounts : new Map();
       const keys = Array.from(counts.keys());
-      const haystack = keys.join(' ').toLowerCase() + ' ' + keys.map(k => ({
-        'Iztacala':'fes iztacala','Acatlan':'fes acatlán','Aragon':'fes aragón',
-        'Cuautitlan':'fes cuautitlán','Cuautitlan1':'fes cuautitlán c1',
-        'Zaragoza':'fes zaragoza','CU':'ciudad universitaria','Sin campus':'sin campus'
-      }[k] || k).join(' ').toLowerCase();
+      const labels = keys.map(k => _GROUP_FILTER_CAMPUS_LABELS[k] || k.toLowerCase());
+      const haystack = keys.join(' ').toLowerCase() + ' ' + labels.join(' ');
       if (!haystack.includes(fCampus)) return false;
     }
     return true;
