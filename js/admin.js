@@ -2385,11 +2385,30 @@ async function manageGroupMembers(groupId, groupName) {
       .eq('group_id', groupId);
     if (errM) throw errM;
 
+    // Traemos campus también para mostrarlo al lado del nombre/rol.
     const { data: allUsers, error: errU } = await sb
       .from('user_profiles')
-      .select('id, full_name, role')
+      .select('id, full_name, role, campus')
       .order('full_name');
     if (errU) throw errU;
+
+    // Etiqueta humanizada por campus (consistente con el resto del admin)
+    const CAMPUS_LABEL = {
+      'Iztacala':   'FES Iztacala',
+      'Acatlan':    'FES Acatlán',
+      'Aragon':     'FES Aragón',
+      'Cuautitlan': 'FES Cuautitlán',
+      'Cuautitlan1':'FES Cuautitlán C1',
+      'Zaragoza':   'FES Zaragoza',
+      'CU':         'Ciudad Universitaria',
+    };
+    const campusBadge = (campus) => {
+      if (!campus) return '';
+      const label = CAMPUS_LABEL[campus] || campus;
+      return `<span style="font-size:0.7rem;background:#e8f5fe;color:#0d2d5c;padding:2px 8px;border-radius:10px;margin-left:6px;border:1px solid #c9e1f5;" title="Campus del usuario">
+        <i class="fas fa-map-marker-alt" style="font-size:0.65rem;"></i> ${escapeHtml(label)}
+      </span>`;
+    };
 
     const userMap = new Map((allUsers || []).map(u => [u.id, u]));
     const memberIds = (rawMembers || []).map(m => m.user_id);
@@ -2398,15 +2417,33 @@ async function manageGroupMembers(groupId, groupName) {
       profile: userMap.get(id) || null,
     }));
 
+    // Resumen por campus arriba del listado (ej. "FES Iztacala × 5 · CU × 2")
+    const campusCounts = {};
+    members.forEach(m => {
+      if (!m.profile) return;
+      const c = m.profile.campus || 'Sin campus';
+      campusCounts[c] = (campusCounts[c] || 0) + 1;
+    });
+    const campusSummaryEntries = Object.entries(campusCounts).sort((a, b) => b[1] - a[1]);
+    const campusSummary = campusSummaryEntries.length === 0 ? '' :
+      `<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin:0.4rem 0 0.8rem;font-size:0.75rem;">
+        ${campusSummaryEntries.map(([c, n]) => `
+          <span style="background:#0d2d5c;color:white;padding:3px 10px;border-radius:12px;">
+            <i class="fas fa-map-marker-alt" style="font-size:0.65rem;"></i>
+            ${escapeHtml(CAMPUS_LABEL[c] || c)} <strong>×${n}</strong>
+          </span>`).join('')}
+      </div>`;
+
     let membersHtml = members.map(m => {
       const name = m.profile ? (m.profile.full_name || 'Sin nombre') : 'Usuario eliminado';
       const role = m.profile ? m.profile.role : '';
+      const campus = m.profile ? m.profile.campus : '';
       const roleBadge = role
         ? `<span style="font-size:0.7rem;background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;margin-left:6px;">${escapeHtml(role)}</span>`
         : '';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eee;">
-        <span>${escapeHtml(name)}${roleBadge}</span>
-        <button onclick="removeGroupMember('${groupId}', '${m.user_id}', '${safeJsAttr(groupName)}')" class="btn btn-sm btn-danger">Quitar</button>
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #eee;gap:8px;">
+        <span style="flex:1;min-width:0;">${escapeHtml(name)}${roleBadge}${campusBadge(campus)}</span>
+        <button onclick="removeGroupMember('${groupId}', '${m.user_id}', '${safeJsAttr(groupName)}')" class="btn btn-sm btn-danger" style="flex-shrink:0;">Quitar</button>
       </div>`;
     }).join('') || '<p class="text-muted" style="padding:8px;">Sin miembros</p>';
 
@@ -2417,18 +2454,23 @@ async function manageGroupMembers(groupId, groupName) {
     let optionsHtml = (allUsers || [])
       .map(u => {
         const isMember = memberIds.includes(u.id);
-        const label = `${u.full_name || 'Sin nombre'}${u.role ? ' · ' + u.role : ''}${isMember ? ' (ya en este grupo)' : ''}`;
-        return `<option value="${u.id}"${isMember ? ' disabled' : ''}>${escapeHtml(label)}</option>`;
+        const campusLabel = u.campus ? (CAMPUS_LABEL[u.campus] || u.campus) : '';
+        const parts = [u.full_name || 'Sin nombre'];
+        if (u.role) parts.push(u.role);
+        if (campusLabel) parts.push(campusLabel);
+        const label = parts.join(' · ') + (isMember ? ' (ya en este grupo)' : '');
+        return `<option value="${u.id}"${isMember ? ' disabled' : ''} data-campus="${escapeHtml(u.campus || '')}">${escapeHtml(label)}</option>`;
       }).join('');
 
     showModal(`Miembros: ${groupName}`, `
       <div style="margin-bottom:1.5rem;">
-        <h4>Miembros (${members.length})</h4>
-        <div style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:8px;margin-top:0.5rem;">${membersHtml}</div>
+        <h4 style="margin-bottom:0.3rem;">Miembros (${members.length})</h4>
+        ${campusSummary}
+        <div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:8px;">${membersHtml}</div>
       </div>
       <div>
         <h4>Agregar miembro</h4>
-        <p style="font-size:0.78rem;color:#666;margin:0.3rem 0;">Un usuario puede estar en varios grupos.</p>
+        <p style="font-size:0.78rem;color:#666;margin:0.3rem 0;">Un usuario puede estar en varios grupos. El nombre del usuario muestra <em>rol · campus</em>.</p>
         <div style="display:flex;gap:8px;margin-top:0.5rem;">
           <select id="add-member-select" style="flex:1;padding:0.5rem;border:1px solid #ddd;border-radius:4px;">
             <option value="">Selecciona usuario...</option>${optionsHtml}
@@ -3761,7 +3803,10 @@ async function loadSecurityDashboard() {
                   <td>${b.blocked_until ? new Date(b.blocked_until).toLocaleString('es-MX') : '<strong style="color:#b54f3a;">Permanente</strong>'}</td>
                   <td style="text-align:center;">${b.consecutive_blocks}</td>
                   <td style="font-size:11px;color:#666;">${b.reason}</td>
-                  <td><button class="btn btn-outline" style="padding:4px 10px;font-size:11px;" onclick="unblockIPHandler('${b.ip}')">🔓 Desbloquear</button></td>
+                  <td style="white-space:nowrap;">
+                    <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-right:4px;" onclick="showIpDetail('${b.ip}')" title="Ver detalle (usuario, ubicación, intentos)">🔍 Detalle</button>
+                    <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;" onclick="unblockIPHandler('${b.ip}')">🔓 Desbloquear</button>
+                  </td>
                 </tr>`).join('')}
             </tbody>
           </table>`}
@@ -3820,6 +3865,194 @@ async function unblockIPHandler(ip) {
 }
 window.loadSecurityDashboard = loadSecurityDashboard;
 window.unblockIPHandler = unblockIPHandler;
+
+// ============================================================================
+// Detalle de IP bloqueada — modal con geo-IP, usuarios afectados, intentos
+// ============================================================================
+async function showIpDetail(ip) {
+  if (!ip) return;
+  const modalId = '_ipDetailModal';
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10002;align-items:center;justify-content:center;';
+    modal.onclick = (e) => { if (e.target === modal) closeIpDetail(); };
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  modal.innerHTML = `
+    <div style="background:white;border-radius:14px;padding:1.4rem;width:94%;max-width:640px;max-height:92vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h3 style="margin:0;color:#0d2d5c;">🔍 Detalle de IP <code style="font-size:0.85em;background:#f4f4f4;padding:2px 8px;border-radius:4px;">${escapeHtml(ip)}</code></h3>
+        <button onclick="closeIpDetail()" style="background:none;border:none;font-size:1.6rem;cursor:pointer;color:#888;line-height:1;">&times;</button>
+      </div>
+      <div id="ip-detail-body" style="font-size:0.88rem;color:#333;">
+        <div style="text-align:center;padding:2rem;color:#888;">
+          <div style="font-size:1.4rem;margin-bottom:0.5rem;">⏳</div>
+          Cargando datos…
+        </div>
+      </div>
+    </div>`;
+
+  // Fetch en paralelo: geo-IP + auth_attempts + ip_blocklist
+  const body = document.getElementById('ip-detail-body');
+  const [geoRes, attemptsRes, blockRes] = await Promise.allSettled([
+    // Servicio gratuito sin API key. Si falla (ej. uso saturado), seguimos sin geo.
+    fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`, { headers: { 'Accept': 'application/json' } })
+      .then(r => r.ok ? r.json() : null),
+    sb.from('auth_attempts')
+      .select('email, user_agent, success, reason, occurred_at, metadata')
+      .eq('ip', ip)
+      .order('occurred_at', { ascending: false })
+      .limit(200),
+    sb.from('ip_blocklist').select('*').eq('ip', ip).order('blocked_at', { ascending: false }).limit(5),
+  ]);
+
+  const geo = geoRes.status === 'fulfilled' ? geoRes.value : null;
+  const attempts = (attemptsRes.status === 'fulfilled' ? attemptsRes.value?.data : null) || [];
+  const blocks = (blockRes.status === 'fulfilled' ? blockRes.value?.data : null) || [];
+
+  // Agregaciones
+  const emailCounts = {};
+  const uaCounts = {};
+  let okCount = 0, failCount = 0;
+  let firstSeen = null, lastSeen = null;
+  attempts.forEach(a => {
+    if (a.email) emailCounts[a.email] = (emailCounts[a.email] || 0) + 1;
+    if (a.user_agent) uaCounts[a.user_agent] = (uaCounts[a.user_agent] || 0) + 1;
+    if (a.success) okCount++; else failCount++;
+    const t = new Date(a.occurred_at).getTime();
+    if (firstSeen === null || t < firstSeen) firstSeen = t;
+    if (lastSeen === null || t > lastSeen) lastSeen = t;
+  });
+  const topEmails = Object.entries(emailCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const topUAs = Object.entries(uaCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  // Render
+  const geoBlock = (() => {
+    if (!geo || geo.error) {
+      return `<div style="background:#f8f8f8;padding:0.7rem;border-radius:6px;color:#888;font-size:0.8rem;">
+        <i class="fas fa-globe"></i> No se pudo obtener geolocalización para esta IP (servicio externo no disponible o IP privada).
+      </div>`;
+    }
+    const rows = [
+      ['País',         (geo.country_name || '—') + (geo.country_code ? ` (${geo.country_code})` : '')],
+      ['Región',       geo.region || '—'],
+      ['Ciudad',       geo.city || '—'],
+      ['Código postal',geo.postal || '—'],
+      ['Latitud/Lng',  (geo.latitude && geo.longitude) ? `${geo.latitude}, ${geo.longitude}` : '—'],
+      ['Zona horaria', geo.timezone || '—'],
+      ['Idioma',       geo.languages || '—'],
+      ['ISP / Org',    geo.org || geo.org_name || '—'],
+      ['ASN',          geo.asn || '—'],
+    ];
+    const mapsLink = (geo.latitude && geo.longitude)
+      ? `<a href="https://www.google.com/maps?q=${geo.latitude},${geo.longitude}" target="_blank" rel="noopener" style="color:#0d6acb;font-size:0.78rem;">
+           <i class="fas fa-map-marker-alt"></i> Ver en Google Maps
+         </a>` : '';
+    return `<table style="width:100%;border-collapse:collapse;font-size:0.84rem;">
+      ${rows.map(([k, v]) => `<tr>
+        <td style="padding:4px 8px;color:#666;width:130px;">${k}</td>
+        <td style="padding:4px 8px;font-weight:500;">${escapeHtml(String(v))}</td>
+      </tr>`).join('')}
+    </table>
+    ${mapsLink ? `<div style="margin-top:0.5rem;">${mapsLink}</div>` : ''}`;
+  })();
+
+  const fmt = (t) => t ? new Date(t).toLocaleString('es-MX') : '—';
+  const totalAttempts = attempts.length;
+
+  body.innerHTML = `
+    <!-- Resumen -->
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem;">
+      <div style="flex:1;min-width:120px;background:#f8f8f8;padding:0.6rem;border-radius:8px;border-left:3px solid #b54f3a;">
+        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;">Intentos totales</div>
+        <div style="font-size:1.3rem;font-weight:700;">${totalAttempts}</div>
+        <div style="font-size:0.72rem;color:#666;">${failCount} fallidos · ${okCount} exitosos</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:#f8f8f8;padding:0.6rem;border-radius:8px;border-left:3px solid #5b8b7d;">
+        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;">Bloqueos históricos</div>
+        <div style="font-size:1.3rem;font-weight:700;">${blocks.length}</div>
+        <div style="font-size:0.72rem;color:#666;">${blocks.filter(b => !b.unlocked_at).length} activos</div>
+      </div>
+      <div style="flex:1;min-width:120px;background:#f8f8f8;padding:0.6rem;border-radius:8px;border-left:3px solid #d4a574;">
+        <div style="font-size:0.7rem;color:#888;text-transform:uppercase;">Primera vista</div>
+        <div style="font-size:0.84rem;font-weight:500;">${fmt(firstSeen)}</div>
+        <div style="font-size:0.72rem;color:#666;">Última: ${fmt(lastSeen)}</div>
+      </div>
+    </div>
+
+    <!-- Geo -->
+    <h4 style="margin:1rem 0 0.4rem;font-size:0.92rem;color:#0d2d5c;"><i class="fas fa-globe-americas" style="color:#5b8b7d;"></i> Geolocalización</h4>
+    ${geoBlock}
+
+    <!-- Usuarios afectados -->
+    <h4 style="margin:1.2rem 0 0.4rem;font-size:0.92rem;color:#0d2d5c;">
+      <i class="fas fa-user-shield" style="color:#b54f3a;"></i> Cuentas que intentaron desde esta IP
+    </h4>
+    ${topEmails.length === 0
+      ? `<p class="text-muted text-small" style="margin:0;">Sin intentos registrados con email.</p>`
+      : `<table style="width:100%;font-size:0.82rem;border-collapse:collapse;">
+          <thead><tr style="background:#f4f4f4;">
+            <th style="text-align:left;padding:6px 8px;">Email</th>
+            <th style="text-align:center;padding:6px 8px;width:80px;">Intentos</th>
+          </tr></thead>
+          <tbody>${topEmails.map(([e, n]) => `<tr style="border-bottom:1px solid #eee;">
+            <td style="padding:6px 8px;font-family:monospace;font-size:0.78rem;">${escapeHtml(e)}</td>
+            <td style="padding:6px 8px;text-align:center;font-weight:600;">${n}</td>
+          </tr>`).join('')}</tbody>
+        </table>`}
+
+    <!-- User agents -->
+    ${topUAs.length > 0 ? `
+      <h4 style="margin:1.2rem 0 0.4rem;font-size:0.92rem;color:#0d2d5c;">
+        <i class="fas fa-desktop" style="color:#5b8b7d;"></i> User-Agents principales
+      </h4>
+      <div style="font-size:0.74rem;color:#555;">
+        ${topUAs.map(([ua, n]) => `<div style="padding:4px 6px;background:#fafafa;border-radius:4px;margin-bottom:3px;">
+          <strong>${n}×</strong> <code style="word-break:break-all;">${escapeHtml(ua.slice(0, 200))}</code>
+        </div>`).join('')}
+      </div>` : ''}
+
+    <!-- Últimos intentos -->
+    ${attempts.length > 0 ? `
+      <h4 style="margin:1.2rem 0 0.4rem;font-size:0.92rem;color:#0d2d5c;">
+        <i class="fas fa-clock"></i> Últimos ${Math.min(20, attempts.length)} intentos
+      </h4>
+      <div style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:6px;">
+        <table style="width:100%;font-size:0.76rem;border-collapse:collapse;">
+          <thead><tr style="background:#f4f4f4;position:sticky;top:0;">
+            <th style="text-align:left;padding:5px 8px;">Fecha</th>
+            <th style="text-align:left;padding:5px 8px;">Email</th>
+            <th style="text-align:center;padding:5px 8px;width:50px;">OK</th>
+            <th style="text-align:left;padding:5px 8px;">Razón</th>
+          </tr></thead>
+          <tbody>${attempts.slice(0, 20).map(a => `<tr style="border-bottom:1px solid #f4f4f4;${a.success ? '' : 'background:rgba(181,79,58,0.04);'}">
+            <td style="padding:4px 8px;color:#666;">${new Date(a.occurred_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</td>
+            <td style="padding:4px 8px;font-family:monospace;">${escapeHtml(a.email || '—')}</td>
+            <td style="padding:4px 8px;text-align:center;color:${a.success ? '#3b7a3a' : '#b54f3a'};font-weight:700;">${a.success ? '✓' : '✗'}</td>
+            <td style="padding:4px 8px;color:#666;">${escapeHtml(a.reason || '')}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>` : ''}
+
+    <!-- Acciones -->
+    <div style="display:flex;gap:0.6rem;margin-top:1.2rem;justify-content:flex-end;border-top:1px solid #eee;padding-top:0.8rem;">
+      <button class="btn btn-outline btn-sm" onclick="closeIpDetail()">Cerrar</button>
+      <button class="btn btn-sm" style="background:#3b7a3a;color:white;" onclick="unblockIPHandler('${escapeHtml(ip)}');closeIpDetail();">
+        🔓 Desbloquear esta IP
+      </button>
+    </div>`;
+}
+
+function closeIpDetail() {
+  const m = document.getElementById('_ipDetailModal');
+  if (m) m.style.display = 'none';
+}
+
+window.showIpDetail = showIpDetail;
+window.closeIpDetail = closeIpDetail;
 
 // ============================================================================
 // CUOTAS — service_quotas (Gemini, Supabase DB/Storage)

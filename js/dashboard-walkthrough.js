@@ -247,10 +247,29 @@ console.log('%c🐾 dashboard-walkthrough.js v71 cargado', 'color:#2E7D32;font-w
       const trees = await _fetchTrees();
       if (!scene) return;
       const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
-      // _addTree es async pero las llamamos en paralelo (cada una espera su modelo)
-      valid.forEach(tree => _addTree(tree));
+      // _addTree es async pero las llamamos en paralelo (cada una espera su modelo).
+      // Esperamos a que todas terminen para poder activar efectos especiales
+      // que dependan de que los árboles ya estén en escena (Juan Ficus).
+      await Promise.allSettled(valid.map(tree => _addTree(tree)));
       _setHUDInfo(valid.length, (trees || []).length);
       console.log(`🌲 ${valid.length} árboles plotteados en el walkthrough`);
+
+      // ── Juan Ficus (paloma + halo + etiqueta) — solo en Iztacala ─────────
+      // El módulo IztacalaJuanFicus espera treeMeshes = [{group, data}].
+      // En el walkthrough los grupos están en treeGroups con userData.tree.
+      if (currentCampus === 'Iztacala' && window.IztacalaJuanFicus?.enhance) {
+        try {
+          const treeMeshes = treeGroups.map(g => ({ group: g, data: g.userData?.tree }))
+            .filter(t => t.data && t.data.id != null);
+          // Pequeña espera para que el render del frame tenga la jerarquía lista
+          setTimeout(() => {
+            try { window.IztacalaJuanFicus.enhance(scene, treeMeshes); }
+            catch (err) { console.warn('[walkthrough] JuanFicus enhance err:', err); }
+          }, 300);
+        } catch (e) {
+          console.warn('[walkthrough] no se pudo armar treeMeshes para JuanFicus:', e);
+        }
+      }
     })();
 
     return true;

@@ -1572,13 +1572,95 @@
                 <p id="profile-telegram-explain" style="margin:0 0 0.7rem;font-size:0.85rem;color:#555;line-height:1.4;">
                     Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.
                 </p>
-                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
                     <button type="button" id="profile-telegram-link-btn" class="btn btn-sm" style="background:#229ED9;color:white;" onclick="startTelegramLink()">
                         <i class="fab fa-telegram"></i> <span>Vincular Telegram</span>
                     </button>
                     <button type="button" id="profile-telegram-unlink-btn" class="btn btn-sm btn-outline" onclick="unlinkTelegram()" style="display:none;">
                         Desvincular
                     </button>
+                    <a href="#" id="profile-telegram-howto" onclick="openTelegramHowto();return false;" style="font-size:0.82rem;color:#0d6acb;text-decoration:underline;">
+                        ¿Cómo me vinculo?
+                    </a>
+                </div>
+            </div>
+
+            <!-- ╔══════════════════════════════════════════════════════════════╗ -->
+            <!-- ║  Modal: instrucciones para vincular Telegram                  ║ -->
+            <!-- ║  Se abre desde el link "¿Cómo me vinculo?" en el perfil       ║ -->
+            <!-- ╚══════════════════════════════════════════════════════════════╝ -->
+            <div id="telegram-howto-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10001;align-items:center;justify-content:center;" onclick="if(event.target===this)closeTelegramHowto();">
+                <div style="background:white;border-radius:14px;padding:1.6rem;width:92%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                        <h3 style="margin:0;display:flex;align-items:center;gap:0.5rem;color:#0d2d5c;">
+                            <i class="fab fa-telegram" style="color:#229ED9;font-size:1.4rem;"></i> Cómo vincular Telegram
+                        </h3>
+                        <button onclick="closeTelegramHowto()" style="background:none;border:none;font-size:1.6rem;cursor:pointer;color:#888;line-height:1;">&times;</button>
+                    </div>
+
+                    <div style="background:#fff8e1;border-left:4px solid #f9a825;padding:0.7rem 0.9rem;border-radius:6px;margin-bottom:1rem;">
+                        <p style="margin:0;font-size:0.85rem;color:#5d4500;line-height:1.45;">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Esta vinculación es solo para recibir notificaciones</strong> del proyecto en tu Telegram (avisos, recordatorios y alertas). <strong>No</strong> es para conversar con el bot ni para hacer mediciones desde ahí.
+                        </p>
+                    </div>
+
+                    <h4 style="margin:1rem 0 0.5rem;font-size:0.95rem;color:#222;">
+                        <i class="fas fa-clipboard-check" style="color:#2e7d32;"></i> Requisito previo
+                    </h4>
+                    <p style="margin:0 0 0.8rem;font-size:0.88rem;color:#444;line-height:1.5;">
+                        Necesitas tener instalada la app <strong>Telegram</strong> en tu celular. Si aún no la tienes:
+                    </p>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+                        <a href="https://apps.apple.com/app/telegram-messenger/id686449807" target="_blank" rel="noopener" style="flex:1;min-width:130px;text-align:center;background:#000;color:white;padding:0.5rem 0.7rem;border-radius:8px;font-size:0.82rem;text-decoration:none;">
+                            <i class="fab fa-apple"></i> App Store
+                        </a>
+                        <a href="https://play.google.com/store/apps/details?id=org.telegram.messenger" target="_blank" rel="noopener" style="flex:1;min-width:130px;text-align:center;background:#01875f;color:white;padding:0.5rem 0.7rem;border-radius:8px;font-size:0.82rem;text-decoration:none;">
+                            <i class="fab fa-google-play"></i> Google Play
+                        </a>
+                    </div>
+
+                    <h4 style="margin:1rem 0 0.5rem;font-size:0.95rem;color:#222;">
+                        <i class="fas fa-list-ol" style="color:#229ED9;"></i> Pasos
+                    </h4>
+                    <ol style="margin:0 0 1rem;padding-left:1.3rem;font-size:0.88rem;color:#333;line-height:1.7;">
+                        <li>Abre la app de <strong>Telegram</strong> en tu celular e inicia sesión con tu número.</li>
+                        <li>Cierra este aviso (botón ×) y toca <strong>"Vincular Telegram"</strong> en tu perfil.</li>
+                        <li>Se abrirá una conversación con el bot <strong>@Pumai_treebot</strong> con un código único. Toca <strong>Start</strong> (Iniciar) abajo del chat.</li>
+                        <li>El bot te confirmará "✅ Tu cuenta quedó vinculada". <strong>Regresa a esta app</strong>; la vinculación se completa sola.</li>
+                    </ol>
+
+                    <div style="background:#e8f5fe;border-left:4px solid #229ED9;padding:0.7rem 0.9rem;border-radius:6px;margin-bottom:1rem;">
+                        <p style="margin:0;font-size:0.82rem;color:#0d2d5c;line-height:1.45;">
+                            <i class="fab fa-telegram"></i>
+                            Bot oficial: <a href="https://t.me/Pumai_treebot" target="_blank" rel="noopener" style="color:#0d6acb;font-weight:600;text-decoration:none;">@Pumai_treebot</a>
+                            <span style="display:block;margin-top:0.3rem;font-size:0.78rem;color:#456;">(verifica que el nombre coincida exactamente — no aceptes ningún otro bot que diga ser del proyecto)</span>
+                        </p>
+                    </div>
+
+                    <details style="margin-bottom:0.8rem;">
+                        <summary style="cursor:pointer;font-size:0.85rem;color:#666;">¿Qué tipo de mensajes recibiré?</summary>
+                        <ul style="margin:0.5rem 0 0;padding-left:1.3rem;font-size:0.82rem;color:#555;line-height:1.6;">
+                            <li>Recordatorios de seguimiento de tus árboles asignados.</li>
+                            <li>Avisos importantes del proyecto (eventos, capacitaciones).</li>
+                            <li>Alertas si tu árbol necesita atención.</li>
+                            <li>Notificaciones masivas de administradores.</li>
+                        </ul>
+                    </details>
+
+                    <details style="margin-bottom:0.8rem;">
+                        <summary style="cursor:pointer;font-size:0.85rem;color:#666;">¿Puedo desvincularme después?</summary>
+                        <p style="margin:0.5rem 0 0;font-size:0.82rem;color:#555;line-height:1.5;">
+                            Sí, en cualquier momento. Aparecerá un botón <strong>"Desvincular"</strong> aquí mismo en tu perfil, o puedes mandar <code>/unlink</code> al bot directamente.
+                        </p>
+                    </details>
+
+                    <div style="display:flex;gap:0.6rem;margin-top:1rem;justify-content:flex-end;">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="closeTelegramHowto()">Cerrar</button>
+                        <button type="button" class="btn btn-sm" style="background:#229ED9;color:white;" onclick="closeTelegramHowto();startTelegramLink();">
+                            <i class="fab fa-telegram"></i> Vincular ahora
+                        </button>
+                    </div>
                 </div>
             </div>
 

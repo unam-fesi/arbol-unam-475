@@ -527,6 +527,7 @@ function refreshTelegramLinkUI() {
   const explain = document.getElementById('profile-telegram-explain');
   const linkBtn = document.getElementById('profile-telegram-link-btn');
   const unlinkBtn = document.getElementById('profile-telegram-unlink-btn');
+  const howto = document.getElementById('profile-telegram-howto');
   if (!status || !linkBtn) return;
 
   if (currentUserProfile?.telegram_chat_id) {
@@ -534,13 +535,27 @@ function refreshTelegramLinkUI() {
     explain.textContent = 'Estás recibiendo notificaciones del proyecto en Telegram.';
     linkBtn.querySelector('span').textContent = 'Re-vincular (otro Telegram)';
     if (unlinkBtn) unlinkBtn.style.display = 'inline-flex';
+    if (howto) howto.style.display = 'none';   // ya vinculado, ocultar guía
   } else {
     status.innerHTML = '<span style="color:#777;">⊘ Sin vincular</span>';
     explain.textContent = 'Recibe avisos del proyecto, recordatorios y alertas de tus árboles directo en Telegram.';
     linkBtn.querySelector('span').textContent = 'Vincular Telegram';
     if (unlinkBtn) unlinkBtn.style.display = 'none';
+    if (howto) howto.style.display = 'inline';
   }
 }
+
+// Modal con instrucciones detalladas para vincular Telegram
+function openTelegramHowto() {
+  const m = document.getElementById('telegram-howto-modal');
+  if (m) m.style.display = 'flex';
+}
+function closeTelegramHowto() {
+  const m = document.getElementById('telegram-howto-modal');
+  if (m) m.style.display = 'none';
+}
+window.openTelegramHowto = openTelegramHowto;
+window.closeTelegramHowto = closeTelegramHowto;
 
 /// Genera token corto, lo inserta en telegram_link_tokens y abre el deep link
 async function startTelegramLink() {
