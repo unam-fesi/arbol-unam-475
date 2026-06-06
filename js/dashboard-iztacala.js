@@ -204,6 +204,15 @@ window.IztacalaMap = (function() {
     // ---- Cargar árboles desde Supabase ----
     await loadTrees();
 
+    // ---- Modo Bosque del 475: botón flotante 🌙/☀️ ----
+    // (se monta después de loadTrees para que treeMeshes ya esté lleno
+    //  cuando el usuario active el modo nocturno con luciérnagas y halos.)
+    if (window.NightMode && containerEl) {
+      window.NightMode.attachToggleButton(containerEl, 'izta', (isNight) => {
+        _setNightMode(isNight);
+      });
+    }
+
     // ---- Cargar Barda Caída (escultura icónica) ----
     if (window.IztacalaSculpture && scene) {
       try { await window.IztacalaSculpture.addTo(scene); }
@@ -1894,16 +1903,36 @@ window.IztacalaMap = (function() {
   }
 
   let _lastTime = 0;
+  let _elapsed = 0;
   function animate() {
     if (!initialized) return;
     animId = requestAnimationFrame(animate);
     const now = performance.now();
     const dt = _lastTime ? Math.min((now - _lastTime) / 1000, 0.1) : 0.016;
     _lastTime = now;
+    _elapsed += dt;
     if (controls) controls.update();
     // Tick mariposas (cada una con su mixer + random walk)
     if (window.IztacalaMariposas) window.IztacalaMariposas.tick(dt);
+    // Tick modo nocturno (luciérnagas + halo pulsante de árboles 475)
+    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed);
     if (renderer && scene && camera) renderer.render(scene, camera);
+  }
+
+  // Handle del modo Bosque del 475. Null cuando está apagado.
+  let _nightFx = null;
+  // Habilita / deshabilita modo nocturno. Llamado desde el botón flotante.
+  function _setNightMode(on) {
+    if (on) {
+      if (_nightFx && _nightFx.isNight) return; // ya está prendido
+      if (!window.NightMode || !scene) return;
+      _nightFx = window.NightMode.enable(scene, treeMeshes, { savedKey: 'izta' });
+    } else {
+      if (_nightFx && _nightFx.isNight) {
+        _nightFx.disable();
+        _nightFx = null;
+      }
+    }
   }
 
   // ============================================================================

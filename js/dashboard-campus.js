@@ -161,6 +161,13 @@ window.CampusMap = (function() {
     if (window.MapLoader && _loaderId) window.MapLoader.setMessage(_loaderId, `Cargando árboles…`);
     await _loadTrees(campusName);
 
+    // Modo Bosque del 475 — botón 🌙/☀️ flotante
+    if (window.NightMode && containerEl) {
+      window.NightMode.attachToggleButton(containerEl, campusName, (isNight) => {
+        _setNightMode(isNight);
+      });
+    }
+
     // Listo — ocultar spinner
     if (window.MapLoader && _loaderId) window.MapLoader.hide(_loaderId);
   }
@@ -550,13 +557,33 @@ window.CampusMap = (function() {
     renderer.setSize(w, h);
   }
 
+  // Estado modo Bosque del 475 (nocturno con luciérnagas + halos dorados FES*)
+  let _nightFx = null;
+  let _lastTime = 0;
+  let _elapsed = 0;
+  function _setNightMode(on) {
+    if (on) {
+      if (_nightFx && _nightFx.isNight) return;
+      if (!window.NightMode || !scene) return;
+      _nightFx = window.NightMode.enable(scene, treeMeshes, { savedKey: currentCampus || 'campus' });
+    } else if (_nightFx && _nightFx.isNight) {
+      _nightFx.disable();
+      _nightFx = null;
+    }
+  }
+
   function animate() {
     if (!renderer || !scene || !camera) {
       animId = null;
       return;
     }
     animId = requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = _lastTime ? Math.min((now - _lastTime) / 1000, 0.1) : 0.016;
+    _lastTime = now;
+    _elapsed += dt;
     if (controls) controls.update();
+    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed);
     renderer.render(scene, camera);
   }
 
