@@ -457,8 +457,15 @@ async function handleLogout() {
     // Also clear session storage
     sessionStorage.clear();
 
-    showLoginScreen();
     showToast('Sesión cerrada correctamente', 'info');
+    // CRÍTICO: full reload para garantizar clean slate. handleLogout solo
+    // limpia algunas vars globales y sessionStorage, pero MUCHAS variables
+    // de módulo (_adminTreesCache, _groupsCache, _notificationsCache,
+    // currentTreeData, body class role-*, DOM rendered con datos previos,
+    // etc.) quedan vivas en memoria — causa el bug de "ver datos del
+    // usuario anterior al loguearse con otra cuenta en el mismo browser".
+    // Un reload garantiza que la próxima sesión empiece desde cero.
+    setTimeout(() => { try { location.reload(); } catch(_) { showLoginScreen(); } }, 250);
   } catch (err) {
     console.error('Logout error:', err);
     // Force cleanup even on error
@@ -474,7 +481,8 @@ async function handleLogout() {
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
-    showLoginScreen();
+    // En el catch también forzamos reload para asegurar clean slate
+    setTimeout(() => { try { location.reload(); } catch(_) { showLoginScreen(); } }, 250);
   }
 }
 

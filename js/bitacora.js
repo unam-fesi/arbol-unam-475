@@ -416,8 +416,15 @@ Datos ${year}:
   }
 
   async function _save(table, record) {
+    // generated_by_user para auditoría (qué usuario generó la bitácora).
+    // Si la tabla destino no tiene esa columna, hacemos un retry sin ella.
     record.generated_by_user = currentUser?.id;
-    const { data, error } = await sb.from(table).upsert(record).select().single();
+    let { data, error } = await sb.from(table).upsert(record).select().single();
+    if (error && (error.code === 'PGRST204' || /generated_by_user/.test(error.message || ''))) {
+      // Retry sin la columna (la tabla legacy no la tiene)
+      const { generated_by_user: _, ...recordNoGen } = record;
+      ({ data, error } = await sb.from(table).upsert(recordNoGen).select().single());
+    }
     if (error) { console.warn(`Bitacora save error (${table}):`, error); return record; }
     return data;
   }

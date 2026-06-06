@@ -275,24 +275,23 @@
     const clouds = _makeFloatingClouds(scene);
 
     // ---- 3 ZONAS apiladas VERTICALMENTE (cada una es un anillo horizontal) ----
-    // Separación AMPLIA (±16) para que los sub-anillos de Sano (5 niveles)
-    // queden bien lejos de Atención abajo. Antes ±11 → se encimaban.
+    // Separación AMPLIA (±45) para que los sub-anillos de Sano no invadan
+    // la banda de Atención (antes ±30 → se mezclaban verdes con amarillos
+    // cuando Sano tenía muchos sub-anillos).
     const ZONES = [
-      { name: 'Sano',     color: 0x4CAF50, y:  30, filter: t => (t.health_score || 0) >= 70 },
+      { name: 'Sano',     color: 0x4CAF50, y:  45, filter: t => (t.health_score || 0) >= 70 },
       { name: 'Atención', color: 0xFFA726, y:   0, filter: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70 },
-      { name: 'Crítico',  color: 0xEF5350, y: -30, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
+      { name: 'Crítico',  color: 0xEF5350, y: -45, filter: t => (t.health_score || 0) < 40 && t.health_score != null }
     ];
 
     // Cuántas fotos caben cómodamente en un anillo y cuánto separar los
-    // sub-anillos verticalmente. Si una zona tiene MÁS de PHOTOS_PER_RING
-    // (ej. Sano con 249), se divide en varios sub-anillos apilados dentro
-    // de la banda de su zona — así nunca hay demasiadas fotos peleándose
-    // por arco en un solo anillo.
-    const PHOTOS_PER_RING = 50;
-    // Gap > altura máxima de foto en cover flow (foto 2.0 alto × scale 1.6 = 3.2)
-    // Con 6.0 hay 2.8 unidades de aire entre fotos de sub-anillos adyacentes.
-    const SUB_RING_GAP = 6.0;
-    const TARGET_ARC = 2.0;    // arco-unidad por foto (controla densidad)
+    // sub-anillos verticalmente. Con más PHOTOS_PER_RING hay menos sub-anillos
+    // (cilindro más bajo, no se mezclan zonas). El radio crece proporcional.
+    const PHOTOS_PER_RING = 80;     // antes 50 — más fotos por anillo
+    // Gap > altura máxima de foto (foto 2.0 alto × scale 1.6 = 3.2).
+    // Con 5.0 hay 1.8 unidades de aire entre fotos de sub-anillos adyacentes.
+    const SUB_RING_GAP = 5.0;       // antes 6.0 — sub-anillos más compactos
+    const TARGET_ARC = 2.0;         // arco-unidad por foto (radio ≈ 25.5)
 
     ZONES.forEach(zone => {
       const count = (trees || []).filter(zone.filter).length;
@@ -557,12 +556,12 @@
     const autoSpeed = 0.0006;  // mitad de v39 — rotación muy contemplativa
     // Estado de cámara: pitch (vertical) + radio (zoom).
     // El zoom mueve la cámara más cerca/lejos del centro de los anillos.
-    let camRadius = 45;            // valor inicial — más cerca para ver fotos al instante
-    const CAM_RADIUS_MIN = 18;     // zoom in tope — fotos llenan pantalla
-    const CAM_RADIUS_MAX = 130;    // zoom out tope — vista panorámica
+    let camRadius = 60;            // valor inicial — más lejos: zona 45m+sub-anillos ocupa más altura
+    const CAM_RADIUS_MIN = 14;     // zoom in tope más cercano — fotos llenan pantalla
+    const CAM_RADIUS_MAX = 200;    // zoom out tope más amplio — vista panorámica completa
     let camPitch = 0;  // 0 = horizontal · negativo = mira hacia arriba (Sano)
-    const PITCH_MIN = -0.55;  // ~31° hacia arriba
-    const PITCH_MAX =  0.55;  // ~31° hacia abajo
+    const PITCH_MIN = -1.20;       // ~69° hacia arriba (antes 31°) — ver bien la zona Sano
+    const PITCH_MAX =  1.20;       // ~69° hacia abajo (antes 31°) — ver bien la zona Crítico
 
     const _updateCamera = () => {
       // Cámara en órbita vertical (pitch) y radial (zoom)
