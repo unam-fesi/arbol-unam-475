@@ -3879,12 +3879,17 @@ async function loadSecurityDashboard() {
   try {
     const dayAgo  = new Date(Date.now() - 86400000).toISOString();
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const [attemptsRes, blocksRes, weekRes, secEvtsRes] = await Promise.all([
+    const [attemptsRes, blocksRes, weekRes, secEvtsRes, alertCfgRes] = await Promise.all([
       sb.from('auth_attempts').select('*').gte('occurred_at', dayAgo).order('occurred_at', { ascending: false }).limit(200),
       sb.from('ip_blocklist').select('*').is('unlocked_at', null).order('blocked_at', { ascending: false }),
       sb.from('auth_attempts').select('id, success, occurred_at').gte('occurred_at', weekAgo),
       sb.from('security_events').select('*').gte('occurred_at', weekAgo).order('occurred_at', { ascending: false }).limit(200),
+      sb.from('notification_rules').select('config, enabled').eq('rule_key', 'security_telegram_alert').maybeSingle(),
     ]);
+    const alertCfg = alertCfgRes?.data?.config || {};
+    const alertChatId = (alertCfg.chat_id || '').toString();
+    const alertEnabled = alertCfgRes?.data?.enabled !== false;
+    const alertMinSev = alertCfg.min_severity || 'high';
     const attempts = attemptsRes.data || [];
     const blocks = blocksRes.data || [];
     const weekAttempts = weekRes.data || [];
@@ -4001,6 +4006,48 @@ async function loadSecurityDashboard() {
         }).join('')}
       </div>` : ''}
 
+      <!-- Configuración de alertas Telegram para ataques (solo admin) -->
+      ${isAdminRole() ? `
+      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border-left:4px solid #229ED9;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-size:13px;font-weight:600;color:#333;">
+            <i class="fab fa-telegram" style="color:#229ED9;"></i> Alertas de seguridad por Telegram
+          </div>
+          <span style="font-size:11px;color:${alertEnabled && alertChatId ? '#3b7a3a' : '#999'};">
+            ${alertEnabled && alertChatId ? '✅ Activas' : '⊘ Inactivas'}
+          </span>
+        </div>
+        <p style="font-size:0.82rem;color:#666;margin:0 0 0.6rem;">
+          Cuando se detecta un ataque (XSS, SQLi, etc.) y se bloquea una IP automáticamente, se envía un mensaje al chat_id configurado.
+          Mínimo severity: <code>${escapeHtml(alertMinSev)}</code>. La IP se bloquea 30 min al primer intento, permanente al tercero.
+        </p>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
+            <label style="font-size:0.78rem;color:#555;display:block;margin-bottom:3px;">Chat ID de Telegram (numérico)</label>
+            <input id="sec-alert-chat-id" type="text"
+              value="${escapeHtml(alertChatId)}"
+              placeholder="123456789"
+              style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:6px;font-family:monospace;">
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveSecurityAlertConfig()">
+            <i class="fas fa-save"></i> Guardar
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="testSecurityAlert()" ${!alertChatId ? 'disabled' : ''}>
+            <i class="fas fa-paper-plane"></i> Enviar prueba
+          </button>
+        </div>
+        <details style="margin-top:0.6rem;">
+          <summary style="cursor:pointer;font-size:0.78rem;color:#888;">¿Cómo obtengo mi chat_id?</summary>
+          <p style="font-size:0.78rem;color:#666;margin:0.4rem 0 0;line-height:1.5;">
+            1. Abre <a href="https://t.me/Pumai_treebot" target="_blank" style="color:#0d6acb;">@Pumai_treebot</a> en Telegram.<br>
+            2. Manda <code>/start</code> y vincula tu cuenta desde tu perfil (si aún no lo has hecho).<br>
+            3. Luego manda <code>/status</code> al bot. El número que comienza con <code>123…</code> es tu chat_id, o pídeselo a tu administrador.<br>
+            <strong>Tip:</strong> también puedes usar un grupo dedicado — agrega el bot, manda cualquier mensaje y el chat_id del grupo aparece en los logs del webhook (empieza con <code>-100…</code>).
+          </p>
+        </details>
+      </div>
+      ` : ''}
+
       <!-- Intentos de ataque detectados -->
       <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border-left:4px solid #c62828;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -4082,6 +4129,58 @@ async function loadSecurityDashboard() {
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
+
+// Guardar chat_id del Telegram alert (solo admin)
+async function saveSecurityAlertConfig() {
+  if (!isAdminRole()) { showToast('Solo admin principal puede configurar alertas', 'error'); return; }
+  const raw = document.getElementById('sec-alert-chat-id')?.value || '';
+  const chatId = raw.trim();
+  // Validar formato: numérico positivo o negativo (grupos empiezan con -100)
+  if (chatId && !/^-?\d+$/.test(chatId)) {
+    showToast('Chat ID debe ser numérico (ej. 123456789 o -100123456)', 'error');
+    return;
+  }
+  try {
+    // Leer config actual para mergear
+    const { data: row } = await sb.from('notification_rules')
+      .select('config').eq('rule_key', 'security_telegram_alert').maybeSingle();
+    const newConfig = Object.assign({}, row?.config || {}, { chat_id: chatId });
+    const { error } = await sb.from('notification_rules')
+      .update({ config: newConfig })
+      .eq('rule_key', 'security_telegram_alert');
+    if (error) throw error;
+    showToast(chatId ? 'Alertas Telegram configuradas' : 'Alertas Telegram desactivadas (chat_id vacío)', 'success');
+    loadSecurityDashboard();
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+window.saveSecurityAlertConfig = saveSecurityAlertConfig;
+
+// Disparar una alerta de prueba al chat_id configurado
+async function testSecurityAlert() {
+  if (!isAdminRole()) return;
+  try {
+    showToast('Enviando alerta de prueba…', 'info');
+    const { data, error } = await sb.functions.invoke('log-security-event', {
+      body: {
+        event_type: 'other',
+        severity: 'critical',
+        payload: { test: true, triggered_by: currentUserProfile?.full_name || 'admin' },
+        field_name: 'manual_test',
+        detection_rule: 'admin_test_button',
+        route: '/admin/security',
+        notes: 'Alerta de prueba disparada manualmente desde el dashboard',
+        blocked: false,
+      }
+    });
+    if (error) throw error;
+    showToast('Alerta enviada. Revisa el Telegram del chat configurado.', 'success');
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+window.testSecurityAlert = testSecurityAlert;
 
 // Marcar un evento de seguridad como revisado (solo admin)
 async function markSecEventReviewed(eventId) {
