@@ -153,18 +153,17 @@ window.NightMode = (function () {
     // Recolectamos los árboles FES (para el polvo dorado del 475).
     const fesTrees = [];
 
-    // Helper: obtener la posición real del árbol en world coords.
+    // Helper: obtener la posición real del árbol en world coords + altura de la copa.
     // CRÍTICO: en Iztacala el group.position es (0,0,0) — la translación se
-    // aplica al mesh interno. Por eso necesitamos calcular el bbox del group
-    // y usar su centro horizontal (X,Z). Funciona también con CampusMap donde
-    // sí se setea group.position directamente.
+    // aplica al mesh interno. Por eso necesitamos calcular el bbox del group.
     const _tmpBox = new THREE.Box3();
     const _tmpVec = new THREE.Vector3();
     function _treeWorldPos(group) {
       _tmpBox.setFromObject(group);
       _tmpBox.getCenter(_tmpVec);
       const minY = isFinite(_tmpBox.min.y) ? _tmpBox.min.y : 0;
-      return { x: _tmpVec.x, z: _tmpVec.z, y: minY };
+      const maxY = isFinite(_tmpBox.max.y) ? _tmpBox.max.y : 8;
+      return { x: _tmpVec.x, z: _tmpVec.z, y: minY, crownY: maxY };
     }
 
     treeArr.forEach((entry) => {
@@ -177,6 +176,7 @@ window.NightMode = (function () {
       const wp = _treeWorldPos(group);
       const x = wp.x;
       const z = wp.z;
+      const crownY = wp.crownY;
       // Si el bbox resultó vacío/inválido (mesh aún cargando), saltar.
       if (!isFinite(x) || !isFinite(z)) return;
 
@@ -201,18 +201,17 @@ window.NightMode = (function () {
         fireflies.push({ sprite, baseY, phase, orbitR, speed, treeX: x, treeZ: z });
       }
 
-      if (isFES) fesTrees.push({ x, z });
+      if (isFES) fesTrees.push({ x, z, crownY });
     });
 
-    // ---- Polvo dorado luminoso ascendente sobre árboles 475 ----
-    // Un solo THREE.Points con todas las partículas de TODOS los FES*: 1 draw call.
-    // Cada partícula tiene origen, velocidad y vida propias. ShaderMaterial custom
-    // permite fade por partícula (alpha varying) sin overhead de 1 sprite c/u.
-    //
-    // CURVA DE OPACIDAD: bell 4u(1-u) — invisible al spawn y al final, brillante
-    // a mitad del trayecto. Resultado: las partículas MÁS visibles están MID-AIR,
-    // no en la base. Eso crea la sensación de polvo flotando hacia arriba.
-    const DUST_PER_TREE = 50;
+    // ---- Polvo dorado ascendente desde la COPA de árboles 475 ----
+    // SPAWN: en la copa del árbol (bbox.max.y) — el polvo "se eleva del follaje".
+    // POCAS partículas (15/árbol) para evitar saturación.
+    // NormalBlending (no Additive) → los puntos NO se acumulan a blanco si se
+    // solapan. Cada uno es una mota dorada definida, no un fuego difuso.
+    // CURVA: bell 4u(1-u) — invisible al nacer y al desvanecerse, brillante a
+    // mitad del trayecto. Sensación de motas flotando hacia el cielo y se van.
+    const DUST_PER_TREE = 15;
     const TOTAL_DUST = fesTrees.length * DUST_PER_TREE;
     let dust = null;
     if (TOTAL_DUST > 0) {
@@ -226,26 +225,26 @@ window.NightMode = (function () {
       fesTrees.forEach((t, ti) => {
         for (let i = 0; i < DUST_PER_TREE; i++) {
           const idx = ti * DUST_PER_TREE + i;
-          // origen radial amplio (hasta 2.5m del tronco) para evitar "cono apretado"
-          const r = Math.random() * 2.5;
+          // ORIGEN: en la copa del árbol con jitter circular pequeño
+          // (~la mitad del radio típico de la copa).
+          const r = 0.6 + Math.random() * 1.4;
           const ang = Math.random() * Math.PI * 2;
           const ox = t.x + Math.cos(ang) * r;
           const oz = t.z + Math.sin(ang) * r;
-          const oy = 0.2 + Math.random() * 0.4;
+          const oy = t.crownY - 0.5 + Math.random() * 1.0;   // ~en la copa
           origins[idx * 3] = ox; origins[idx * 3 + 1] = oy; origins[idx * 3 + 2] = oz;
-          // posición inicial dispersada en altura ⇒ NO se ven "naciendo" todas al tiempo.
-          // Distribuimos uniformemente 0..1 (no cuadrático) para evitar acumulación abajo.
+          // Distribución vertical inicial (0..6m sobre la copa) para no nacer
+          // todas al mismo tiempo desde el mismo plano.
           const startAge = Math.random();
-          positions[idx * 3]     = ox + (Math.random() - 0.5) * 0.4;
-          positions[idx * 3 + 1] = oy + startAge * 8.0; // hasta ~8m arriba
-          positions[idx * 3 + 2] = oz + (Math.random() - 0.5) * 0.4;
-          // Velocidad: subida más rápida (1.0-2.0 m/s) + drift lateral ligero.
-          velocities[idx * 3]     = (Math.random() - 0.5) * 0.25;
-          velocities[idx * 3 + 1] = 1.0 + Math.random() * 1.0;
-          velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.25;
+          positions[idx * 3]     = ox + (Math.random() - 0.5) * 0.3;
+          positions[idx * 3 + 1] = oy + startAge * 6.0;
+          positions[idx * 3 + 2] = oz + (Math.random() - 0.5) * 0.3;
+          // Velocidad ascendente moderada + drift lateral muy leve
+          velocities[idx * 3]     = (Math.random() - 0.5) * 0.18;
+          velocities[idx * 3 + 1] = 0.8 + Math.random() * 0.7;   // 0.8-1.5 m/s
+          velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.18;
           lifetimes[idx] = 3.5 + Math.random() * 2.0;
           ages[idx] = startAge * lifetimes[idx];
-          // Alpha inicial siguiendo curva campana (igual que tick): peak en u=0.5
           const u0 = startAge;
           alphas[idx] = 4 * u0 * (1 - u0);
         }
@@ -258,7 +257,7 @@ window.NightMode = (function () {
         uniforms: {
           uMap:   { value: _getDustTexture() },
           uColor: { value: new THREE.Color(HALO_GOLD_HEX) },
-          uScale: { value: 2400.0 },  // tamaño en pixeles a 1 unidad de cámara
+          uScale: { value: 1400.0 },  // partículas más chicas → no saturan
         },
         vertexShader: [
           'attribute float alpha;',
@@ -268,9 +267,7 @@ window.NightMode = (function () {
           '  vAlpha = alpha;',
           '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
           '  gl_Position = projectionMatrix * mv;',
-          '  // Tamaño en pixeles: uScale/distancia. Clamp [6, 80] para que',
-          '  // se vea bien desde cerca y desde lejos sin saturar la pantalla.',
-          '  gl_PointSize = clamp(uScale / -mv.z, 6.0, 80.0);',
+          '  gl_PointSize = clamp(uScale / -mv.z, 3.0, 28.0);',
           '}',
         ].join('\n'),
         fragmentShader: [
@@ -280,12 +277,14 @@ window.NightMode = (function () {
           'void main() {',
           '  vec4 tex = texture2D(uMap, gl_PointCoord);',
           '  if (tex.a < 0.02) discard;',
-          '  gl_FragColor = vec4(uColor, tex.a * vAlpha);',
+          '  // Alpha pre-multiplicado: tex.a (gradient) * vAlpha (curva campana)',
+          '  // sin AdditiveBlending — cada partícula es definida, no se quema.',
+          '  gl_FragColor = vec4(uColor, tex.a * vAlpha * 0.85);',
           '}',
         ].join('\n'),
         transparent: true,
         depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,
       });
       const points = new THREE.Points(geo, mat);
       points.frustumCulled = false; // el bbox cambia c/ frame → evitar pop
@@ -381,10 +380,20 @@ window.NightMode = (function () {
   function attachToggleButton(containerEl, savedKey, onToggle) {
     if (!containerEl) return null;
     const STORE = 'arbol_night_' + (savedKey || 'default');
+    const btnId = 'night-toggle-' + (savedKey || 'def');
+
+    // Limpiar cualquier botón previo (evita duplicados al re-init de dashboards).
+    const prev = containerEl.querySelector('#' + btnId);
+    if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+    // También limpiar botones de OTROS keys que hubieran quedado huérfanos
+    // (p.ej. al cambiar de campus Iztacala→Aragón en el mismo container).
+    const orphans = containerEl.querySelectorAll('[id^="night-toggle-"]');
+    orphans.forEach(o => { if (o.id !== btnId && o.parentNode) o.parentNode.removeChild(o); });
+
     const initial = localStorage.getItem(STORE) === '1';
 
     const btn = document.createElement('button');
-    btn.id = 'night-toggle-' + (savedKey || 'def');
+    btn.id = btnId;
     btn.type = 'button';
     btn.title = 'Modo Bosque del 475 (nocturno)';
     btn.style.cssText = [
