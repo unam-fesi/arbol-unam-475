@@ -1914,8 +1914,8 @@ window.IztacalaMap = (function() {
     if (controls) controls.update();
     // Tick mariposas (cada una con su mixer + random walk)
     if (window.IztacalaMariposas) window.IztacalaMariposas.tick(dt);
-    // Tick modo nocturno (luciérnagas + halo pulsante de árboles 475)
-    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed);
+    // Tick modo nocturno (luciérnagas + polvo dorado de árboles 475)
+    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed, dt);
     if (renderer && scene && camera) renderer.render(scene, camera);
   }
 

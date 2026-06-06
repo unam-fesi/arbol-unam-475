@@ -60,20 +60,21 @@ window.NightMode = (function () {
     return _fireflyTexture;
   }
 
-  let _haloTexture = null;
-  function _getHaloTexture() {
-    if (_haloTexture) return _haloTexture;
+  // Partícula de polvo dorado: punto suave brillante con tinte cálido.
+  let _dustTexture = null;
+  function _getDustTexture() {
+    if (_dustTexture) return _dustTexture;
     const c = document.createElement('canvas');
-    c.width = c.height = 128;
+    c.width = c.height = 32;
     const g = c.getContext('2d');
-    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 62);
-    grad.addColorStop(0.0, 'rgba(255,216,102,0.95)');
-    grad.addColorStop(0.5, 'rgba(255,216,102,0.35)');
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0.0, 'rgba(255,236,170,1)');
+    grad.addColorStop(0.4, 'rgba(255,216,102,0.85)');
     grad.addColorStop(1.0, 'rgba(255,180,40,0)');
     g.fillStyle = grad;
-    g.fillRect(0, 0, 128, 128);
-    _haloTexture = new THREE.CanvasTexture(c);
-    return _haloTexture;
+    g.fillRect(0, 0, 32, 32);
+    _dustTexture = new THREE.CanvasTexture(c);
+    return _dustTexture;
   }
 
   // ---------------------------------------------------------------------------
@@ -145,12 +146,14 @@ window.NightMode = (function () {
     }
     scene.add(starsGroup);
 
-    // ---- 4. Luciérnagas por árbol (cantidad ∝ salud) + halo si es 475 ----
+    // ---- 4. Luciérnagas por árbol (cantidad ∝ salud) ----
     const fireflies = []; // { sprite, baseY, phase, orbitR, speed, treeX, treeZ }
-    const halos = [];     // { sprite, basePulse, treeX, treeZ }
     const treeArr = Array.isArray(treeMeshes) ? treeMeshes : [];
 
-    treeArr.forEach((entry, idx) => {
+    // Recolectamos los árboles FES (para el polvo dorado del 475).
+    const fesTrees = [];
+
+    treeArr.forEach((entry) => {
       // entry puede ser { group, data } (Iztacala) o solo el group (CampusMap)
       const group = entry.group || entry;
       if (!group || !group.position) return;
@@ -181,27 +184,94 @@ window.NightMode = (function () {
         fireflies.push({ sprite, baseY, phase, orbitR, speed, treeX: x, treeZ: z });
       }
 
-      // --- Halo dorado para 475 ---
-      if (isFES) {
-        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-          map: _getHaloTexture(),
-          color: HALO_GOLD_HEX,
-          transparent: true,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-          opacity: 0.65,
-        }));
-        halo.scale.set(3.5, 3.5, 1);
-        halo.position.set(x, 5.2, z);
-        scene.add(halo);
-        halos.push({ sprite: halo, basePulse: Math.random() * Math.PI * 2, treeX: x, treeZ: z });
-      }
+      if (isFES) fesTrees.push({ x, z });
     });
+
+    // ---- Polvo dorado luminoso ascendente sobre árboles 475 ----
+    // Un solo THREE.Points con todas las partículas de TODOS los FES*: 1 draw call.
+    // Cada partícula tiene origen, velocidad y vida propias. ShaderMaterial custom
+    // permite fade por partícula (alpha varying) sin overhead de 1 sprite c/u.
+    const DUST_PER_TREE = 35;
+    const TOTAL_DUST = fesTrees.length * DUST_PER_TREE;
+    let dust = null;
+    if (TOTAL_DUST > 0) {
+      const positions = new Float32Array(TOTAL_DUST * 3);
+      const alphas    = new Float32Array(TOTAL_DUST);
+      const ages      = new Float32Array(TOTAL_DUST);
+      const lifetimes = new Float32Array(TOTAL_DUST);
+      const velocities = new Float32Array(TOTAL_DUST * 3);
+      const origins    = new Float32Array(TOTAL_DUST * 3);
+
+      fesTrees.forEach((t, ti) => {
+        for (let i = 0; i < DUST_PER_TREE; i++) {
+          const idx = ti * DUST_PER_TREE + i;
+          // origen dentro de un radio pequeño en la base del árbol
+          const r = Math.random() * 1.2;
+          const ang = Math.random() * Math.PI * 2;
+          const ox = t.x + Math.cos(ang) * r;
+          const oz = t.z + Math.sin(ang) * r;
+          const oy = 0.15 + Math.random() * 0.25;
+          origins[idx * 3] = ox; origins[idx * 3 + 1] = oy; origins[idx * 3 + 2] = oz;
+          // posición inicial dispersada en altura → no se ven "naciendo" todas al tiempo
+          const startAge = Math.random();
+          positions[idx * 3]     = ox + (Math.random() - 0.5) * 0.3;
+          positions[idx * 3 + 1] = oy + startAge * 5.0;
+          positions[idx * 3 + 2] = oz + (Math.random() - 0.5) * 0.3;
+          // velocidad ascendente con drift lateral leve (efecto "humo dorado")
+          velocities[idx * 3]     = (Math.random() - 0.5) * 0.18;
+          velocities[idx * 3 + 1] = 0.55 + Math.random() * 0.55;
+          velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.18;
+          lifetimes[idx] = 3.0 + Math.random() * 2.0;
+          ages[idx] = startAge * lifetimes[idx];
+          alphas[idx] = 1.0 - startAge;
+        }
+      });
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('alpha',    new THREE.BufferAttribute(alphas, 1));
+      const mat = new THREE.ShaderMaterial({
+        uniforms: {
+          uMap:   { value: _getDustTexture() },
+          uColor: { value: new THREE.Color(HALO_GOLD_HEX) },
+          uScale: { value: 320.0 },  // afecta el tamaño aparente según distancia
+        },
+        vertexShader: [
+          'attribute float alpha;',
+          'varying float vAlpha;',
+          'uniform float uScale;',
+          'void main() {',
+          '  vAlpha = alpha;',
+          '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+          '  gl_Position = projectionMatrix * mv;',
+          '  gl_PointSize = max(2.0, uScale / -mv.z);',
+          '}',
+        ].join('\n'),
+        fragmentShader: [
+          'uniform sampler2D uMap;',
+          'uniform vec3 uColor;',
+          'varying float vAlpha;',
+          'void main() {',
+          '  vec4 tex = texture2D(uMap, gl_PointCoord);',
+          '  if (tex.a < 0.02) discard;',
+          '  gl_FragColor = vec4(uColor, tex.a * vAlpha);',
+          '}',
+        ].join('\n'),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const points = new THREE.Points(geo, mat);
+      points.frustumCulled = false; // el bbox cambia c/ frame → evitar pop
+      scene.add(points);
+      dust = { points, geo, mat, positions, alphas, ages, lifetimes, velocities, origins, count: TOTAL_DUST };
+    }
 
     // ---- 5. Handle con tick + disable ----
     const handle = {
       isNight: true,
-      tick(elapsed) {
+      tick(elapsed, dt) {
+        const _dt = (typeof dt === 'number' && dt > 0) ? Math.min(dt, 0.1) : 0.016;
         // Luciérnagas: orbita pequeña + twinkle de opacity
         for (let i = 0; i < fireflies.length; i++) {
           const f = fireflies[i];
@@ -211,13 +281,38 @@ window.NightMode = (function () {
           f.sprite.position.y = f.baseY + Math.sin(t * 1.7) * 0.4;
           f.sprite.material.opacity = 0.45 + Math.abs(Math.sin(t * 2.3)) * 0.55;
         }
-        // Halos: pulso suave
-        for (let i = 0; i < halos.length; i++) {
-          const h = halos[i];
-          const pulse = 0.55 + Math.sin(elapsed * 0.9 + h.basePulse) * 0.15;
-          h.sprite.material.opacity = pulse;
-          const s = 3.5 + Math.sin(elapsed * 0.9 + h.basePulse) * 0.4;
-          h.sprite.scale.set(s, s, 1);
+        // Polvo dorado: integración euler simple + respawn al cumplir su vida.
+        // Opacidad: rampa rápida de aparición + desvanecido al subir (linear t).
+        if (dust) {
+          const pos = dust.positions;
+          const alp = dust.alphas;
+          const age = dust.ages;
+          const life = dust.lifetimes;
+          const vel = dust.velocities;
+          const org = dust.origins;
+          for (let i = 0; i < dust.count; i++) {
+            age[i] += _dt;
+            if (age[i] >= life[i]) {
+              // respawn en la base del mismo árbol con jitter
+              age[i] = 0;
+              pos[i*3]     = org[i*3]     + (Math.random() - 0.5) * 0.5;
+              pos[i*3 + 1] = org[i*3 + 1] + (Math.random() - 0.5) * 0.1;
+              pos[i*3 + 2] = org[i*3 + 2] + (Math.random() - 0.5) * 0.5;
+            } else {
+              pos[i*3]     += vel[i*3]     * _dt;
+              pos[i*3 + 1] += vel[i*3 + 1] * _dt;
+              pos[i*3 + 2] += vel[i*3 + 2] * _dt;
+            }
+            // Curva de opacidad: sube rápido a 1.0 al spawn, baja linealmente a 0 al final.
+            const u = age[i] / life[i];   // 0..1
+            // fade in en primeros 12%, fade out lineal después
+            let a;
+            if (u < 0.12) a = u / 0.12;
+            else          a = (1 - u) / 0.88;
+            alp[i] = Math.max(0, Math.min(1, a));
+          }
+          dust.geo.attributes.position.needsUpdate = true;
+          dust.geo.attributes.alpha.needsUpdate    = true;
         }
       },
       disable() {
@@ -241,12 +336,13 @@ window.NightMode = (function () {
           f.sprite.material.dispose();
         });
         fireflies.length = 0;
-        // Quitar halos
-        halos.forEach(h => {
-          scene.remove(h.sprite);
-          h.sprite.material.dispose();
-        });
-        halos.length = 0;
+        // Quitar polvo dorado
+        if (dust) {
+          scene.remove(dust.points);
+          dust.geo.dispose();
+          dust.mat.dispose();
+          dust = null;
+        }
         handle.isNight = false;
       },
     };

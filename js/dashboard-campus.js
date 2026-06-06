@@ -583,7 +583,7 @@ window.CampusMap = (function() {
     _lastTime = now;
     _elapsed += dt;
     if (controls) controls.update();
-    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed);
+    if (_nightFx && _nightFx.isNight) _nightFx.tick(_elapsed, dt);
     renderer.render(scene, camera);
   }
 
