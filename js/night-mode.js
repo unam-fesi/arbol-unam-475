@@ -208,7 +208,11 @@ window.NightMode = (function () {
     // Un solo THREE.Points con todas las partículas de TODOS los FES*: 1 draw call.
     // Cada partícula tiene origen, velocidad y vida propias. ShaderMaterial custom
     // permite fade por partícula (alpha varying) sin overhead de 1 sprite c/u.
-    const DUST_PER_TREE = 35;
+    //
+    // CURVA DE OPACIDAD: bell 4u(1-u) — invisible al spawn y al final, brillante
+    // a mitad del trayecto. Resultado: las partículas MÁS visibles están MID-AIR,
+    // no en la base. Eso crea la sensación de polvo flotando hacia arriba.
+    const DUST_PER_TREE = 50;
     const TOTAL_DUST = fesTrees.length * DUST_PER_TREE;
     let dust = null;
     if (TOTAL_DUST > 0) {
@@ -222,25 +226,28 @@ window.NightMode = (function () {
       fesTrees.forEach((t, ti) => {
         for (let i = 0; i < DUST_PER_TREE; i++) {
           const idx = ti * DUST_PER_TREE + i;
-          // origen dentro de un radio pequeño en la base del árbol
-          const r = Math.random() * 1.2;
+          // origen radial amplio (hasta 2.5m del tronco) para evitar "cono apretado"
+          const r = Math.random() * 2.5;
           const ang = Math.random() * Math.PI * 2;
           const ox = t.x + Math.cos(ang) * r;
           const oz = t.z + Math.sin(ang) * r;
-          const oy = 0.15 + Math.random() * 0.25;
+          const oy = 0.2 + Math.random() * 0.4;
           origins[idx * 3] = ox; origins[idx * 3 + 1] = oy; origins[idx * 3 + 2] = oz;
-          // posición inicial dispersada en altura → no se ven "naciendo" todas al tiempo
+          // posición inicial dispersada en altura ⇒ NO se ven "naciendo" todas al tiempo.
+          // Distribuimos uniformemente 0..1 (no cuadrático) para evitar acumulación abajo.
           const startAge = Math.random();
-          positions[idx * 3]     = ox + (Math.random() - 0.5) * 0.3;
-          positions[idx * 3 + 1] = oy + startAge * 5.0;
-          positions[idx * 3 + 2] = oz + (Math.random() - 0.5) * 0.3;
-          // velocidad ascendente con drift lateral leve (efecto "humo dorado")
-          velocities[idx * 3]     = (Math.random() - 0.5) * 0.18;
-          velocities[idx * 3 + 1] = 0.55 + Math.random() * 0.55;
-          velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.18;
-          lifetimes[idx] = 3.0 + Math.random() * 2.0;
+          positions[idx * 3]     = ox + (Math.random() - 0.5) * 0.4;
+          positions[idx * 3 + 1] = oy + startAge * 8.0; // hasta ~8m arriba
+          positions[idx * 3 + 2] = oz + (Math.random() - 0.5) * 0.4;
+          // Velocidad: subida más rápida (1.0-2.0 m/s) + drift lateral ligero.
+          velocities[idx * 3]     = (Math.random() - 0.5) * 0.25;
+          velocities[idx * 3 + 1] = 1.0 + Math.random() * 1.0;
+          velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.25;
+          lifetimes[idx] = 3.5 + Math.random() * 2.0;
           ages[idx] = startAge * lifetimes[idx];
-          alphas[idx] = 1.0 - startAge;
+          // Alpha inicial siguiendo curva campana (igual que tick): peak en u=0.5
+          const u0 = startAge;
+          alphas[idx] = 4 * u0 * (1 - u0);
         }
       });
 
@@ -251,7 +258,7 @@ window.NightMode = (function () {
         uniforms: {
           uMap:   { value: _getDustTexture() },
           uColor: { value: new THREE.Color(HALO_GOLD_HEX) },
-          uScale: { value: 1800.0 },  // tamaño en pixeles a 1 unidad de cámara
+          uScale: { value: 2400.0 },  // tamaño en pixeles a 1 unidad de cámara
         },
         vertexShader: [
           'attribute float alpha;',
@@ -322,13 +329,11 @@ window.NightMode = (function () {
               pos[i*3 + 1] += vel[i*3 + 1] * _dt;
               pos[i*3 + 2] += vel[i*3 + 2] * _dt;
             }
-            // Curva de opacidad: sube rápido a 1.0 al spawn, baja linealmente a 0 al final.
+            // Curva campana 4u(1-u): partículas MÁS brillantes están a mitad de
+            // su trayectoria (a ~2m sobre la base, no en el suelo). Esto evita
+            // que se vea aglomerado abajo y se note el "polvo flotando hacia arriba".
             const u = age[i] / life[i];   // 0..1
-            // fade in en primeros 12%, fade out lineal después
-            let a;
-            if (u < 0.12) a = u / 0.12;
-            else          a = (1 - u) / 0.88;
-            alp[i] = Math.max(0, Math.min(1, a));
+            alp[i] = 4 * u * (1 - u);
           }
           dust.geo.attributes.position.needsUpdate = true;
           dust.geo.attributes.alpha.needsUpdate    = true;
