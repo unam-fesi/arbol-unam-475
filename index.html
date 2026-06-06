@@ -1661,27 +1661,30 @@
                     <input type="date" id="profile-birth-date">
                 </div>
                 <div class="form-group">
-                    <label>Estatus Acad&eacute;mico</label>
+                    <label>Estatus Acad&eacute;mico <span id="profile-status-lock" style="display:none;font-size:0.78rem;color:#888;font-weight:normal;">(asignado por admin)</span></label>
                     <select id="profile-academic-status">
                         <option value="">Seleccionar...</option>
                         <option value="alumno">Alumno</option>
+                        <option value="pasante">Pasante</option>
+                        <option value="tesista">Tesista</option>
+                        <option value="egresado">Egresado</option>
                         <option value="exalumno">Exalumno</option>
                         <option value="postgrado">Postgrado</option>
-                        <option value="doctorante">Doctorante</option>
+                        <option value="becario">Becario</option>
                         <option value="profesor">Profesor</option>
-                        <option value="investigador">Investigador</option>
-                        <option value="administrativo">Administrativo</option>
+                        <option value="profesora">Profesora</option>
+                        <option value="trabajador">Trabajador</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Campus</label>
+                    <label>Campus <span id="profile-campus-lock" style="display:none;font-size:0.78rem;color:#888;font-weight:normal;">(asignado por admin)</span></label>
                     <select id="profile-campus">
                         <option value="">Seleccionar...</option>
-                        <option value="FESI">FES Iztacala</option>
-                        <option value="FESA">FES Arag&oacute;n</option>
-                        <option value="FESC">FES Cuautitl&aacute;n</option>
-                        <option value="FESZ">FES Zaragoza</option>
-                        <option value="FESAC">FES Acatl&aacute;n</option>
+                        <option value="Iztacala">FES Iztacala</option>
+                        <option value="Aragon">FES Arag&oacute;n</option>
+                        <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                        <option value="Zaragoza">FES Zaragoza</option>
+                        <option value="Acatlan">FES Acatl&aacute;n</option>
                         <option value="CU">Ciudad Universitaria</option>
                     </select>
                 </div>

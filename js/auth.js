@@ -665,6 +665,25 @@ function openProfileModal() {
     document.getElementById('profile-academic-status').value = currentUserProfile.academic_status || '';
     document.getElementById('profile-campus').value = currentUserProfile.campus || '';
 
+    // Campus y academic_status son ASIGNADOS POR ADMIN; el usuario regular NO
+    // debe poder modificarlos él mismo (porque alteraría su agrupación operativa).
+    // Solo admin / admin-campus / rectoria los ven editables.
+    const role = String(currentUserProfile.role || '').toLowerCase();
+    const canEditAdminFields = ['admin','admin-campus','rectoria'].includes(role);
+    const statusEl = document.getElementById('profile-academic-status');
+    const campusEl = document.getElementById('profile-campus');
+    const statusLock = document.getElementById('profile-status-lock');
+    const campusLock = document.getElementById('profile-campus-lock');
+    [statusEl, campusEl].forEach(el => {
+      if (!el) return;
+      el.disabled = !canEditAdminFields;
+      el.style.background = canEditAdminFields ? '' : 'var(--bg)';
+      el.style.color = canEditAdminFields ? '' : 'var(--text-light)';
+      el.style.cursor = canEditAdminFields ? '' : 'not-allowed';
+    });
+    if (statusLock) statusLock.style.display = canEditAdminFields ? 'none' : 'inline';
+    if (campusLock) campusLock.style.display = canEditAdminFields ? 'none' : 'inline';
+
     // Avatar placeholder (initials)
     const placeholder = document.getElementById('profile-avatar-placeholder');
     if (placeholder) {
@@ -806,13 +825,21 @@ async function saveProfile(e) {
     return;
   }
 
+  // Defensa: solo admin/admin-campus/rectoria pueden modificar campus y academic_status
+  // desde su propio perfil. Si no es admin, IGNORAMOS los valores del form aunque
+  // alguien haya manipulado el DOM (esos campos viajan disabled por openProfileModal).
+  const role = String(currentUserProfile?.role || '').toLowerCase();
+  const canEditAdminFields = ['admin','admin-campus','rectoria'].includes(role);
+
   const updates = {
     full_name: fullName,
     account_number: accountNumber || null,
     birth_date: birthDate || null,
-    academic_status: academicStatus || null,
-    campus: campus || null
   };
+  if (canEditAdminFields) {
+    updates.academic_status = academicStatus || null;
+    updates.campus = campus || null;
+  }
 
   try {
     const { error } = await sb
