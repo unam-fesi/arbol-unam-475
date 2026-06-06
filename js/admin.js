@@ -3890,12 +3890,13 @@ async function loadSecurityDashboard() {
     const alertChatId = (alertCfg.chat_id || '').toString();
     const alertEnabled = alertCfgRes?.data?.enabled !== false;
     const alertMinSev = alertCfg.min_severity || 'high';
-    // Cachear eventos para filtrado client-side sin re-fetch
-    _secEventsCache = secEvents;
     const attempts = attemptsRes.data || [];
     const blocks = blocksRes.data || [];
     const weekAttempts = weekRes.data || [];
     const secEvents = secEvtsRes.data || [];
+    // Cachear eventos para filtrado client-side sin re-fetch (DEBE ir
+    // DESPUÉS de declarar `secEvents` — antes daba TDZ ReferenceError).
+    _secEventsCache = secEvents;
     const fails24h = attempts.filter(a => !a.success).length;
     const ok24h = attempts.filter(a => a.success).length;
     const fails7d = weekAttempts.filter(a => !a.success).length;
