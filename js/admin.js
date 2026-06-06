@@ -98,11 +98,13 @@ function switchAdminGroup(groupName) {
   // admin-campus (este último viendo solo su campus — effectiveCampusFilter
   // ya lo fuerza). Las tabs internas más restrictivas (kpis, security,
   // quotas, audit) están en TABS_ADMIN_ONLY y se filtran en switchAdminTab.
-  if (groupName === 'seguridad' && !isAdminRole()) {
+  // Rectoría puede entrar a TODOS los grupos en modo read-only — los botones
+  // de edición ya están bloqueados por el CSS body.role-rectoria.
+  if (groupName === 'seguridad' && !(isAdminRole() || isRectoriaRole())) {
     showToast('Acceso denegado: solo administrador principal', 'error');
     return;
   }
-  if (groupName === 'monitoreo' && !(isAdminRole() || isAdminCampusRole())) {
+  if (groupName === 'monitoreo' && !(isAdminRole() || isAdminCampusRole() || isRectoriaRole())) {
     showToast('Acceso denegado: solo admin / admin-campus', 'error');
     return;
   }
@@ -134,8 +136,10 @@ function switchAdminTab(tabName) {
     showSection('section-mi-arbol');
     return;
   }
-  // Bloquear tabs que solo admin principal puede ver
-  if (TABS_ADMIN_ONLY.has(tabName) && !isAdminRole()) {
+  // Bloquear tabs que solo admin principal puede ver.
+  // Rectoría también las puede ver (en read-only — el CSS body.role-rectoria
+  // se encarga de ocultar botones de creación/edición/borrado).
+  if (TABS_ADMIN_ONLY.has(tabName) && !(isAdminRole() || isRectoriaRole())) {
     showToast('Esta sección solo está disponible para el admin principal', 'warning');
     return;
   }
@@ -242,11 +246,13 @@ function applyRoleBasedUIRestrictions() {
   document.querySelectorAll('.admin-tab-group').forEach(t => { t.style.display = ''; });
 
   // SEGURIDAD por GRUPO:
-  //   - "seguridad" : SOLO admin principal (audit + IPs + quotas)
-  //   - "monitoreo" : admin principal Y admin-campus (este último ve solo su campus)
+  //   - "seguridad" : admin principal + RECTORIA (solo lectura, vía CSS body.role-rectoria)
+  //   - "monitoreo" : admin principal + admin-campus + RECTORIA (esta última solo lectura)
   //   - Responsable : ni monitoreo ni seguridad
-  const showMonitoreo = isAdminRole() || isAdminCampusRole();
-  const showSeguridad = isAdminRole();
+  // Rectoría ve TODO en modo read-only; los botones de
+  // crear/editar/borrar se ocultan por el bloque CSS body.role-rectoria.
+  const showMonitoreo = isAdminRole() || isAdminCampusRole() || isRectoriaRole();
+  const showSeguridad = isAdminRole() || isRectoriaRole();
   document.querySelectorAll('.admin-tab-group').forEach(btn => {
     const g = btn.dataset.group;
     if (g === 'seguridad' && !showSeguridad) btn.style.display = 'none';
@@ -365,7 +371,10 @@ function _applyRoleRestrictionsToUserForm() {
 // (Los jardines solo existen en FES Iztacala por ahora.)
 function _applyGardenVisibility() {
   const cf = effectiveCampusFilter();
-  const showGardens = !cf || cf === 'Iztacala';
+  // Rectoría supervisa todo: siempre debe ver el módulo de jardines aunque
+  // su campus efectivo no sea Iztacala (los jardines solo existen ahí pero
+  // rectoría quiere poder revisarlos en read-only).
+  const showGardens = !cf || cf === 'Iztacala' || isRectoriaRole();
   // Form de asignar jardín (en tab Asignaciones)
   const assignForm = document.getElementById('assign-garden-form-wrap');
   if (assignForm) assignForm.style.display = showGardens ? '' : 'none';
@@ -374,8 +383,9 @@ function _applyGardenVisibility() {
   if (assignTable) assignTable.style.display = showGardens ? '' : 'none';
   // Tab "Jardines" en la barra de tabs admin (admin-campus YA está oculto por TABS_ADMIN_ONLY,
   // pero el admin principal también lo verá oculto si filtra a un campus != Iztacala)
+  // Rectoría también debe ver el tab "Jardines" (read-only).
   const gardensTab = document.querySelector('.admin-tab[data-tab="gardens"]');
-  if (gardensTab && isAdminRole()) {
+  if (gardensTab && (isAdminRole() || isRectoriaRole())) {
     gardensTab.style.display = showGardens ? '' : 'none';
   }
   // Dropdown "Jardín (opcional)" del form de alta de árbol — fuera de Iztacala no existen jardines
