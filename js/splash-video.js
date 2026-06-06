@@ -509,9 +509,15 @@ window.SplashVideo = (function() {
     // Sincronizar BG con el main (mismo tiempo)
     if (videoEl && bgVideoEl) {
       videoEl.addEventListener('timeupdate', () => {
-        if (Math.abs(bgVideoEl.currentTime - videoEl.currentTime) > 0.3) {
-          bgVideoEl.currentTime = videoEl.currentTime;
-        }
+        // Guard: el listener puede ejecutarse después de que los elementos
+        // hayan sido removidos del DOM (splash terminó). Si cualquiera es
+        // null/undefined o detached, salimos.
+        if (!videoEl || !bgVideoEl) return;
+        try {
+          if (Math.abs(bgVideoEl.currentTime - videoEl.currentTime) > 0.3) {
+            bgVideoEl.currentTime = videoEl.currentTime;
+          }
+        } catch (_) { /* elemento detached u otro race condition — ignorar */ }
       });
       // Marcar overlay como "video-ready" para esconder el fondo radial decorativo
       videoEl.addEventListener('playing', () => overlayEl.classList.add('video-ready'), { once: true });
