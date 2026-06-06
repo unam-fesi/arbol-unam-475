@@ -170,21 +170,26 @@ async function initApp() {
   // activa visualmente), distinguimos entre INITIAL login y re-auth.
   let _mainAppShown = false;
   sb.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_IN' && session) {
+    if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') && session) {
       currentUser = session.user;
-      // Detector secundario: si el hash ya se limpió pero es una primera
-      // entrada de un invitado, todavía podemos identificarlo viendo si
-      // last_sign_in_at viene null (Supabase lo marca después de la primera
-      // sesión validada). Sin esto, el usuario invitado puede entrar sin
-      // password si v227 cargó después de que Supabase consumiera el hash.
       const u = session.user;
       // Señal DEFINITIVA: el edge function batch-invite-users mete
-      // pending_password_setup:true en user_metadata. Limpiamos el flag al
-      // completar el modal (vía updateUser data:{pending_password_setup:false}).
-      // Esto es robusto vs. Supabase pre-llenando last_sign_in_at en el /verify.
+      // pending_password_setup:true en user_metadata. Si está, FORZAMOS el
+      // modal sin importar _mainAppShown (caso típico: admin ya entró, hace
+      // click en magic link de invitado → sesión cambia → debemos forzar el
+      // modal aunque la app ya esté visible).
       const pendingPwd = u?.user_metadata?.pending_password_setup === true;
+      if (pendingPwd) {
+        console.warn('[auth] pending_password_setup detectado para', u.email, '→ mostrando modal');
+        showSetPasswordModal('invite', () => {
+          _inviteFlowType = null;
+          _mainAppShown = true;
+          loadUserProfile().then(() => showMainApp());
+        });
+        return;
+      }
+      // Detector primario por URL (flow PKCE o implicit)
       const isFreshInvite = !_mainAppShown && (
-        pendingPwd ||
         _inviteFlowType === 'invite' ||
         _inviteFlowType === 'recovery'
       );
