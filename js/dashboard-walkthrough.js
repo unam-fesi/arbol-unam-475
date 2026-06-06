@@ -148,7 +148,7 @@ if (typeof window !== 'undefined' && window.DEBUG_VERBOSE) {
     playerPos = new THREE.Vector3(50, EYE_HEIGHT, -80);
     yaw = -0.5;     // mirando ligeramente hacia el SO (centro del campus)
     pitch = -0.1;   // un poquito hacia abajo
-    cameraDistance = 6;  // arranca en 3ª persona para que veas al pumita
+    cameraDistance = 6;  // arranca en 3ª persona para que veas el avatar (colibrí)
     _updateCameraFromPlayer();
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -177,9 +177,11 @@ if (typeof window !== 'undefined' && window.DEBUG_VERBOSE) {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Avatar PUMITA UNAM. Intenta cargar GLB de `data/pumita.glb` (también
-    // acepta `puma.glb`). Si no existe o falla, cae al puma procedural.
-    avatar = _makePumaAvatar();  // placeholder inmediato mientras intenta el GLB
+    // Avatar: colibrí UNAM (data/colibri.glb). Mientras carga, placeholder
+    // es un Group VACÍO invisible (sin mesh) — antes era un pumita procedural
+    // pero se eliminó porque causaba flash visible "colibrí → pumita → colibrí"
+    // al aterrizar después de saltar.
+    avatar = _makePumaAvatar();  // ahora retorna Group invisible
     avatar.position.copy(playerPos);
     avatar.position.y = 0;
     scene.add(avatar);
@@ -387,14 +389,16 @@ if (typeof window !== 'undefined' && window.DEBUG_VERBOSE) {
     treeGroups.push(group);
   }
 
-  // ---- Cargar GLB del puma si existe -------------------------------------
-  // Intenta data/colibri.glb (puma como fallback histórico).
+  // ---- Cargar GLB del avatar (colibrí) -----------------------------------
+  // Solo carga colibri.glb. El pumita procedural fue eliminado del proyecto.
   // El colibrí tiene 2 animaciones: ANIM_rapid_wing_flap_approx_4Hz_loop +
   // ANIM_head_direction_scan_yaw_loop. Forward axis = +Z (Three.js convention).
   function _tryLoadPumaGLB() {
     const candidates = [
       'data/colibri.glb',
-      'data/pumita.glb',     // fallback si alguien quita el colibrí
+      // pumita.glb removido — el placeholder procedural (`_makePumaAvatar`)
+      // ahora es un Group invisible, así que si el colibri falla el avatar
+      // queda oculto pero el resto del walkthrough sigue funcionando.
     ];
     const tryNext = (i) => {
       if (i >= candidates.length || !scene) return;
@@ -593,108 +597,24 @@ if (typeof window !== 'undefined' && window.DEBUG_VERBOSE) {
     }
   }
 
-  // ---- AVATAR PUMITA UNAM (procedural — fallback) ------------------------
-  // Construido con primitivas — sin GLB. Es una representación cartoonish
-  // del puma: cuerpo alargado, cabeza con orejas/ojos/nariz, 4 patas y cola.
-  // Diseñado mirando hacia -Z (la dirección "forward" por defecto de Three.js),
-  // así rotar avatar.rotation.y = yaw lo alinea con la cámara.
+  // ---- AVATAR placeholder (invisible) ------------------------------------
+  // ANTES: este era un puma procedural de primitivas que servía como fallback
+  // si el GLB del colibrí no cargaba, y como placeholder durante los pocos ms
+  // que tarda en cargar. PERO el placeholder se veía durante el aterrizaje
+  // (después de saltar con Space), causando un flash visible "colibri →
+  // pumita → colibri" que se sentía como bug.
+  //
+  // AHORA: placeholder es un Group VACÍO e invisible. Si el colibri.glb falla,
+  // el avatar simplemente queda invisible (otros sistemas como cámara, físicas
+  // y controles siguen funcionando normal — solo no se ve mesh).
+  //
+  // Mantenemos la firma `_makePumaAvatar()` por compatibilidad con call sites.
   function _makePumaAvatar() {
     const g = new THREE.Group();
-    const tan = 0xc99054;       // color puma (tan/dorado UNAM)
-    const tanDark = 0x9c6d3a;   // sombra
-    const black = 0x222222;
-    const goldEye = 0xffd54f;
-
-    const bodyMat = new THREE.MeshStandardMaterial({ color: tan, roughness: 0.7 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: tanDark, roughness: 0.7 });
-    const blackMat = new THREE.MeshStandardMaterial({ color: black, roughness: 0.6 });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: goldEye });
-
-    // Cuerpo (esfera alargada en Z = longitud del cuerpo)
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 12), bodyMat);
-    body.scale.set(1, 0.85, 1.55);
-    body.position.y = 0.55;
-    g.add(body);
-
-    // Cabeza (frontal — hacia -Z)
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 12), bodyMat);
-    head.position.set(0, 0.72, -0.55);
-    head.scale.set(1.05, 1, 1.05);
-    g.add(head);
-
-    // Hocico (más oscuro, sobresale)
-    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), darkMat);
-    muzzle.position.set(0, 0.6, -0.78);
-    muzzle.scale.set(1, 0.85, 1);
-    g.add(muzzle);
-
-    // Nariz negra
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), blackMat);
-    nose.position.set(0, 0.65, -0.92);
-    g.add(nose);
-
-    // Ojos amarillos + pupilas negras
-    const eyeGeo = new THREE.SphereGeometry(0.055, 10, 8);
-    const pupilGeo = new THREE.SphereGeometry(0.025, 8, 6);
-    [-0.11, 0.11].forEach(x => {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(x, 0.78, -0.74);
-      g.add(eye);
-      const pupil = new THREE.Mesh(pupilGeo, blackMat);
-      pupil.position.set(x, 0.78, -0.79);
-      g.add(pupil);
-    });
-
-    // Orejas (conos)
-    const earGeo = new THREE.ConeGeometry(0.1, 0.22, 8);
-    [-0.16, 0.16].forEach(x => {
-      const ear = new THREE.Mesh(earGeo, bodyMat);
-      ear.position.set(x, 0.99, -0.5);
-      ear.rotation.z = x < 0 ? 0.15 : -0.15;  // ligeramente hacia afuera
-      g.add(ear);
-      // Interior de la oreja (negro)
-      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), blackMat);
-      inner.position.set(x, 0.98, -0.5);
-      inner.rotation.z = x < 0 ? 0.15 : -0.15;
-      g.add(inner);
-    });
-
-    // 4 patas. Las almaceno en userData.legs para animarlas al caminar
-    const legGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.55, 8);
-    const legPositions = [
-      { x: -0.22, z: -0.35, key: 'FL' },  // delantera izquierda
-      { x:  0.22, z: -0.35, key: 'FR' },  // delantera derecha
-      { x: -0.22, z:  0.35, key: 'BL' },  // trasera izquierda
-      { x:  0.22, z:  0.35, key: 'BR' },  // trasera derecha
-    ];
-    const legs = {};
-    legPositions.forEach(p => {
-      const leg = new THREE.Mesh(legGeo, bodyMat);
-      leg.position.set(p.x, 0.27, p.z);
-      g.add(leg);
-      legs[p.key] = leg;
-    });
-    g.userData.legs = legs;
-
-    // Cola (cilindro inclinado hacia arriba-atrás)
-    const tail = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.04, 0.85, 8),
-      bodyMat
-    );
-    tail.position.set(0, 0.72, 0.7);
-    tail.rotation.x = -Math.PI / 4.5;
-    g.add(tail);
-    g.userData.tail = tail;
-
-    // Sombra plana debajo (disco oscuro)
-    const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.55, 24),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.01;
-    g.add(shadow);
-
+    g.userData.placeholder = true;
+    // Sin legs, sin armBones, sin tail → la animación procedural en el loop
+    // (else if avatar.userData.legs) hace early-return.
+    // Sin meshes → no se ve nada hasta que cargue el colibrí.
     return g;
   }
 
