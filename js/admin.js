@@ -62,6 +62,17 @@ function applyRoleBodyClass() {
   document.body.classList.toggle('role-admin', isAdminRole());
   document.body.classList.toggle('role-admin-campus', isAdminCampusRole());
   document.body.classList.toggle('role-responsable', isResponsableRole());
+
+  // DEFENSE IN DEPTH para rectoria:
+  // Garantizar que los nav-link de "Mi Árbol" y "Admin" estén SIEMPRE visibles.
+  // setupRoleBasedNav() ya los habilita, pero si algún flujo posterior los
+  // hubiera ocultado por mistake, aquí los restauramos. No tocamos otros
+  // links — Mi Árbol e Info son visibles para todos por default.
+  if (isRectoriaRole()) {
+    document.querySelectorAll('#navbarNav .nav-link[data-section="section-admin"], #navbarNav .nav-link[data-section="section-mi-arbol"]').forEach(el => {
+      if (el.style.display === 'none') el.style.display = '';
+    });
+  }
 }
 window.applyRoleBodyClass = applyRoleBodyClass;
 
@@ -820,10 +831,60 @@ async function deleteAdminUser(userId, userName) {
 }
 window.deleteAdminUser = deleteAdminUser;
 
+// Handler para el dropdown de rol en el modal de EDITAR usuario.
+// Refleja la misma lógica que toggleSpecialistFields() del form de CREAR:
+// - muestra/oculta el bloque de especialista
+// - deshabilita campus + fija 'CU' + muestra hint cuando role=rectoria
+function _editUserRoleChanged(sel) {
+  const role = sel.value;
+  const specBlock = document.getElementById('edit-spec-fields');
+  if (specBlock) specBlock.style.display = role === 'specialist' ? 'block' : 'none';
+  const campusSel = document.getElementById('edit-user-campus');
+  const hint = document.getElementById('edit-user-campus-hint');
+  if (campusSel) {
+    if (role === 'rectoria') {
+      campusSel.value = 'CU';
+      campusSel.disabled = true;
+      if (hint) hint.style.display = 'inline';
+    } else {
+      // Solo re-habilitar si el caller es admin principal (admin-campus no puede tocarlo)
+      const callerIsAdminPrincipal = isAdminRole();
+      campusSel.disabled = !callerIsAdminPrincipal;
+      if (hint) hint.style.display = 'none';
+    }
+  }
+}
+window._editUserRoleChanged = _editUserRoleChanged;
+
 function toggleSpecialistFields() {
   const role = document.getElementById('admin-user-role')?.value;
   const block = document.getElementById('specialist-fields');
   if (block) block.style.display = role === 'specialist' ? 'block' : 'none';
+
+  // Rectoría supervisa TODOS los campus → el campo "campus" no aplica.
+  // Lo deshabilitamos y forzamos a 'CU' (Ciudad Universitaria) como valor
+  // institucional por convención. Para otros roles se restaura selectable.
+  const campusSel = document.getElementById('admin-user-campus');
+  const campusGroup = campusSel?.closest('.form-group');
+  if (campusSel) {
+    if (role === 'rectoria') {
+      campusSel.value = 'CU';
+      campusSel.disabled = true;
+      campusSel.title = 'Rectoría no pertenece a un campus específico — fijado en CU institucional';
+      if (campusGroup && !campusGroup.querySelector('.campus-rectoria-hint')) {
+        const hint = document.createElement('small');
+        hint.className = 'campus-rectoria-hint';
+        hint.style.cssText = 'display:block;color:#777;font-size:0.75rem;margin-top:3px;';
+        hint.innerHTML = '<i class="fas fa-info-circle"></i> Rectoría supervisa todos los campus.';
+        campusGroup.appendChild(hint);
+      }
+    } else {
+      campusSel.disabled = false;
+      campusSel.title = '';
+      const hint = campusGroup?.querySelector('.campus-rectoria-hint');
+      if (hint) hint.remove();
+    }
+  }
 }
 
 async function saveAdminUser(e) {
@@ -974,11 +1035,12 @@ async function editAdminUser(userId) {
           <input type="password" id="edit-user-password" value="" placeholder="Mínimo 8 caracteres" style="width:100%;padding:0.5rem;" autocomplete="new-password">
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Rol</label>
-          <select id="edit-user-role" style="width:100%;padding:0.5rem;" onchange="document.getElementById('edit-spec-fields').style.display = this.value === 'specialist' ? 'block':'none';">
+          <select id="edit-user-role" style="width:100%;padding:0.5rem;" onchange="_editUserRoleChanged(this)">
             <option value="user" ${user.role === 'user' ? 'selected' : ''}>Usuario</option>
             <option value="responsable" ${user.role === 'responsable' ? 'selected' : ''}>Responsable</option>
             <option value="specialist" ${user.role === 'specialist' ? 'selected' : ''}>Especialista</option>
             <option value="admin-campus" ${user.role === 'admin-campus' ? 'selected' : ''}>Admin de campus</option>
+            ${showAdminRoleOption ? `<option value="rectoria" ${user.role === 'rectoria' ? 'selected' : ''}>Rectoría UNAM (solo lectura + su árbol)</option>` : ''}
             ${showAdminRoleOption ? `<option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador principal</option>` : ''}
           </select>
         </div>
@@ -986,8 +1048,8 @@ async function editAdminUser(userId) {
           <select id="edit-user-status" style="width:100%;padding:0.5rem;">${statusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>No. Cuenta</label><input type="text" id="edit-user-cuenta" value="${escapeHtml(user.account_number || '')}" style="width:100%;padding:0.5rem;"></div>
-        <div class="form-group" style="margin-bottom:1rem;"><label>Campus${campusReadOnly ? ' <small style="color:#888;">(no editable)</small>' : ''}</label>
-          <select id="edit-user-campus" style="width:100%;padding:0.5rem;" ${campusReadOnly ? 'disabled' : ''}>${campusSelect}</select>
+        <div class="form-group" style="margin-bottom:1rem;"><label>Campus${campusReadOnly ? ' <small style="color:#888;">(no editable)</small>' : ''}<small id="edit-user-campus-hint" style="display:${user.role === 'rectoria' ? 'inline' : 'none'};color:#777;margin-left:6px;"><i class="fas fa-info-circle"></i> Rectoría supervisa todos los campus</small></label>
+          <select id="edit-user-campus" style="width:100%;padding:0.5rem;" ${campusReadOnly || user.role === 'rectoria' ? 'disabled' : ''}>${campusSelect}</select>
         </div>
         <div class="form-group" style="margin-bottom:1rem;"><label>Telegram Chat ID</label><input type="text" id="edit-user-telegram" value="${escapeHtml(user.telegram_chat_id || '')}" style="width:100%;padding:0.5rem;" placeholder="123456789"></div>
         <div id="edit-spec-fields" style="display:${isSpec?'block':'none'};border-left:3px solid var(--primary);padding:0.75rem;margin-bottom:1rem;background:#f9fdf9;border-radius:6px;">
@@ -1017,6 +1079,12 @@ async function editAdminUser(userId) {
       };
       if (!campusReadOnly) {
         profileUpdates.campus = document.getElementById('edit-user-campus').value;
+      }
+      // Si el rol resultante es rectoria, forzar campus 'CU' (el select está
+      // disabled visualmente pero .value sigue legible). Esto blinda contra
+      // estados inconsistentes si el admin cambió el rol sin tocar campus.
+      if (profileUpdates.role === 'rectoria') {
+        profileUpdates.campus = 'CU';
       }
 
       try {
