@@ -2292,8 +2292,29 @@ async function loadAdminGroups() {
     if (campusFilter) q = q.eq('campus', campusFilter);
     const { data, error } = await q;
     if (error) throw error;
+
+    // Traer SIMULTÁNEAMENTE los campus de cada miembro de cada grupo.
+    // 1 query a group_members + 1 a user_profiles. Mapeamos en cliente.
+    const groupIds = (data || []).map(g => g.id);
+    const campusByGroup = new Map();   // group_id -> Map(campus -> count)
+    if (groupIds.length > 0) {
+      const [memRes, profRes] = await Promise.all([
+        sb.from('group_members').select('group_id, user_id').in('group_id', groupIds),
+        sb.from('user_profiles').select('id, campus'),
+      ]);
+      const profCampus = new Map((profRes.data || []).map(p => [p.id, p.campus || null]));
+      (memRes.data || []).forEach(m => {
+        const c = profCampus.get(m.user_id) || 'Sin campus';
+        if (!campusByGroup.has(m.group_id)) campusByGroup.set(m.group_id, new Map());
+        const inner = campusByGroup.get(m.group_id);
+        inner.set(c, (inner.get(c) || 0) + 1);
+      });
+    }
+
     _groupsCache = (data || []).map(g => ({
-      ...g, _memberCount: g.group_members?.[0]?.count || 0
+      ...g,
+      _memberCount: g.group_members?.[0]?.count || 0,
+      _campusCounts: campusByGroup.get(g.id) || new Map(),
     }));
     _renderGroups(_groupsCache);
   } catch (err) {
@@ -2306,14 +2327,40 @@ function _renderGroups(rows) {
   if (!tbody) return;
   tbody.innerHTML = '';
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
     return;
   }
+  // Etiqueta humanizada por campus (consistente con resto del admin)
+  const CAMPUS_LABEL_GRP = {
+    'Iztacala':   'FES Iztacala',
+    'Acatlan':    'FES Acatlán',
+    'Aragon':     'FES Aragón',
+    'Cuautitlan': 'FES Cuautitlán',
+    'Cuautitlan1':'FES Cuautitlán C1',
+    'Zaragoza':   'FES Zaragoza',
+    'CU':         'Ciudad Universitaria',
+    'Sin campus': 'Sin campus',
+  };
   rows.forEach(g => {
     const row = document.createElement('tr');
+    const counts = g._campusCounts instanceof Map ? g._campusCounts : new Map();
+    const sortedCampus = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    const campusChips = sortedCampus.length === 0
+      ? '<span style="color:#aaa;font-size:0.78rem;">Sin miembros</span>'
+      : sortedCampus.map(([c, n]) => {
+          const isUnknown = c === 'Sin campus';
+          const color = isUnknown ? '#666' : '#0d2d5c';
+          const bg = isUnknown ? '#f0f0f0' : '#e8f5fe';
+          const border = isUnknown ? '#ddd' : '#c9e1f5';
+          return `<span style="display:inline-block;font-size:0.72rem;background:${bg};color:${color};padding:2px 8px;border-radius:10px;margin:1px 2px 1px 0;border:1px solid ${border};white-space:nowrap;">
+            <i class="fas fa-map-marker-alt" style="font-size:0.6rem;"></i>
+            ${escapeHtml(CAMPUS_LABEL_GRP[c] || c)} <strong>×${n}</strong>
+          </span>`;
+        }).join('');
     row.innerHTML = `
       <td>${escapeHtml(g.name)} <small style="color:#888;">(${g._memberCount} miembros)</small></td>
       <td>${escapeHtml(g.description || '-')}</td>
+      <td style="line-height:1.6;">${campusChips}</td>
       <td>
         <button class="btn btn-sm btn-secondary" onclick="manageGroupMembers('${g.id}', '${safeJsAttr(g.name)}')">Miembros</button>
         <button class="btn btn-sm btn-danger" onclick="deleteAdminGroup('${g.id}')">Eliminar</button>
@@ -2325,17 +2372,28 @@ function _renderGroups(rows) {
 
 function _filterGroups() {
   const get = k => (document.querySelector(`[data-filter="${k}"]`)?.value || '').toLowerCase().trim();
-  const fName = get('grp-name'), fDesc = get('grp-desc');
+  const fName = get('grp-name'), fDesc = get('grp-desc'), fCampus = get('grp-campus');
   const filtered = _groupsCache.filter(g => {
     if (fName && !(g.name || '').toLowerCase().includes(fName)) return false;
     if (fDesc && !(g.description || '').toLowerCase().includes(fDesc)) return false;
+    if (fCampus) {
+      // Buscar en los nombres de campus de los miembros (key y label humanizada)
+      const counts = g._campusCounts instanceof Map ? g._campusCounts : new Map();
+      const keys = Array.from(counts.keys());
+      const haystack = keys.join(' ').toLowerCase() + ' ' + keys.map(k => ({
+        'Iztacala':'fes iztacala','Acatlan':'fes acatlán','Aragon':'fes aragón',
+        'Cuautitlan':'fes cuautitlán','Cuautitlan1':'fes cuautitlán c1',
+        'Zaragoza':'fes zaragoza','CU':'ciudad universitaria','Sin campus':'sin campus'
+      }[k] || k).join(' ').toLowerCase();
+      if (!haystack.includes(fCampus)) return false;
+    }
     return true;
   });
   _renderGroups(filtered);
 }
 
 function _clearGroupsFilters() {
-  ['grp-name','grp-desc'].forEach(k => {
+  ['grp-name','grp-desc','grp-campus'].forEach(k => {
     const el = document.querySelector(`[data-filter="${k}"]`);
     if (el) el.value = '';
   });
