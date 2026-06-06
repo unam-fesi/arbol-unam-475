@@ -153,15 +153,32 @@ window.NightMode = (function () {
     // Recolectamos los árboles FES (para el polvo dorado del 475).
     const fesTrees = [];
 
+    // Helper: obtener la posición real del árbol en world coords.
+    // CRÍTICO: en Iztacala el group.position es (0,0,0) — la translación se
+    // aplica al mesh interno. Por eso necesitamos calcular el bbox del group
+    // y usar su centro horizontal (X,Z). Funciona también con CampusMap donde
+    // sí se setea group.position directamente.
+    const _tmpBox = new THREE.Box3();
+    const _tmpVec = new THREE.Vector3();
+    function _treeWorldPos(group) {
+      _tmpBox.setFromObject(group);
+      _tmpBox.getCenter(_tmpVec);
+      const minY = isFinite(_tmpBox.min.y) ? _tmpBox.min.y : 0;
+      return { x: _tmpVec.x, z: _tmpVec.z, y: minY };
+    }
+
     treeArr.forEach((entry) => {
       // entry puede ser { group, data } (Iztacala) o solo el group (CampusMap)
       const group = entry.group || entry;
-      if (!group || !group.position) return;
+      if (!group || !group.traverse) return;
       const data = entry.data || group.userData?.tree || {};
       const health = Number(data.health_score) || 50;
       const isFES = /^FES/i.test(String(data.tree_code || ''));
-      const x = group.position.x;
-      const z = group.position.z;
+      const wp = _treeWorldPos(group);
+      const x = wp.x;
+      const z = wp.z;
+      // Si el bbox resultó vacío/inválido (mesh aún cargando), saltar.
+      if (!isFinite(x) || !isFinite(z)) return;
 
       // --- Luciérnagas (0 a 5 según salud) ---
       const nFireflies = health < 30 ? 0 : Math.round(health / 20);
@@ -234,7 +251,7 @@ window.NightMode = (function () {
         uniforms: {
           uMap:   { value: _getDustTexture() },
           uColor: { value: new THREE.Color(HALO_GOLD_HEX) },
-          uScale: { value: 320.0 },  // afecta el tamaño aparente según distancia
+          uScale: { value: 1800.0 },  // tamaño en pixeles a 1 unidad de cámara
         },
         vertexShader: [
           'attribute float alpha;',
@@ -244,7 +261,9 @@ window.NightMode = (function () {
           '  vAlpha = alpha;',
           '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
           '  gl_Position = projectionMatrix * mv;',
-          '  gl_PointSize = max(2.0, uScale / -mv.z);',
+          '  // Tamaño en pixeles: uScale/distancia. Clamp [6, 80] para que',
+          '  // se vea bien desde cerca y desde lejos sin saturar la pantalla.',
+          '  gl_PointSize = clamp(uScale / -mv.z, 6.0, 80.0);',
           '}',
         ].join('\n'),
         fragmentShader: [
