@@ -1749,13 +1749,16 @@ window.IztacalaMap = (function() {
     counter.innerHTML = '<i class="fas fa-tree"></i> <span id="izta-tree-count">cargando…</span>';
     containerEl.appendChild(counter);
 
-    // Toggle filtro 475 / Campus (top-left)
+    // Toggle filtro 475 / Campus + buscador inteligente (top-left)
+    // El buscador solo se muestra a admin/admin-campus.
+    const canUseSmartSearch = (typeof isAdminRole === 'function' && isAdminRole())
+      || (typeof isAdminCampusRole === 'function' && isAdminCampusRole());
     const filterToggle = document.createElement('div');
     filterToggle.id = 'izta-tree-filter';
     filterToggle.style.cssText = 'position:absolute;top:0.7rem;left:0.7rem;z-index:5;' +
       'background:rgba(255,255,255,0.95);padding:0.5rem 0.7rem;border-radius:10px;' +
       'box-shadow:0 2px 10px rgba(0,0,0,0.15);font-size:0.75rem;font-family:-apple-system,sans-serif;' +
-      'display:flex;flex-direction:column;gap:0.3rem;min-width:170px;';
+      'display:flex;flex-direction:column;gap:0.3rem;min-width:240px;max-width:300px;';
     filterToggle.innerHTML =
       '<div style="font-weight:700;color:#1b5e20;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Filtrar árboles</div>' +
       '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
@@ -1766,6 +1769,30 @@ window.IztacalaMap = (function() {
       '  <input type="checkbox" id="izta-flt-campus" checked onchange="window.IztacalaMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
       '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAF50;vertical-align:middle;"></span> Árboles del campus</span>' +
       '</label>' +
+      (canUseSmartSearch ? (
+        '<div style="border-top:1px dashed #ddd;padding-top:0.35rem;margin-top:0.2rem;">' +
+        '  <div style="display:flex;align-items:center;gap:0.3rem;margin-bottom:0.25rem;">' +
+        '    <i class="fas fa-search" style="font-size:0.7rem;color:#666;"></i>' +
+        '    <span style="font-size:0.65rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Búsqueda inteligente</span>' +
+        '  </div>' +
+        '  <input type="text" id="izta-flt-search"' +
+        '    placeholder="ej. salud baja, sin foto, FESI 64"' +
+        '    onkeydown="if(event.key===\'Enter\'){window.IztacalaMap?.applySmartSearch()}"' +
+        '    style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:5px;font-size:0.75rem;box-sizing:border-box;">' +
+        '  <div style="display:flex;gap:4px;margin-top:0.3rem;">' +
+        '    <button onclick="window.IztacalaMap?.applySmartSearch()" style="flex:1;background:#2E7D32;color:white;border:none;padding:3px 6px;border-radius:4px;font-size:0.7rem;cursor:pointer;">' +
+        '      <i class="fas fa-bolt"></i> Aplicar' +
+        '    </button>' +
+        '    <button onclick="window.IztacalaMap?.applySmartSearch(true)" style="flex:1;background:#5b8b7d;color:white;border:none;padding:3px 6px;border-radius:4px;font-size:0.7rem;cursor:pointer;" title="Si la búsqueda local no entiende, intenta con PUM-AI">' +
+        '      <i class="fas fa-robot"></i> +AI' +
+        '    </button>' +
+        '    <button onclick="window.IztacalaMap?.clearSmartSearch()" style="background:#f5f5f5;color:#666;border:1px solid #ddd;padding:3px 8px;border-radius:4px;font-size:0.7rem;cursor:pointer;" title="Limpiar búsqueda">' +
+        '      ↺' +
+        '    </button>' +
+        '  </div>' +
+        '  <div id="izta-flt-search-status" style="font-size:0.65rem;color:#888;margin-top:0.25rem;min-height:0.9rem;"></div>' +
+        '</div>'
+      ) : '') +
       '<div id="izta-flt-count" style="font-size:0.68rem;color:#888;margin-top:0.2rem;"></div>';
     containerEl.appendChild(filterToggle);
 
@@ -1839,7 +1866,168 @@ window.IztacalaMap = (function() {
     _openTreeDetail,
     _closePopup,
     applyTreeFilter,
+    applySmartSearch,
+    clearSmartSearch,
   };
+
+  // ============================================================================
+  // BÚSQUEDA INTELIGENTE — predicate que se compone con los toggles 475/Campus
+  // ============================================================================
+  // Holds una función `(tree) => boolean`. Null = sin filtro adicional.
+  let _customPredicate = null;
+  let _customLabel = '';
+
+  // Parser local: matchea keywords y devuelve un predicate o null si no entiende.
+  function _parseLocalQuery(raw) {
+    const q = String(raw || '').trim().toLowerCase();
+    if (!q) return null;
+    // Limpiar / reset
+    if (/^(limpiar|reset|todos|all|ninguno)$/i.test(q)) {
+      return { fn: () => true, label: 'Sin filtro' };
+    }
+    // Salud
+    if (/(salud\s+baja|cr[íi]ticos?|en\s+riesgo|mal[ao]s?)/i.test(q)) {
+      return { fn: t => (t.health_score || 0) < 40, label: 'Salud baja (<40)' };
+    }
+    if (/(salud\s+media|atenci[oó]n|moderad[ao]s?)/i.test(q)) {
+      return { fn: t => (t.health_score || 0) >= 40 && (t.health_score || 0) < 70, label: 'Salud media (40-69)' };
+    }
+    if (/(sanos?|saludables?|salud\s+buena|buenos?\s+(de\s+)?salud)/i.test(q)) {
+      return { fn: t => (t.health_score || 0) >= 70, label: 'Sanos (≥70)' };
+    }
+    // Status especiales
+    if (/(secos?|muertos?)/i.test(q)) {
+      return { fn: t => t.status === 'seco', label: 'Estado: seco' };
+    }
+    if (/(enfermos?)/i.test(q)) {
+      return { fn: t => t.status === 'enfermo', label: 'Estado: enfermo' };
+    }
+    // Sin foto / sin GPS
+    if (/sin\s+foto/i.test(q)) {
+      return { fn: t => !t.photo_url || String(t.photo_url).length === 0, label: 'Sin foto' };
+    }
+    if (/(sin\s+(gps|ubicaci[oó]n|coordenada))/i.test(q)) {
+      return { fn: t => t.location_lat == null || t.location_lng == null, label: 'Sin ubicación' };
+    }
+    // Especie / nombre común (especie:X o nombre directo)
+    const especieM = q.match(/(?:especie|esp|sp)[:\s]+(.+)$/i);
+    if (especieM) {
+      const needle = especieM[1].trim();
+      return { fn: t => {
+        const hay = ((t.species || '') + ' ' + (t.common_name || '')).toLowerCase();
+        return hay.includes(needle);
+      }, label: `Especie contiene "${needle}"` };
+    }
+    // Código de árbol: "codigo X" / "FESI64" / numero solo
+    const codeM = q.match(/(?:c[oó]digo|cod)[:\s]+(\S+)/i)
+              || q.match(/^([a-z]{2,5}\s*\d+)$/i)
+              || q.match(/^(\d{1,4})$/i);
+    if (codeM) {
+      const code = codeM[1].replace(/\s+/g, '').toLowerCase();
+      return { fn: t => String(t.tree_code || '').toLowerCase().replace(/\s+/g,'').includes(code),
+               label: `Código contiene "${code}"` };
+    }
+    // Nombre común directo (un solo término sin operadores)
+    if (/^[a-záéíóúñ\s]{3,30}$/i.test(q) && !q.includes('y') && !q.includes('o')) {
+      return { fn: t => {
+        const hay = ((t.species || '') + ' ' + (t.common_name || '') + ' ' + (t.tree_code || '')).toLowerCase();
+        return hay.includes(q);
+      }, label: `Coincide con "${q}"` };
+    }
+    return null;  // capa 1 no entendió
+  }
+
+  // PUM-AI fallback: convierte query NL a criterios JSON y aplica filtro.
+  async function _pumAiQuery(raw) {
+    if (typeof sb === 'undefined' || !sb?.functions) return null;
+    const prompt = `Convierte esta consulta de búsqueda de árboles a JSON estricto. Solo responde con el JSON, nada más.
+Esquema:
+{
+  "health_min": number|null,    // 0-100
+  "health_max": number|null,
+  "status_in": ["activo"|"enfermo"|"en_tratamiento"|"seco"|"retirado"|"nuevo"]|null,
+  "species_like": string|null,
+  "common_name_like": string|null,
+  "tree_code_like": string|null,
+  "campus_eq": string|null,
+  "has_photo": true|false|null,
+  "has_location": true|false|null,
+  "tree_type_in": ["nativo"|"endemico"|"ornamental"|"frutal"]|null,
+  "description": "frase corta del filtro"
+}
+Consulta: ${JSON.stringify(raw)}`;
+    try {
+      const { data, error } = await sb.functions.invoke('pum-ai', {
+        body: { message: prompt, mode: 'json', context: 'tree_filter' }
+      });
+      if (error) throw error;
+      const reply = data?.reply || data?.response || data?.text || '';
+      // Extraer JSON del reply
+      const m = String(reply).match(/\{[\s\S]*\}/);
+      if (!m) return null;
+      const criteria = JSON.parse(m[0]);
+      // Convertir criteria a predicate
+      const fn = (t) => {
+        if (criteria.health_min != null && (t.health_score || 0) < criteria.health_min) return false;
+        if (criteria.health_max != null && (t.health_score || 0) > criteria.health_max) return false;
+        if (Array.isArray(criteria.status_in) && !criteria.status_in.includes(t.status)) return false;
+        if (criteria.species_like && !String(t.species || '').toLowerCase().includes(String(criteria.species_like).toLowerCase())) return false;
+        if (criteria.common_name_like && !String(t.common_name || '').toLowerCase().includes(String(criteria.common_name_like).toLowerCase())) return false;
+        if (criteria.tree_code_like && !String(t.tree_code || '').toLowerCase().includes(String(criteria.tree_code_like).toLowerCase())) return false;
+        if (criteria.campus_eq && t.campus !== criteria.campus_eq) return false;
+        if (criteria.has_photo === true && !t.photo_url) return false;
+        if (criteria.has_photo === false && t.photo_url) return false;
+        if (criteria.has_location === true && (t.location_lat == null || t.location_lng == null)) return false;
+        if (criteria.has_location === false && t.location_lat != null) return false;
+        if (Array.isArray(criteria.tree_type_in) && !criteria.tree_type_in.includes(t.tree_type)) return false;
+        return true;
+      };
+      return { fn, label: criteria.description || 'Filtro IA', criteria };
+    } catch (e) {
+      console.warn('[smartSearch] pum-ai falló:', e?.message || e);
+      return null;
+    }
+  }
+
+  // Entry point: usa parser local; si forceAI=true o local no entendió, usa PUM-AI.
+  async function applySmartSearch(forceAI = false) {
+    const input = document.getElementById('izta-flt-search');
+    const status = document.getElementById('izta-flt-search-status');
+    const raw = (input?.value || '').trim();
+    if (!raw) {
+      clearSmartSearch();
+      return;
+    }
+    let result = null;
+    if (!forceAI) {
+      result = _parseLocalQuery(raw);
+      if (result && status) status.innerHTML = `🟢 Filtro local: <em>${result.label}</em>`;
+    }
+    if (!result) {
+      if (status) status.innerHTML = '🤖 Consultando PUM-AI…';
+      result = await _pumAiQuery(raw);
+      if (result && status) status.innerHTML = `🤖 PUM-AI: <em>${result.label}</em>`;
+    }
+    if (!result) {
+      if (status) status.innerHTML = '⚠️ No entendí la consulta. Prueba: "salud baja", "sin foto", "FESI 64".';
+      _customPredicate = null;
+      _customLabel = '';
+    } else {
+      _customPredicate = result.fn;
+      _customLabel = result.label;
+    }
+    applyTreeFilter();
+  }
+
+  function clearSmartSearch() {
+    _customPredicate = null;
+    _customLabel = '';
+    const input = document.getElementById('izta-flt-search');
+    if (input) input.value = '';
+    const status = document.getElementById('izta-flt-search-status');
+    if (status) status.textContent = '';
+    applyTreeFilter();
+  }
 
   // ============================================================================
   // FILTRO 475 vs CAMPUS
@@ -1859,7 +2047,9 @@ window.IztacalaMap = (function() {
       const group = entry.group || entry;
       if (!data || !group) return;
       const is475 = /^FES/i.test(String(data.tree_code || ''));
-      const show = is475 ? show475 : showCampus;
+      const togglePass = is475 ? show475 : showCampus;
+      const customPass = !_customPredicate || _customPredicate(data);
+      const show = togglePass && customPass;
       group.visible = show;
       if (show) {
         if (is475) visible475++; else visibleCampus++;
@@ -1869,7 +2059,10 @@ window.IztacalaMap = (function() {
     });
     const out = document.getElementById('izta-flt-count');
     if (out) {
-      out.textContent = `475: ${visible475} · Campus: ${visibleCampus}` + (hidden > 0 ? ` · ${hidden} ocultos` : '');
+      let txt = `475: ${visible475} · Campus: ${visibleCampus}`;
+      if (hidden > 0) txt += ` · ${hidden} ocultos`;
+      if (_customLabel) txt += `<br><span style="color:#5b8b7d;font-style:italic;">🔍 ${_customLabel}</span>`;
+      out.innerHTML = txt;
     }
   }
 })();
