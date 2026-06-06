@@ -264,6 +264,28 @@ let _turnstileToken = null;
 window.onTurnstileVerified = (token) => { _turnstileToken = token; };
 window.onTurnstileLoad = () => {};
 
+// Lazy-load del script de Cloudflare Turnstile. Se invoca solo cuando se
+// requiere el CAPTCHA (≥3 fallos). Esto evita los ~13 warnings de
+// "Feature Policy: Saltándose..." + cookie particionada que aparecen en
+// consola al cargar la página si Turnstile estuviera incluido en index.html.
+let _turnstileLoading = null;
+function loadTurnstileScript() {
+  if (window.turnstile) return Promise.resolve();              // ya cargado
+  if (_turnstileLoading) return _turnstileLoading;             // en curso
+  _turnstileLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
+    s.async = true;
+    s.defer = true;
+    s.crossOrigin = 'anonymous';
+    s.onload = () => resolve();
+    s.onerror = (e) => reject(e);
+    document.head.appendChild(s);
+  });
+  return _turnstileLoading;
+}
+window.loadTurnstileScript = loadTurnstileScript;
+
 async function handleLogin(e) {
   if (e) e.preventDefault();
 
@@ -294,10 +316,14 @@ async function handleLogin(e) {
     return;
   }
 
-  // CAPTCHA: si el email ya tiene ≥3 fallos en esta sesión, requerir Turnstile
+  // CAPTCHA: si el email ya tiene ≥3 fallos en esta sesión, requerir Turnstile.
+  // El script se carga lazy aquí, NO en pageload, para no ensuciar consola con
+  // ~13 warnings de Feature Policy + cookie particionada de Cloudflare.
   const failCount = _getFailCount(email);
   const captchaContainer = document.getElementById('login-captcha-container');
   if (failCount >= 3) {
+    try { await loadTurnstileScript(); }
+    catch (e) { console.warn('[auth] no se pudo cargar Turnstile:', e); }
     if (captchaContainer) captchaContainer.style.display = 'block';
     if (!_turnstileToken) {
       errorEl.textContent = 'Por favor verifica el captcha antes de continuar.';
@@ -1067,7 +1093,7 @@ function registerServiceWorker() {
   // Use absolute path relative to current location
   const swUrl = (window.location.pathname.replace(/\/[^\/]*$/, '/') + 'sw.js').replace(/\/+/g, '/');
   navigator.serviceWorker.register(swUrl).then(reg => {
-    console.log('SW registered:', reg.scope);
+    if (window.DEBUG_VERBOSE) console.log('SW registered:', reg.scope);
   }).catch(err => console.warn('SW registration failed:', err));
 }
 

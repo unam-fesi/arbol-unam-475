@@ -22,8 +22,10 @@
     <!-- crossorigin="anonymous" en todos los scripts externos para que
          window.onerror reciba stack trace en lugar del opaco "Script error." -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.0" crossorigin="anonymous"></script>
-    <!-- Cloudflare Turnstile (CAPTCHA gratis, sin tracking) — aparece solo tras 3 fallos -->
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer crossorigin="anonymous"></script>
+    <!-- Cloudflare Turnstile: NO se carga en pageload para evitar 13 warnings
+         "Feature Policy: Saltándose..." en consola. Se carga bajo demanda
+         desde auth.js (loadTurnstileScript()) cuando el email acumula ≥3 fallos. -->
+    <!-- <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer crossorigin="anonymous"></script> -->
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />

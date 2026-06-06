@@ -20,9 +20,11 @@
 (function () {
   'use strict';
 
-  // BANNER de versión — si ves esto en consola, el archivo v85 SÍ se cargó.
-  // Si NO lo ves, es problema de caché (haz Application → Storage → "Clear site data").
-  console.warn('[TreeModels v86] módulo cargado — pino.glb blacklisted (modelo torcido), cae al genérico');
+  // Banner solo visible si activas window.DEBUG_VERBOSE = true antes de cargar
+  // (mantener para diagnosticar cache stale sin spamear consola normal)
+  if (typeof window !== 'undefined' && window.DEBUG_VERBOSE) {
+    console.warn('[TreeModels v86] módulo cargado — pino.glb blacklisted (modelo torcido), cae al genérico');
+  }
 
   // GLBs problemáticos: el modelo en el archivo .glb está roto (rotación
   // incorrecta, malla seca/fea, etc.) y NO podemos arreglarlo desde JS.
