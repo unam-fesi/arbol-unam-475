@@ -6180,6 +6180,10 @@ window.loadAppLogs = loadAppLogs;
 window.showAppLogDetail = showAppLogDetail;
 window.markAppLogResolved = markAppLogResolved;
 
+// Cache: actor_email → { full_name, campus, role }
+// Se llena en loadAuditLog() y lo usa _renderAudit para mostrar contexto del usuario.
+let _auditActorMeta = {};
+
 async function loadAuditLog() {
   const container = document.getElementById('audit-log-container');
   if (!container) return;
@@ -6188,6 +6192,30 @@ async function loadAuditLog() {
       .select('*').order('occurred_at', { ascending: false }).limit(1000);
     if (error) throw error;
     _auditCache = data || [];
+
+    // Hidratar metadata (campus + full_name) de los actores únicos.
+    // Las acciones automáticas ('system', 'mcp-*', 'cron-*') no tienen perfil.
+    const uniqueActors = [...new Set(
+      _auditCache.map(e => e.actor_email).filter(e => e && !_isSystemActor(e))
+    )];
+    if (uniqueActors.length > 0) {
+      try {
+        // Resolver IDs por email vía auth.users es servidor-only; mejor por actor_id
+        // (que el trigger sí llena cuando hay JWT). Hago dos joins:
+        const ids = [...new Set(_auditCache.map(e => e.actor_id).filter(Boolean))];
+        if (ids.length > 0) {
+          const { data: profs } = await sb.from('user_profiles')
+            .select('id, full_name, campus, role').in('id', ids);
+          (profs || []).forEach(p => {
+            // Mapeo doble: por id Y por email (resuelto vía audit_log)
+            const evtsForUser = _auditCache.filter(e => e.actor_id === p.id);
+            evtsForUser.forEach(e => {
+              if (e.actor_email) _auditActorMeta[e.actor_email] = p;
+            });
+          });
+        }
+      } catch (e) { console.warn('audit metadata fetch failed:', e?.message); }
+    }
 
     // Stats: agrupar por acción / tabla / actor (top 5)
     const byAction = {}, byTable = {}, byActor = {};
@@ -6281,12 +6309,49 @@ async function loadAuditLog() {
   }
 }
 
+// Detecta actores no-humanos (cron, edge function service-role, MCP, etc.)
+function _isSystemActor(email) {
+  if (!email) return true;
+  const e = String(email).toLowerCase();
+  return e === 'system' || e.startsWith('mcp-') || e.startsWith('cron-') || e.startsWith('edge-');
+}
+
+// Devuelve HTML del actor: ícono + nombre/email + campus.
+// Para system: ícono robot + tooltip explicativo.
+function _renderAuditActor(e) {
+  const email = e.actor_email || '—';
+  if (_isSystemActor(email)) {
+    let label, tooltip;
+    if (email === 'system') {
+      label = '🤖 Sistema';
+      tooltip = 'Acción automática: trigger, cron, edge function con service-role, o admin SQL directo.';
+    } else if (email.startsWith('mcp-')) {
+      label = '🛠 ' + email;
+      tooltip = 'Admin ejecutó SQL via Supabase MCP (puente Claude ↔ BD). Acción manual de mantenimiento.';
+    } else if (email.startsWith('cron-')) {
+      label = '⏱ ' + email;
+      tooltip = 'Job programado del servidor.';
+    } else {
+      label = '⚙ ' + email;
+      tooltip = 'Acción de servicio (edge function con service-role).';
+    }
+    return `<span title="${escapeHtml(tooltip)}" style="color:#888;font-style:italic;">${escapeHtml(label)}</span>`;
+  }
+  const meta = _auditActorMeta[email];
+  if (!meta) {
+    return `<span>${escapeHtml(email)}</span>`;
+  }
+  const name = meta.full_name ? escapeHtml(meta.full_name) : escapeHtml(email);
+  const campus = meta.campus ? `<span style="font-size:10px;color:#5b8b7d;background:#eaf3ef;border:1px solid #c2dcd3;border-radius:8px;padding:1px 6px;margin-left:4px;">${escapeHtml(meta.campus)}</span>` : '';
+  return `<span title="${escapeHtml(email + (meta.role ? ' · ' + meta.role : ''))}">${name}${campus}</span>`;
+}
+
 function _renderAudit(rows) {
   const tbody = document.getElementById('audit-log-tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center" style="padding:2rem;">Sin resultados</td></tr>';
     return;
   }
   rows.forEach(e => {
@@ -6295,7 +6360,7 @@ function _renderAudit(rows) {
     const hasDiff = e.before_data || e.after_data;
     row.innerHTML = `
       <td>${formatDate(e.occurred_at)}</td>
-      <td>${escapeHtml(e.actor_email || '—')}</td>
+      <td>${_renderAuditActor(e)}</td>
       <td><span style="background:${color};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${e.action}</span></td>
       <td>${escapeHtml(e.table_name)}</td>
       <td>${escapeHtml(e.row_id || '')}</td>
