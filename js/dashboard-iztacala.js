@@ -1724,10 +1724,11 @@ window.IztacalaMap = (function() {
   function addHUD() {
     if (!containerEl) return;
 
-    // Leyenda salud (top-left)
+    // Leyenda salud (bottom-left) — movida para no chocar con el widget de
+    // filtros que ahora está en top-left.
     const legend = document.createElement('div');
     legend.id = 'izta-legend';
-    legend.style.cssText = 'position:absolute;top:0.7rem;left:0.7rem;z-index:5;' +
+    legend.style.cssText = 'position:absolute;bottom:0.7rem;left:0.7rem;z-index:5;' +
       'background:rgba(255,255,255,0.92);padding:0.5rem 0.75rem;border-radius:10px;' +
       'box-shadow:0 2px 10px rgba(0,0,0,0.15);font-size:0.72rem;font-family:-apple-system,sans-serif;' +
       'border:1px solid rgba(0,0,0,0.08);';
@@ -1857,6 +1858,15 @@ window.IztacalaMap = (function() {
   }
 
   // ============================================================================
+  // BÚSQUEDA INTELIGENTE — predicate que se compone con los toggles 475/Campus
+  // ============================================================================
+  // Holds una función `(tree) => boolean`. Null = sin filtro adicional.
+  // IMPORTANTE: declarar ANTES del return del IIFE; si va después nunca se
+  // inicializa y applyTreeFilter tira ReferenceError (TDZ).
+  let _customPredicate = null;
+  let _customLabel = '';
+
+  // ============================================================================
   // PUBLIC API
   // ============================================================================
   return {
@@ -1869,13 +1879,6 @@ window.IztacalaMap = (function() {
     applySmartSearch,
     clearSmartSearch,
   };
-
-  // ============================================================================
-  // BÚSQUEDA INTELIGENTE — predicate que se compone con los toggles 475/Campus
-  // ============================================================================
-  // Holds una función `(tree) => boolean`. Null = sin filtro adicional.
-  let _customPredicate = null;
-  let _customLabel = '';
 
   // Parser local: matchea keywords y devuelve un predicate o null si no entiende.
   function _parseLocalQuery(raw) {
