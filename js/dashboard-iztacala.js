@@ -1387,7 +1387,7 @@ window.IztacalaMap = (function() {
     base.position.set(x, 0.15, -y);
     group.add(base);
 
-    // Anillo de borde más oscuro (contraste)
+    // Anillo de borde más oscuro (contraste — SALUD)
     const ringInnerR = heightM * 0.60;
     const ringOuterR = heightM * 0.70;
     const ring = new THREE.Mesh(
@@ -1402,6 +1402,27 @@ window.IztacalaMap = (function() {
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(x, 0.20, -y);
     group.add(ring);
+
+    // Anillo de CATEGORÍA — afuera del anillo de salud
+    //   🟨 #ffd866 (oro UNAM) = árboles del 475 aniversario (tree_code FES*)
+    //   🟦 #005baa (azul UNAM) = árboles regulares del campus
+    // Visualmente complementario al semáforo de salud sin compartir paleta.
+    const is475 = /^FES/i.test(String(treeData.tree_code || ''));
+    const catColor = is475 ? 0xffd866 : 0x005baa;
+    const catInnerR = heightM * 0.72;
+    const catOuterR = heightM * 0.84;
+    const catRing = new THREE.Mesh(
+      new THREE.RingGeometry(catInnerR, catOuterR, 36),
+      new THREE.MeshBasicMaterial({
+        color: catColor,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+    catRing.rotation.x = -Math.PI / 2;
+    catRing.position.set(x, 0.18, -y);
+    group.add(catRing);
 
     // Cilindro corto color salud al pie del árbol (visible desde el lateral)
     const stub = new THREE.Mesh(
@@ -1547,6 +1568,24 @@ window.IztacalaMap = (function() {
     group.traverse(o => {
       if (o.isMesh) pickable.push(o);
     });
+    // Anillo de categoría 475/Campus (para árboles procedurales)
+    // Se monta como hijo del group del árbol — sigue la posición del árbol
+    {
+      const is475 = /^FES/i.test(String(treeData.tree_code || ''));
+      const catColor = is475 ? 0xffd866 : 0x005baa;
+      const catRing = new THREE.Mesh(
+        new THREE.RingGeometry(heightM * 0.72, heightM * 0.84, 36),
+        new THREE.MeshBasicMaterial({
+          color: catColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85
+        })
+      );
+      catRing.rotation.x = -Math.PI / 2;
+      catRing.position.set(x, 0.18, -y);
+      group.add(catRing);
+    }
     treeMeshes.push({ group, crown: pickable[1] || pickable[0], trunk, pickable, data: treeData });
   }
 
@@ -1733,11 +1772,16 @@ window.IztacalaMap = (function() {
       'box-shadow:0 2px 10px rgba(0,0,0,0.15);font-size:0.72rem;font-family:-apple-system,sans-serif;' +
       'border:1px solid rgba(0,0,0,0.08);';
     legend.innerHTML =
-      '<div style="font-weight:600;color:#333;margin-bottom:0.3rem;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">Salud del árbol</div>' +
+      '<div style="font-weight:600;color:#333;margin-bottom:0.3rem;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">Anillo interior — Salud</div>' +
       '<div style="display:flex;gap:0.6rem;flex-wrap:wrap;">' +
         '<span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:50%;background:#4CAF50;display:inline-block;"></span>Buena (≥70)</span>' +
         '<span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:50%;background:#FFA726;display:inline-block;"></span>Media (40-69)</span>' +
         '<span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:50%;background:#EF5350;display:inline-block;"></span>Mala (&lt;40)</span>' +
+      '</div>' +
+      '<div style="font-weight:600;color:#333;margin:0.45rem 0 0.3rem;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">Anillo exterior — Categoría</div>' +
+      '<div style="display:flex;gap:0.6rem;flex-wrap:wrap;">' +
+        '<span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:50%;background:#ffd866;border:1px solid #b8860b;display:inline-block;"></span>475 (FES*)</span>' +
+        '<span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:50%;background:#005baa;display:inline-block;"></span>Campus</span>' +
       '</div>';
     containerEl.appendChild(legend);
 
@@ -1768,7 +1812,7 @@ window.IztacalaMap = (function() {
       '</label>' +
       '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
       '  <input type="checkbox" id="izta-flt-campus" checked onchange="window.IztacalaMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
-      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAF50;vertical-align:middle;"></span> Árboles del campus</span>' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#005baa;vertical-align:middle;"></span> Árboles del campus</span>' +
       '</label>' +
       (canUseSmartSearch ? (
         '<div style="border-top:1px dashed #ddd;padding-top:0.35rem;margin-top:0.2rem;">' +

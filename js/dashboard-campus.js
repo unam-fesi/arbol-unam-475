@@ -238,7 +238,7 @@ window.CampusMap = (function() {
       '</label>' +
       '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
       '  <input type="checkbox" id="campus-flt-campus" checked onchange="window.CampusMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
-      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAF50;vertical-align:middle;"></span> Árboles del campus</span>' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#005baa;vertical-align:middle;"></span> Árboles del campus</span>' +
       '</label>' +
       (canSearch ? (
         '<div style="border-top:1px dashed #ddd;padding-top:0.35rem;margin-top:0.2rem;">' +
@@ -483,7 +483,7 @@ window.CampusMap = (function() {
     canopy.castShadow = true;
     group.add(canopy);
 
-    // Disco de semáforo abajo
+    // Disco de semáforo abajo (SALUD)
     const disc = new THREE.Mesh(
       new THREE.CircleGeometry(1.2, 24),
       new THREE.MeshBasicMaterial({ color: healthColor, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
@@ -491,6 +491,20 @@ window.CampusMap = (function() {
     disc.rotation.x = -Math.PI / 2;
     disc.position.y = 0.12;
     group.add(disc);
+
+    // Anillo de CATEGORÍA — oro UNAM si es 475 (tree_code FES*), azul UNAM
+    // si es árbol regular del campus. No comparte paleta con el semáforo.
+    {
+      const is475 = /^FES/i.test(String(t.tree_code || ''));
+      const catColor = is475 ? 0xffd866 : 0x005baa;
+      const catRing = new THREE.Mesh(
+        new THREE.RingGeometry(1.25, 1.45, 36),
+        new THREE.MeshBasicMaterial({ color: catColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+      );
+      catRing.rotation.x = -Math.PI / 2;
+      catRing.position.y = 0.10;
+      group.add(catRing);
+    }
 
     group.userData = { isTree: true, tree: t };
     scene.add(group);
