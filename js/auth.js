@@ -149,19 +149,19 @@ async function initApp() {
   }
 
   // ── DETECCIÓN DE INVITE / RECOVERY al cargar la página ──
-  // Supabase usa el URL fragment (#type=invite&access_token=...) para entregar
-  // el magic link. El cliente JS lo consume en cuanto se inicializa y dispara
-  // SIGNED_IN. Si NO interceptamos antes, el usuario invitado entra a la app
-  // sin contraseña. Capturamos el `type` aquí, antes de que Supabase lo limpie.
+  // Supabase entrega los magic links de dos formas según el flow:
+  //   • Implicit flow: #type=invite&access_token=...   (hash fragment)
+  //   • PKCE flow:     ?type=invite&code=...           (query string)
+  // Capturamos AMBOS aquí, antes de que el cliente JS de Supabase los limpie.
   let _inviteFlowType = null; // 'invite' | 'recovery' | null
   try {
-    const hash = (window.location.hash || '').replace(/^#/, '');
-    if (hash) {
-      const params = new URLSearchParams(hash);
-      const t = params.get('type');
-      if (t === 'invite' || t === 'recovery') _inviteFlowType = t;
-    }
-  } catch (e) { console.warn('[auth] hash parse error', e); }
+    const hash  = (window.location.hash  || '').replace(/^#/, '');
+    const query = (window.location.search || '').replace(/^\?/, '');
+    const tHash  = hash  ? new URLSearchParams(hash).get('type')  : null;
+    const tQuery = query ? new URLSearchParams(query).get('type') : null;
+    const t = tHash || tQuery;
+    if (t === 'invite' || t === 'recovery') _inviteFlowType = t;
+  } catch (e) { console.warn('[auth] url parse error', e); }
 
   // Listen for auth state changes
   // IMPORTANTE: Supabase dispara SIGNED_IN cada vez que se refresca el token,
@@ -172,11 +172,21 @@ async function initApp() {
   sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
-      // Invitación / recuperación: forzar al usuario a establecer contraseña
-      // ANTES de entrar a la app principal. _inviteFlowType solo está set en
-      // el primer ciclo (detectado del hash al cargar la página).
-      if (_inviteFlowType && !_mainAppShown) {
-        showSetPasswordModal(_inviteFlowType, () => {
+      // Detector secundario: si el hash ya se limpió pero es una primera
+      // entrada de un invitado, todavía podemos identificarlo viendo si
+      // last_sign_in_at viene null (Supabase lo marca después de la primera
+      // sesión validada). Sin esto, el usuario invitado puede entrar sin
+      // password si v227 cargó después de que Supabase consumiera el hash.
+      const u = session.user;
+      const isFreshInvite = !_mainAppShown && (
+        _inviteFlowType === 'invite' ||
+        _inviteFlowType === 'recovery' ||
+        (!u.last_sign_in_at && u.confirmed_at) ||
+        (u.invited_at && !u.last_sign_in_at)
+      );
+      if (isFreshInvite) {
+        const flow = _inviteFlowType || 'invite';
+        showSetPasswordModal(flow, () => {
           _inviteFlowType = null;
           _mainAppShown = true;
           loadUserProfile().then(() => showMainApp());
@@ -209,8 +219,8 @@ async function initApp() {
 // Llamamos supabase.auth.updateUser({ password }) para fijarla.
 // ============================================================================
 function showSetPasswordModal(flowType, onDone) {
-  // Limpiar el hash de la URL para que un refresh no vuelva a triggear el modal
-  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch(_) {}
+  // Limpiar hash Y query string para que un refresh no vuelva a triggear el modal
+  try { history.replaceState(null, '', window.location.pathname); } catch(_) {}
 
   // Si ya existe el modal (por algún re-trigger), no lo dupliques
   if (document.getElementById('set-password-modal')) return;
