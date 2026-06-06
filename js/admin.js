@@ -1363,7 +1363,14 @@ function _setupAdminTreesFilters() {
         oninput="_filterAdminTrees()"
         style="width:100%;padding:0.35rem 0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.82rem;background:#fff;">
     </th>
-    <th style="padding:0.3rem 0.5rem;background:#fafafa;text-align:right;">
+    <th style="padding:0.3rem 0.5rem;background:#fafafa;text-align:right;white-space:nowrap;">
+      <label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.75rem;color:#555;margin-right:0.4rem;cursor:pointer;" title="Mostrar solo árboles sin ubicación GPS">
+        <input type="checkbox" id="ft-no-gps" onchange="_filterAdminTrees()" style="margin:0;cursor:pointer;">
+        📍 Sin GPS
+      </label>
+      <button type="button" onclick="_exportTreesNoGpsCsv()"
+        style="background:transparent;color:#5b8b7d;border:1px solid #c2dcd3;padding:0.3rem 0.5rem;border-radius:6px;font-size:0.72rem;cursor:pointer;margin-right:0.25rem;"
+        title="Exportar CSV de árboles sin GPS">⬇ CSV</button>
       <button type="button" onclick="_clearAdminTreesFilters()"
         style="background:transparent;color:#666;border:1px solid #ddd;padding:0.35rem 0.6rem;border-radius:6px;font-size:0.78rem;cursor:pointer;"
         title="Limpiar filtros">↺</button>
@@ -1379,6 +1386,7 @@ function _filterAdminTrees() {
   const campus = (document.getElementById('ft-campus')?.value || '').trim();
   const status = (document.getElementById('ft-status')?.value || '').trim();
   const healthMin = parseInt(document.getElementById('ft-health-min')?.value);
+  const noGps = !!document.getElementById('ft-no-gps')?.checked;
 
   const filtered = _adminTreesCache.filter(t => {
     if (code && !(t.tree_code || '').toLowerCase().includes(code)) return false;
@@ -1389,6 +1397,9 @@ function _filterAdminTrees() {
     if (campus && t.campus !== campus) return false;
     if (status && t.status !== status) return false;
     if (!isNaN(healthMin) && (t.health_score || 0) < healthMin) return false;
+    // "Sin GPS": el árbol no tiene coords en trees_catalog. (No considera
+    // mediciones porque la columna en BD es la que cuenta para mapas/exports.)
+    if (noGps && (t.location_lat != null && t.location_lng != null)) return false;
     return true;
   });
 
@@ -1415,10 +1426,46 @@ function _clearAdminTreesFilters() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  const noGpsEl = document.getElementById('ft-no-gps');
+  if (noGpsEl) noGpsEl.checked = false;
   _adminSortState.trees = { field: null, dir: null };
   _renderAdminTreesRows(_adminTreesCache);
   _updateSortIndicators('table[data-sort-table="trees"]');
 }
+
+// Exporta a CSV los árboles del cache actual que NO tienen GPS en trees_catalog.
+// Útil para el equipo de campo: lista de árboles pendientes de geolocalizar.
+function _exportTreesNoGpsCsv() {
+  if (!Array.isArray(_adminTreesCache) || _adminTreesCache.length === 0) {
+    showToast('No hay árboles cargados', 'info');
+    return;
+  }
+  const rows = _adminTreesCache.filter(t => t.location_lat == null || t.location_lng == null);
+  if (rows.length === 0) {
+    showToast('¡Todos los árboles cargados tienen GPS!', 'success');
+    return;
+  }
+  // Escape RFC4180: "field" con dobles comillas escapadas.
+  const csvEsc = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = ['id', 'tree_code', 'campus', 'species', 'common_name', 'status', 'health_score', 'created_at'];
+  const lines = [header.join(',')];
+  rows.forEach(t => lines.push(header.map(h => csvEsc(t[h])).join(',')));
+  // BOM UTF-8 para que Excel respete acentos.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `arboles_sin_gps_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  showToast(`Exportados ${rows.length} árboles sin GPS`, 'success');
+}
+window._exportTreesNoGpsCsv = _exportTreesNoGpsCsv;
 
 function _renderAdminTreesRows(trees) {
   const tbody = document.getElementById('trees-table-body');

@@ -446,10 +446,13 @@ window.CampusMap = (function() {
         .select('id, tree_code, common_name, species, health_score, status, location_lat, location_lng, photo_url, initial_height_cm, campus')
         .eq('campus', campusName);
       if (error) throw error;
+      // Totales registrados (con o sin geo) por categoría — para el sub-contador del toggle
+      _totalReg475 = (trees || []).filter(t => /^FES/i.test(String(t.tree_code || ''))).length;
+      _totalRegCampus = (trees || []).length - _totalReg475;
       const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
       treeMeshes = [];
       valid.forEach(addTree);
-      console.log(`🌳 ${campusName}: ${valid.length} árboles plotteados`);
+      console.log(`🌳 ${campusName}: ${valid.length} árboles plotteados (de ${(trees || []).length} registrados)`);
     } catch (e) {
       console.warn(`Error cargando árboles de ${campusName}:`, e);
     }
@@ -706,6 +709,9 @@ window.CampusMap = (function() {
 
   let _customPredicate = null;
   let _customLabel = '';
+  // Totales registrados en BD del campus actual (incluye los sin geo).
+  let _totalReg475 = 0;
+  let _totalRegCampus = 0;
 
   // Toggle filtro 475 vs Campus + custom predicate (búsqueda inteligente)
   function applyTreeFilter() {
@@ -726,7 +732,9 @@ window.CampusMap = (function() {
     });
     const out = document.getElementById('campus-flt-count');
     if (out) {
-      let txt = `475: ${v475} · Campus: ${vCampus}`;
+      const t475 = _totalReg475 > 0 ? `475: ${v475} / ${_totalReg475} reg.` : `475: ${v475}`;
+      const tCampus = _totalRegCampus > 0 ? `Campus: ${vCampus} / ${_totalRegCampus} reg.` : `Campus: ${vCampus}`;
+      let txt = `${t475} · ${tCampus}`;
       if (hidden > 0) txt += ` · ${hidden} ocultos`;
       if (_customLabel) txt += `<br><span style="color:#5b8b7d;font-style:italic;">🔍 ${_customLabel}</span>`;
       out.innerHTML = txt;

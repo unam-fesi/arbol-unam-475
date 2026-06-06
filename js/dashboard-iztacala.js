@@ -1228,9 +1228,14 @@ window.IztacalaMap = (function() {
 
       const { data: trees, error } = await sb
         .from('trees_catalog')
-        .select('id, tree_code, common_name, species, health_score, status, location_lat, location_lng, photo_url, initial_height_cm');
+        .select('id, tree_code, common_name, species, health_score, status, location_lat, location_lng, photo_url, initial_height_cm, campus')
+        .eq('campus', 'Iztacala');
 
       if (error) throw error;
+
+      // Totales registrados (con o sin geo) por categoría, para el sub-contador
+      _totalReg475 = (trees || []).filter(t => /^FES/i.test(String(t.tree_code || ''))).length;
+      _totalRegCampus = (trees || []).length - _totalReg475;
 
       const valid = (trees || []).filter(t => t.location_lat && t.location_lng);
       valid.forEach(addTree);
@@ -1909,6 +1914,10 @@ window.IztacalaMap = (function() {
   // inicializa y applyTreeFilter tira ReferenceError (TDZ).
   let _customPredicate = null;
   let _customLabel = '';
+  // Totales registrados en BD (incluye sin geo) por categoría, en este campus.
+  // Se llenan en loadTrees() y los usa applyTreeFilter() para el sub-contador.
+  let _totalReg475 = 0;
+  let _totalRegCampus = 0;
 
   // ============================================================================
   // PUBLIC API
@@ -2106,7 +2115,11 @@ Consulta: ${JSON.stringify(raw)}`;
     });
     const out = document.getElementById('izta-flt-count');
     if (out) {
-      let txt = `475: ${visible475} · Campus: ${visibleCampus}`;
+      // Sub-contador: visible / registrados-en-BD (incluye los que no tienen geo).
+      // Si BD aún no respondió (_totalReg475 = 0), mostrar solo el visible.
+      const t475 = _totalReg475 > 0 ? `475: ${visible475} / ${_totalReg475} reg.` : `475: ${visible475}`;
+      const tCampus = _totalRegCampus > 0 ? `Campus: ${visibleCampus} / ${_totalRegCampus} reg.` : `Campus: ${visibleCampus}`;
+      let txt = `${t475} · ${tCampus}`;
       if (hidden > 0) txt += ` · ${hidden} ocultos`;
       if (_customLabel) txt += `<br><span style="color:#5b8b7d;font-style:italic;">🔍 ${_customLabel}</span>`;
       out.innerHTML = txt;
