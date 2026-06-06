@@ -221,6 +221,28 @@ window.CampusMap = (function() {
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
+    // Toggle filtro 475 / Campus (top-left)
+    const filterToggle = document.createElement('div');
+    filterToggle.id = 'campus-tree-filter';
+    filterToggle.style.cssText = 'position:absolute;top:0.7rem;left:0.7rem;z-index:5;' +
+      'background:rgba(255,255,255,0.95);padding:0.5rem 0.7rem;border-radius:10px;' +
+      'box-shadow:0 2px 10px rgba(0,0,0,0.15);font-size:0.75rem;font-family:-apple-system,sans-serif;' +
+      'display:flex;flex-direction:column;gap:0.3rem;min-width:170px;';
+    filterToggle.innerHTML =
+      '<div style="font-weight:700;color:#1b5e20;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Filtrar árboles</div>' +
+      '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
+      '  <input type="checkbox" id="campus-flt-475" checked onchange="window.CampusMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ffd866;border:1px solid #b8860b;vertical-align:middle;"></span> Árboles 475 (FES*)</span>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
+      '  <input type="checkbox" id="campus-flt-campus" checked onchange="window.CampusMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAF50;vertical-align:middle;"></span> Árboles del campus</span>' +
+      '</label>' +
+      '<div id="campus-flt-count" style="font-size:0.68rem;color:#888;margin-top:0.2rem;"></div>';
+    container.appendChild(filterToggle);
+    // Asegurar posicionamiento relativo en el contenedor
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+
     // Luces — para campus grandes (CU = 3.4km) usar shadow camera dinámico
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const sun = new THREE.DirectionalLight(0xfff4d6, 1.0);
@@ -644,5 +666,26 @@ window.CampusMap = (function() {
     return root;
   }
 
-  return { init, destroy, buildInto };
+  // Toggle filtro 475 vs Campus (idéntico API a IztacalaMap.applyTreeFilter)
+  function applyTreeFilter() {
+    const cb475 = document.getElementById('campus-flt-475');
+    const cbCampus = document.getElementById('campus-flt-campus');
+    const show475 = cb475 ? cb475.checked : true;
+    const showCampus = cbCampus ? cbCampus.checked : true;
+    let v475 = 0, vCampus = 0, hidden = 0;
+    (treeMeshes || []).forEach(group => {
+      const data = group?.userData?.tree;
+      if (!data || !group) return;
+      const is475 = /^FES/i.test(String(data.tree_code || ''));
+      const show = is475 ? show475 : showCampus;
+      group.visible = show;
+      if (show) { if (is475) v475++; else vCampus++; } else hidden++;
+    });
+    const out = document.getElementById('campus-flt-count');
+    if (out) {
+      out.textContent = `475: ${v475} · Campus: ${vCampus}` + (hidden > 0 ? ` · ${hidden} ocultos` : '');
+    }
+  }
+
+  return { init, destroy, buildInto, applyTreeFilter };
 })();

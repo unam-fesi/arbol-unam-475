@@ -3890,6 +3890,8 @@ async function loadSecurityDashboard() {
     const alertChatId = (alertCfg.chat_id || '').toString();
     const alertEnabled = alertCfgRes?.data?.enabled !== false;
     const alertMinSev = alertCfg.min_severity || 'high';
+    // Cachear eventos para filtrado client-side sin re-fetch
+    _secEventsCache = secEvents;
     const attempts = attemptsRes.data || [];
     const blocks = blocksRes.data || [];
     const weekAttempts = weekRes.data || [];
@@ -4049,13 +4051,46 @@ async function loadSecurityDashboard() {
       ` : ''}
 
       <!-- Intentos de ataque detectados -->
-      <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border-left:4px solid #c62828;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div id="sec-events-section" style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:18px;border-left:4px solid #c62828;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
           <div style="font-size:13px;font-weight:600;color:#333;">🛡️ Intentos de ataque detectados (7d)</div>
           <div style="font-size:11px;color:#666;">
             ${secEvents.length} total
             ${secEventsUnreviewed > 0 ? `· <span style="color:#c62828;font-weight:600;">${secEventsUnreviewed} sin revisar</span>` : ''}
           </div>
+        </div>
+
+        <!-- Filtros + refresh -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:8px;background:#fafafa;border-radius:6px;">
+          <input type="text" id="sec-flt-type"
+            placeholder="🔍 Tipo (ej. xss, sqli, honeypot)"
+            oninput="_filterSecEvents()"
+            style="flex:1;min-width:160px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;">
+          <select id="sec-flt-severity" onchange="_filterSecEvents()"
+            style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;background:white;">
+            <option value="">Todas severidades</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+          </select>
+          <input type="text" id="sec-flt-ip"
+            placeholder="🔍 IP"
+            oninput="_filterSecEvents()"
+            style="width:130px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;font-family:monospace;">
+          <input type="text" id="sec-flt-user"
+            placeholder="🔍 Usuario"
+            oninput="_filterSecEvents()"
+            style="width:140px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;">
+          <label style="font-size:11px;color:#666;display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="sec-flt-unreviewed" onchange="_filterSecEvents()" style="margin:0;">
+            Solo sin revisar
+          </label>
+          <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;margin-left:auto;" onclick="loadSecurityDashboard()" title="Refrescar todo el dashboard">
+            <i class="fas fa-sync-alt"></i> Refrescar
+          </button>
+          <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;" onclick="_clearSecEventsFilters()">↺ Limpiar</button>
         </div>
 
         ${topSecTypes.length > 0 ? `
@@ -4081,7 +4116,7 @@ async function loadSecurityDashboard() {
                 <th>Fecha</th><th>Tipo</th><th>Severidad</th><th>IP</th>
                 <th>Usuario</th><th>Campo</th><th>Snippet</th><th></th>
               </tr></thead>
-              <tbody>
+              <tbody id="sec-events-tbody">
                 ${secEvents.slice(0, 80).map(ev => {
                   const sevColor = { critical:'#7a1f1f', high:'#c62828', medium:'#d4a574', low:'#888', info:'#5b8b7d' }[ev.severity] || '#666';
                   const snippet = (() => {
@@ -4169,6 +4204,71 @@ async function loadSecurityDashboard() {
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
+
+// Cache de eventos de seguridad para filtrado client-side
+let _secEventsCache = [];
+
+// Filtro de eventos de seguridad — opera sobre _secEventsCache
+function _filterSecEvents() {
+  const tbody = document.getElementById('sec-events-tbody');
+  if (!tbody) return;
+  const fType = (document.getElementById('sec-flt-type')?.value || '').trim().toLowerCase();
+  const fSev = (document.getElementById('sec-flt-severity')?.value || '').trim();
+  const fIp = (document.getElementById('sec-flt-ip')?.value || '').trim();
+  const fUser = (document.getElementById('sec-flt-user')?.value || '').trim().toLowerCase();
+  const fUnreviewed = document.getElementById('sec-flt-unreviewed')?.checked;
+
+  const filtered = (_secEventsCache || []).filter(ev => {
+    if (fType && !(ev.event_type || '').toLowerCase().includes(fType)) return false;
+    if (fSev && ev.severity !== fSev) return false;
+    if (fIp && !(ev.ip || '').toString().includes(fIp)) return false;
+    if (fUser) {
+      const haystack = ((ev.user_email || '') + ' ' + (ev.user_id || '')).toLowerCase();
+      if (!haystack.includes(fUser)) return false;
+    }
+    if (fUnreviewed && ev.reviewed_at) return false;
+    return true;
+  });
+
+  // Re-render solo el tbody (no toda la sección)
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:1.5rem;color:#888;font-size:0.85rem;">
+      Sin eventos que coincidan con los filtros.
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.slice(0, 80).map(ev => {
+    const sevColor = { critical:'#7a1f1f', high:'#c62828', medium:'#d4a574', low:'#888', info:'#5b8b7d' }[ev.severity] || '#666';
+    const snippet = (() => {
+      try { return JSON.stringify(ev.payload || {}).slice(0, 100); }
+      catch { return ''; }
+    })();
+    return `<tr style="background:${ev.reviewed_at ? '' : 'rgba(198,40,40,0.04)'};">
+      <td style="white-space:nowrap;">${new Date(ev.occurred_at).toLocaleString('es-MX', { dateStyle:'short', timeStyle:'short' })}</td>
+      <td><code style="font-size:0.7rem;background:#fce4e4;color:#7a1f1f;padding:1px 5px;border-radius:3px;">${escapeHtml(ev.event_type)}</code></td>
+      <td><span style="color:${sevColor};font-weight:600;text-transform:uppercase;font-size:0.68rem;">${escapeHtml(ev.severity)}</span></td>
+      <td style="font-family:monospace;font-size:0.7rem;">${ev.ip || '—'}</td>
+      <td style="font-size:0.7rem;">${escapeHtml(ev.user_email || (ev.user_id ? ev.user_id.slice(0,8) : '—'))}</td>
+      <td style="font-size:0.7rem;color:#666;">${escapeHtml(ev.field_name || '—')}</td>
+      <td style="font-family:monospace;font-size:0.65rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(snippet)}">${escapeHtml(snippet)}</td>
+      <td style="white-space:nowrap;">
+        ${!ev.reviewed_at && isAdminRole() ? `<button class="btn btn-outline" style="padding:2px 6px;font-size:10px;" onclick="markSecEventReviewed('${ev.id}')" title="Marcar como revisado">✓</button>` : '✓'}
+      </td>
+    </tr>`;
+  }).join('');
+}
+window._filterSecEvents = _filterSecEvents;
+
+function _clearSecEventsFilters() {
+  ['sec-flt-type','sec-flt-ip','sec-flt-user','sec-flt-severity'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const cb = document.getElementById('sec-flt-unreviewed');
+  if (cb) cb.checked = false;
+  _filterSecEvents();
+}
+window._clearSecEventsFilters = _clearSecEventsFilters;
 
 // Guardar chat_id del Telegram alert (solo admin)
 async function saveSecurityAlertConfig() {
@@ -4282,12 +4382,65 @@ async function showIpDetail(ip) {
       </div>
     </div>`;
 
+  // Helper: geo-IP con 2 proveedores. Normaliza respuesta a un schema común.
+  // 1) ipapi.co/json/  → primario
+  // 2) ipwho.is/       → fallback si ipapi falla / rate-limit / error
+  async function fetchGeoIp(ipAddr) {
+    // ipapi.co
+    try {
+      const r = await fetch(`https://ipapi.co/${encodeURIComponent(ipAddr)}/json/`,
+        { headers: { 'Accept': 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && !d.error && d.country_name) {
+          return {
+            source: 'ipapi.co',
+            country_name: d.country_name,
+            country_code: d.country_code,
+            region: d.region,
+            city: d.city,
+            postal: d.postal,
+            latitude: d.latitude,
+            longitude: d.longitude,
+            timezone: d.timezone,
+            languages: d.languages,
+            org: d.org,
+            asn: d.asn,
+          };
+        }
+      }
+    } catch (_) { /* fall through to fallback */ }
+    // ipwho.is (fallback)
+    try {
+      const r = await fetch(`https://ipwho.is/${encodeURIComponent(ipAddr)}`,
+        { headers: { 'Accept': 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.success === true) {
+          return {
+            source: 'ipwho.is',
+            country_name: d.country,
+            country_code: d.country_code,
+            region: d.region,
+            city: d.city,
+            postal: d.postal || '',
+            latitude: d.latitude,
+            longitude: d.longitude,
+            timezone: d.timezone?.id || d.timezone?.utc || '',
+            languages: '',
+            org: d.connection?.isp || d.connection?.org || '',
+            asn: d.connection?.asn ? `AS${d.connection.asn}` : '',
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   // Fetch en paralelo: geo-IP + auth_attempts + ip_blocklist
   const body = document.getElementById('ip-detail-body');
   const [geoRes, attemptsRes, blockRes] = await Promise.allSettled([
-    // Servicio gratuito sin API key. Si falla (ej. uso saturado), seguimos sin geo.
-    fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`, { headers: { 'Accept': 'application/json' } })
-      .then(r => r.ok ? r.json() : null),
+    fetchGeoIp(ip),
     sb.from('auth_attempts')
       .select('email, user_agent, success, reason, occurred_at, metadata')
       .eq('ip', ip)

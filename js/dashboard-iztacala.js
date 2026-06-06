@@ -1749,6 +1749,26 @@ window.IztacalaMap = (function() {
     counter.innerHTML = '<i class="fas fa-tree"></i> <span id="izta-tree-count">cargando…</span>';
     containerEl.appendChild(counter);
 
+    // Toggle filtro 475 / Campus (top-left)
+    const filterToggle = document.createElement('div');
+    filterToggle.id = 'izta-tree-filter';
+    filterToggle.style.cssText = 'position:absolute;top:0.7rem;left:0.7rem;z-index:5;' +
+      'background:rgba(255,255,255,0.95);padding:0.5rem 0.7rem;border-radius:10px;' +
+      'box-shadow:0 2px 10px rgba(0,0,0,0.15);font-size:0.75rem;font-family:-apple-system,sans-serif;' +
+      'display:flex;flex-direction:column;gap:0.3rem;min-width:170px;';
+    filterToggle.innerHTML =
+      '<div style="font-weight:700;color:#1b5e20;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Filtrar árboles</div>' +
+      '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
+      '  <input type="checkbox" id="izta-flt-475" checked onchange="window.IztacalaMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ffd866;border:1px solid #b8860b;vertical-align:middle;"></span> Árboles 475 (FES*)</span>' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;color:#333;">' +
+      '  <input type="checkbox" id="izta-flt-campus" checked onchange="window.IztacalaMap?.applyTreeFilter()" style="margin:0;cursor:pointer;">' +
+      '  <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAF50;vertical-align:middle;"></span> Árboles del campus</span>' +
+      '</label>' +
+      '<div id="izta-flt-count" style="font-size:0.68rem;color:#888;margin-top:0.2rem;"></div>';
+    containerEl.appendChild(filterToggle);
+
     // Hint controles (bottom-right)
     const hint = document.createElement('div');
     hint.style.cssText = 'position:absolute;bottom:0.7rem;right:0.7rem;z-index:5;' +
@@ -1818,5 +1838,38 @@ window.IztacalaMap = (function() {
     latlonToModelXY,
     _openTreeDetail,
     _closePopup,
+    applyTreeFilter,
   };
+
+  // ============================================================================
+  // FILTRO 475 vs CAMPUS
+  // ----------------------------------------------------------------------------
+  // Árboles "475" = los del 475 aniversario UNAM, identificados por tree_code
+  // con prefijo "FES" (FESI 1, FESA 23, etc.). El resto son árboles regulares
+  // del campus. Itera treeMeshes y actualiza .visible.
+  // ============================================================================
+  function applyTreeFilter() {
+    const cb475 = document.getElementById('izta-flt-475');
+    const cbCampus = document.getElementById('izta-flt-campus');
+    const show475 = cb475 ? cb475.checked : true;
+    const showCampus = cbCampus ? cbCampus.checked : true;
+    let visible475 = 0, visibleCampus = 0, hidden = 0;
+    (treeMeshes || []).forEach(entry => {
+      const data = entry.data || entry.group?.userData?.tree;
+      const group = entry.group || entry;
+      if (!data || !group) return;
+      const is475 = /^FES/i.test(String(data.tree_code || ''));
+      const show = is475 ? show475 : showCampus;
+      group.visible = show;
+      if (show) {
+        if (is475) visible475++; else visibleCampus++;
+      } else {
+        hidden++;
+      }
+    });
+    const out = document.getElementById('izta-flt-count');
+    if (out) {
+      out.textContent = `475: ${visible475} · Campus: ${visibleCampus}` + (hidden > 0 ? ` · ${hidden} ocultos` : '');
+    }
+  }
 })();
