@@ -484,7 +484,13 @@ async function loadAdminDashboard(forceReload) {
     // Usuarios: filtramos por campus. Para mantener visibles a los admin principales
     // (que no tienen campus asignado) cuando hay filtro, los incluimos siempre.
     let userQ = sb.from('user_profiles').select('*', { count: 'exact', head: true });
-    if (campusFilter) userQ = userQ.or(`campus.eq.${campusFilter},role.eq.admin`);
+    if (campusFilter) {
+      // M-6: escapar el campusFilter antes de interpolar en el string de .or()
+      // (aunque viene de dropdown controlado, defense in depth contra futuras
+      // fuentes donde campusFilter sea text input del usuario).
+      const safeCampus = validators.escapeOrFilter(campusFilter);
+      userQ = userQ.or(`campus.eq.${safeCampus},role.eq.admin`);
+    }
     const { count: userCount } = await userQ;
 
     // Árboles: filtrar por campus
@@ -933,15 +939,35 @@ function toggleSpecialistFields() {
 
 async function saveAdminUser(e) {
   if (e) e.preventDefault();
-  const nombre = document.getElementById('admin-user-nombre')?.value.trim();
-  const correo = document.getElementById('admin-user-correo')?.value.trim();
-  const password = document.getElementById('admin-user-password')?.value.trim();
-  const numCuenta = document.getElementById('admin-user-num-cuenta')?.value.trim();
+  // M-6: validar y limpiar todos los inputs antes de tocar BD.
+  const vNombre = validators.text(document.getElementById('admin-user-nombre')?.value, {
+    min: 2, max: 200, label: 'Nombre',
+    pattern: /^[\p{L}\p{N}\s\-'.,()ñÑáéíóúÁÉÍÓÚüÜ]+$/u,
+    required: true
+  });
+  if (!vNombre.ok) { showToast(vNombre.error, 'error'); return; }
+  const nombre = vNombre.value;
+
+  const vCorreo = validators.email(document.getElementById('admin-user-correo')?.value, { required: true });
+  if (!vCorreo.ok) { showToast(vCorreo.error, 'error'); return; }
+  const correo = vCorreo.value;
+
+  const password = (document.getElementById('admin-user-password')?.value || '').trim();
+  if (password.length > 200) { showToast('Password demasiado largo', 'error'); return; }
+
+  const vCuenta = validators.text(document.getElementById('admin-user-num-cuenta')?.value, {
+    max: 50, label: 'No. cuenta', pattern: /^[A-Za-z0-9\-/]+$/
+  });
+  if (!vCuenta.ok) { showToast(vCuenta.error, 'error'); return; }
+  const numCuenta = vCuenta.value;
+
   const fechaNac = document.getElementById('admin-user-fecha-nacimiento')?.value;
+  // El input type=date ya valida formato YYYY-MM-DD a nivel HTML.
+  if (fechaNac && !/^\d{4}-\d{2}-\d{2}$/.test(fechaNac)) {
+    showToast('Fecha de nacimiento inválida', 'error'); return;
+  }
   const estatus = document.getElementById('admin-user-estatus')?.value || 'alumno';
   let role = document.getElementById('admin-user-role')?.value || 'user';
-
-  if (!nombre || !correo) { showToast('Nombre y correo son requeridos', 'error'); return; }
   // Política de password (debe coincidir EXACTO con la del edge function create-user
   // y con la del cambio de password en el perfil): ≥8 chars + 1 mayúscula + 1 dígito.
   if (!password || password.length < 8) {

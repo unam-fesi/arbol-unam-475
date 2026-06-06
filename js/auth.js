@@ -1040,16 +1040,43 @@ async function submitPublicReport(e) {
 
   const treeCode = form.dataset.treeCode;
   const treeId = form.dataset.treeId ? parseInt(form.dataset.treeId, 10) : null;
-  const title = document.getElementById('pr-title').value.trim();
-  const description = document.getElementById('pr-description').value.trim();
-  const urgency = document.getElementById('pr-urgency').value;
-  const reporterName = document.getElementById('pr-name').value.trim();
-  const reporterContact = document.getElementById('pr-contact').value.trim();
 
-  if (!title || !description) {
-    if (status) { status.textContent = 'Por favor completa título y descripción.'; status.style.color = 'var(--danger)'; }
-    return;
+  // M-6: validar todos los inputs del reporte público — es la vía con MAYOR
+  // exposición porque la rellena gente sin autenticar desde el QR.
+  // Reglas defensivas (las mismas que el edge function aplicará server-side):
+  const v = window.validators || null;
+  const fail = (msg) => {
+    if (status) { status.textContent = msg; status.style.color = 'var(--danger)'; }
+  };
+  const vTitle = v && v.text(document.getElementById('pr-title').value, {
+    min: 3, max: 200, label: 'Título', required: true
+  });
+  if (vTitle && !vTitle.ok) { fail(vTitle.error); return; }
+  const title = vTitle ? vTitle.value : document.getElementById('pr-title').value.trim();
+
+  const vDesc = v && v.text(document.getElementById('pr-description').value, {
+    min: 5, max: 2000, label: 'Descripción', required: true
+  });
+  if (vDesc && !vDesc.ok) { fail(vDesc.error); return; }
+  const description = vDesc ? vDesc.value : document.getElementById('pr-description').value.trim();
+
+  const urgency = document.getElementById('pr-urgency').value;
+  // Whitelist de valores válidos para urgency (el server también valida)
+  if (!['low','normal','high','critical'].includes(urgency)) {
+    fail('Nivel de urgencia inválido'); return;
   }
+
+  const vName = v && v.text(document.getElementById('pr-name').value, {
+    max: 100, label: 'Nombre'
+  });
+  if (vName && !vName.ok) { fail(vName.error); return; }
+  const reporterName = vName ? vName.value : document.getElementById('pr-name').value.trim();
+
+  const vContact = v && v.text(document.getElementById('pr-contact').value, {
+    max: 200, label: 'Contacto'
+  });
+  if (vContact && !vContact.ok) { fail(vContact.error); return; }
+  const reporterContact = vContact ? vContact.value : document.getElementById('pr-contact').value.trim();
   // No requerimos treeId — la Edge Function resuelve el tree_id desde el
   // tree_code (que SIEMPRE viene del QR). Anon no puede leer trees_catalog
   // por RLS, por eso treeId puede venir null en el flujo público.
