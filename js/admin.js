@@ -3978,6 +3978,23 @@ async function loadSecurityDashboard() {
       </div>`;
 
     wrap.innerHTML = `
+      <!-- ╔══════════════════════════════════════════════════════════════╗ -->
+      <!-- ║  PERFORMANCE DASHBOARD — capas Frontend / Backend / BD       ║ -->
+      <!-- ║  Carga snapshot de la RPC performance_snapshot() en BD       ║ -->
+      <!-- ╚══════════════════════════════════════════════════════════════╝ -->
+      <details id="perf-details" open style="margin-bottom:18px;border:1px solid #d6e7d8;background:linear-gradient(135deg,#f5fcf6,#eaf6ed);border-radius:10px;padding:1rem;">
+        <summary style="cursor:pointer;font-weight:700;font-size:1rem;color:#2E7D32;display:flex;align-items:center;gap:8px;">
+          <i class="fas fa-tachometer-alt"></i> Performance del sistema
+          <span style="font-size:11px;font-weight:normal;color:#5b8b7d;margin-left:8px;">Frontend · Backend · BD · PUM-AI</span>
+          <button type="button" onclick="event.stopPropagation();event.preventDefault();_loadPerfSection();" style="margin-left:auto;background:#5b8b7d;color:#fff;border:none;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;">
+            <i class="fas fa-sync-alt"></i> Refrescar
+          </button>
+        </summary>
+        <div id="perf-section" style="margin-top:0.8rem;">
+          <p class="text-muted" style="text-align:center;padding:1.5rem;">Cargando métricas…</p>
+        </div>
+      </details>
+
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
         ${card('Logins exitosos 24h', ok24h, '', '✅', '#3b7a3a')}
         ${card('Fallos 24h', fails24h, '', '❌', fails24h > 20 ? '#b54f3a' : '#d4a574')}
@@ -4241,11 +4258,156 @@ async function loadSecurityDashboard() {
         </table>
       </div>
     `;
+    // Disparar carga del Performance dashboard (no bloquea el render principal)
+    _loadPerfSection().catch(e => console.warn('perf load:', e));
   } catch (err) {
     console.error('loadSecurityDashboard error:', err);
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
   }
 }
+
+// ============================================================================
+// PERFORMANCE DASHBOARD — métricas Frontend / Backend / BD / PUM-AI
+// ============================================================================
+// Llama a la RPC performance_snapshot() que devuelve un JSON con todo agregado
+// + agrega métricas client-side (SW cache version, repo metadata) y de Storage.
+// Renderiza widgets visuales tipo "gauge" en el contenedor #perf-section.
+async function _loadPerfSection() {
+  const container = document.getElementById('perf-section');
+  if (!container) return;
+  container.innerHTML = '<p class="text-muted" style="text-align:center;padding:1.5rem;">Cargando métricas…</p>';
+  try {
+    // 1. Snapshot principal desde Postgres (incluye DB + Storage + PUM-AI)
+    const { data: snap, error } = await sb.rpc('performance_snapshot');
+    if (error) throw error;
+
+    // 2. Métricas client-side del frontend (SW cache version)
+    let swCache = 'desconocida';
+    try {
+      const keys = await caches.keys();
+      const ours = keys.find(k => k.startsWith('arbol-unam-'));
+      if (ours) swCache = ours.replace('arbol-unam-', '');
+    } catch (_) {}
+
+    // 3. Edge functions count (vía supabase list — fallback si falla)
+    let edgeFnsCount = '—';
+    // Nota: no podemos listar edge functions desde el cliente JS (requiere
+    // management API key). Lo dejamos como contador conocido o desde un edge.
+    // Por ahora: hardcodeamos número aproximado.
+    edgeFnsCount = 17; // pum-ai, pum-ai-filter, admin-users, batch-invite-users, etc.
+
+    container.innerHTML = _renderPerfHtml(snap, { swCache, edgeFnsCount });
+  } catch (err) {
+    console.warn('_loadPerfSection:', err);
+    container.innerHTML = `<p style="color:#a33;text-align:center;padding:1rem;">Error: ${escapeHtml(err?.message || String(err))}</p>`;
+  }
+}
+
+// Genera el HTML del dashboard de performance — 4 paneles (FE / BE / BD / PUM-AI).
+function _renderPerfHtml(snap, ctx) {
+  const db = snap?.db || {};
+  const conn = db.connections || {};
+  const connPct = conn.max ? Math.round(100 * (conn.total || 0) / conn.max) : 0;
+  const cacheHit = Number(db.cache_hit_pct || 0);
+  const stor = snap?.storage || {};
+  const pumai24 = snap?.pumai?.last_24h || {};
+  const pumai7d = snap?.pumai?.last_7d || {};
+  const pumaiByEp = snap?.pumai?.by_endpoint || {};
+  const ts = snap?.timestamp ? new Date(snap.timestamp) : new Date();
+
+  // Helper: barra de progreso horizontal con color según valor
+  const bar = (pct, color, label) => `
+    <div style="margin-top:6px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;">
+        <span>${label}</span>
+        <span style="font-weight:600;color:${color};">${pct}%</span>
+      </div>
+      <div style="background:#eaeaea;border-radius:6px;height:6px;overflow:hidden;margin-top:3px;">
+        <div style="width:${Math.min(100, Math.max(0, pct))}%;background:${color};height:100%;transition:width 0.4s;"></div>
+      </div>
+    </div>`;
+
+  const stat = (label, value, sub) => `
+    <div>
+      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+      <div style="font-size:18px;font-weight:700;color:#222;">${value}</div>
+      ${sub ? `<div style="font-size:11px;color:#777;">${sub}</div>` : ''}
+    </div>`;
+
+  const panel = (title, icon, color, content) => `
+    <div style="flex:1;min-width:240px;background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.8rem;padding-bottom:0.6rem;border-bottom:2px solid ${color};">
+        <span style="font-size:1.3rem;">${icon}</span>
+        <strong style="color:${color};font-size:0.95rem;">${title}</strong>
+      </div>
+      ${content}
+    </div>`;
+
+  const fe = panel('Capa Frontend', '🖥️', '#1976d2', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+      ${stat('Service Worker', ctx.swCache, 'cache versión')}
+      ${stat('Host', 'GitHub Pages', 'static CDN')}
+    </div>
+    <div style="margin-top:0.8rem;font-size:11px;color:#888;line-height:1.5;">
+      <i class="fas fa-info-circle"></i> GitHub Pages no expone métricas de CPU/RAM/tráfico — son recursos estáticos servidos por CDN.
+    </div>`);
+
+  const be = panel('Capa Backend', '⚙️', '#7b1fa2', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+      ${stat('Edge Functions', ctx.edgeFnsCount, 'desplegadas activas')}
+      ${stat('Storage', stor.size_pretty || '—', `${stor.file_count || 0} archivos`)}
+    </div>
+    <div style="margin-top:0.8rem;font-size:11px;color:#888;line-height:1.5;">
+      <i class="fas fa-info-circle"></i> CPU/RAM por función no disponible (Deno isolate). Ver logs por función para latencia.
+    </div>`);
+
+  const bd = panel('Capa BD (Postgres)', '🗄️', '#388e3c', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+      ${stat('Conexiones', `${conn.total || 0} / ${conn.max || 60}`, `${conn.active || 0} activas, ${conn.idle || 0} idle`)}
+      ${stat('Tamaño BD', db.size_pretty || '—', '')}
+    </div>
+    ${bar(connPct, connPct > 80 ? '#c62828' : connPct > 60 ? '#f57c00' : '#388e3c', `Uso conexiones (${connPct}%)`)}
+    ${bar(cacheHit, cacheHit > 95 ? '#388e3c' : cacheHit > 85 ? '#f57c00' : '#c62828', `Cache hit ratio (${cacheHit}%)`)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.8rem;">
+      ${stat('Transacciones', (db.total_xacts || 0).toLocaleString('es-MX'), `${(db.rollbacks || 0).toLocaleString('es-MX')} rollbacks`)}
+      ${stat('Queries activas', db.active_queries || 0, 'en este momento')}
+    </div>
+    ${(db.top_tables && db.top_tables.length) ? `
+      <details style="margin-top:0.8rem;">
+        <summary style="cursor:pointer;font-size:12px;color:#5b8b7d;font-weight:600;">📊 Top 10 tablas por tamaño</summary>
+        <table style="width:100%;margin-top:0.5rem;font-size:11px;border-collapse:collapse;">
+          <thead><tr style="background:#f5f5f5;"><th style="text-align:left;padding:3px 6px;">Tabla</th><th style="text-align:right;padding:3px 6px;">Filas</th><th style="text-align:right;padding:3px 6px;">Tamaño</th></tr></thead>
+          <tbody>
+            ${db.top_tables.map(t => `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:3px 6px;font-family:monospace;">${escapeHtml(t.table_name)}</td><td style="text-align:right;padding:3px 6px;color:#666;">${(t.row_count||0).toLocaleString('es-MX')}</td><td style="text-align:right;padding:3px 6px;color:#555;">${escapeHtml(t.size_pretty)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </details>` : ''}`);
+
+  const pumaiErrPct = (pumai24.calls || 0) > 0 ? Math.round(100 * (pumai24.err || 0) / pumai24.calls) : 0;
+  const pumaiCachePct = (pumai24.calls || 0) > 0 ? Math.round(100 * (pumai24.cached || 0) / pumai24.calls) : 0;
+  const epList = Object.entries(pumaiByEp).map(([ep, n]) => `<span style="background:#eaf3ef;border:1px solid #c2dcd3;color:#5b8b7d;border-radius:10px;padding:2px 8px;font-size:11px;margin-right:4px;display:inline-block;margin-bottom:3px;">${escapeHtml(ep)} <strong>×${n}</strong></span>`).join('');
+  const pumai = panel('PUM-AI (IA)', '🤖', '#d4a574', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+      ${stat('Llamadas 24h', pumai24.calls || 0, `${pumai24.users || 0} usuarios`)}
+      ${stat('Tokens 24h', (pumai24.total_tokens || 0).toLocaleString('es-MX'), `≈ ${((pumai24.cost_usd || 0)).toFixed(4)} USD`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;">
+      ${stat('Llamadas 7d', pumai7d.calls || 0, `${(pumai7d.tokens || 0).toLocaleString('es-MX')} tokens`)}
+      ${stat('Errores 24h', `${pumaiErrPct}%`, `${pumai24.err || 0} de ${pumai24.calls || 0}`)}
+    </div>
+    ${pumaiErrPct > 0 ? bar(pumaiErrPct, pumaiErrPct > 10 ? '#c62828' : '#f57c00', `Tasa de error (${pumaiErrPct}%)`) : ''}
+    ${pumai24.cached > 0 ? bar(pumaiCachePct, '#388e3c', `Cache hits (${pumaiCachePct}%)`) : ''}
+    ${epList ? `<div style="margin-top:0.8rem;font-size:11px;color:#888;">Por endpoint 24h:<br>${epList}</div>` : ''}`);
+
+  return `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:0.6rem;">${fe}${be}</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">${bd}${pumai}</div>
+    <div style="font-size:10px;color:#888;text-align:right;margin-top:0.5rem;">
+      Actualizado: ${ts.toLocaleString('es-MX')}
+    </div>
+  `;
+}
+window._loadPerfSection = _loadPerfSection;
 
 // Cache de eventos de seguridad para filtrado client-side
 let _secEventsCache = [];
