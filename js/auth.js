@@ -318,6 +318,14 @@ function showMainApp() {
   } catch (_) {}
   showSection(savedSection);
   updateUserDisplay();
+  // Arrancar features Realtime (latido del campus, security feed, presence)
+  // Solo para admin/admin-campus/specialist/rectoria — el resto no se beneficia
+  try {
+    const role = String(currentUserProfile?.role || '').toLowerCase();
+    if (window.RealtimeFeatures && ['admin','admin-campus','rectoria','specialist','responsable'].includes(role)) {
+      window.RealtimeFeatures.start(currentUser, currentUserProfile);
+    }
+  } catch (e) { console.warn('Realtime start:', e); }
   // Sync any offline-queued measurements
   if (window.OfflineQueue && navigator.onLine) {
     window.OfflineQueue.syncPending().then(r => {
@@ -565,6 +573,10 @@ async function handleLogout() {
   try {
     // Parar el timer de inactividad
     if (window.SessionTimeout) window.SessionTimeout.stop();
+    // Detener Realtime channels (latido, security feed, presence)
+    if (window.RealtimeFeatures) {
+      try { window.RealtimeFeatures.stop(); } catch (_) {}
+    }
     // Detener Walkthrough (canto del colibrí, animation loop) si está activo —
     // si no se hace, el audio sigue sonando incluso después del logout
     if (window.DashboardWalkthrough && typeof window.DashboardWalkthrough.destroy === 'function') {
