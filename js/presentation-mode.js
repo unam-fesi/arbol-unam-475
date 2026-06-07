@@ -184,24 +184,60 @@ window.PresentationMode = (function () {
     if (!_channel) {
       return { error: 'Canal Realtime no disponible' };
     }
+    // Guard: el canal debe estar SUBSCRIBED antes de poder trackear.
+    // Si no lo está aún, esperamos hasta 3 segundos.
+    if (_channel.state !== 'joined') {
+      console.log('[pm] canal en estado:', _channel.state, '— esperando join...');
+      const ok = await _waitForChannelJoin(3000);
+      if (!ok) {
+        return { error: 'Canal Realtime no terminó de conectar (revisa la red)' };
+      }
+    }
     try {
-      await _channel.track({
+      const payload = {
         user_id: _currentUser.id,
         full_name: _currentProfile.full_name || _currentUser.email,
         role: _currentProfile.role,
         is_presenter: true,
         started_at: new Date().toISOString(),
-      });
+      };
+      console.log('[pm] tracking:', payload);
+      const result = await _channel.track(payload);
+      console.log('[pm] track result:', result);
       _state = 'presenting';
       _showPresenterIndicator();
       if (typeof showToast === 'function') {
         showToast('🎥 Presentación iniciada', 'success', 3000);
       }
+      // Force-poll por si el sync event no llega solo
+      setTimeout(() => {
+        try {
+          const state = _channel.presenceState();
+          console.log('[pm] post-track presenceState:', state);
+          Object.keys(state).forEach(k => {
+            const meta = state[k][0];
+            if (meta?.is_presenter) _onPresenterChange(meta);
+          });
+        } catch (e) { console.warn('[pm] post-track check:', e); }
+      }, 300);
       return { ok: true };
     } catch (e) {
       console.warn('[pm] startPresenting failed:', e);
       return { error: e?.message || 'No se pudo iniciar' };
     }
+  }
+
+  // Espera a que el canal entre en estado 'joined' (= SUBSCRIBED)
+  function _waitForChannelJoin(timeoutMs) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const tick = () => {
+        if (_channel?.state === 'joined') return resolve(true);
+        if (Date.now() - start > timeoutMs) return resolve(false);
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
   }
 
   async function stopPresenting() {
