@@ -173,6 +173,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'security') loadSecurityDashboard();
     else if (tabName === 'quotas') loadQuotasDashboard();
     else if (tabName === 'logs') loadAppLogs();
+    else if (tabName === 'performance') loadPerformanceTab();
   }
   // Tabs que son SIEMPRE globales (no filtran por campus) → esconder el dropdown del filter
   // El dropdown lo ven admin global Y RECTORÍA (que necesita ver todos los campus).
@@ -3978,23 +3979,6 @@ async function loadSecurityDashboard() {
       </div>`;
 
     wrap.innerHTML = `
-      <!-- ╔══════════════════════════════════════════════════════════════╗ -->
-      <!-- ║  PERFORMANCE DASHBOARD — capas Frontend / Backend / BD       ║ -->
-      <!-- ║  Carga snapshot de la RPC performance_snapshot() en BD       ║ -->
-      <!-- ╚══════════════════════════════════════════════════════════════╝ -->
-      <details id="perf-details" open style="margin-bottom:18px;border:1px solid #d6e7d8;background:linear-gradient(135deg,#f5fcf6,#eaf6ed);border-radius:10px;padding:1rem;">
-        <summary style="cursor:pointer;font-weight:700;font-size:1rem;color:#2E7D32;display:flex;align-items:center;gap:8px;">
-          <i class="fas fa-tachometer-alt"></i> Performance del sistema
-          <span style="font-size:11px;font-weight:normal;color:#5b8b7d;margin-left:8px;">Frontend · Backend · BD · PUM-AI</span>
-          <button type="button" onclick="event.stopPropagation();event.preventDefault();_loadPerfSection();" style="margin-left:auto;background:#5b8b7d;color:#fff;border:none;padding:4px 12px;border-radius:6px;font-size:11px;cursor:pointer;">
-            <i class="fas fa-sync-alt"></i> Refrescar
-          </button>
-        </summary>
-        <div id="perf-section" style="margin-top:0.8rem;">
-          <p class="text-muted" style="text-align:center;padding:1.5rem;">Cargando métricas…</p>
-        </div>
-      </details>
-
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
         ${card('Logins exitosos 24h', ok24h, '', '✅', '#3b7a3a')}
         ${card('Fallos 24h', fails24h, '', '❌', fails24h > 20 ? '#b54f3a' : '#d4a574')}
@@ -4258,8 +4242,6 @@ async function loadSecurityDashboard() {
         </table>
       </div>
     `;
-    // Disparar carga del Performance dashboard (no bloquea el render principal)
-    _loadPerfSection().catch(e => console.warn('perf load:', e));
   } catch (err) {
     console.error('loadSecurityDashboard error:', err);
     wrap.innerHTML = `<p class="text-muted" style="color:#a33;">Error: ${escapeHtml(err.message || String(err))}</p>`;
@@ -4272,9 +4254,13 @@ async function loadSecurityDashboard() {
 // Llama a la RPC performance_snapshot() que devuelve un JSON con todo agregado
 // + agrega métricas client-side (SW cache version, repo metadata) y de Storage.
 // Renderiza widgets visuales tipo "gauge" en el contenedor #perf-section.
-async function _loadPerfSection() {
-  const container = document.getElementById('perf-section');
+async function loadPerformanceTab() {
+  const container = document.getElementById('performance-container');
   if (!container) return;
+  if (!(isAdminRole() || isRectoriaRole())) {
+    container.innerHTML = '<p class="text-muted">Solo el administrador principal o Rectoría pueden ver esta sección.</p>';
+    return;
+  }
   container.innerHTML = '<p class="text-muted" style="text-align:center;padding:1.5rem;">Cargando métricas…</p>';
   try {
     // 1. Snapshot principal desde Postgres (incluye DB + Storage + PUM-AI)
@@ -4343,20 +4329,115 @@ function _renderPerfHtml(snap, ctx) {
       ${content}
     </div>`;
 
+  // Web Vitals — métricas reales del navegador del usuario final
+  const vitals = snap?.vitals_24h || {};
+  // Thresholds Google CWV 2024
+  const TH = { LCP: [2500, 4000], INP: [200, 500], CLS: [0.1, 0.25], TTFB: [800, 1800], FCP: [1800, 3000] };
+  const vColor = (m, v) => {
+    const t = TH[m]; if (!t) return '#666';
+    return v <= t[0] ? '#388e3c' : v <= t[1] ? '#f57c00' : '#c62828';
+  };
+  const vFmt = (m, v) => {
+    if (v == null) return '—';
+    if (m === 'CLS') return Number(v).toFixed(3);
+    if (Number(v) < 1) return Number(v).toFixed(2) + ' s';
+    return Math.round(Number(v)) + ' ms';
+  };
+  const vitalsRows = ['LCP','INP','CLS','TTFB','FCP'].map(m => {
+    const info = vitals[m];
+    if (!info) return `<tr><td style="padding:3px 6px;font-family:monospace;font-weight:600;">${m}</td><td colspan="3" style="padding:3px 6px;color:#aaa;font-size:11px;">— sin muestras 24h —</td></tr>`;
+    const median = info.median;
+    const p75 = info.p75;
+    return `<tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:3px 6px;font-family:monospace;font-weight:600;">${m}</td>
+      <td style="padding:3px 6px;text-align:right;color:${vColor(m, median)};">${vFmt(m, median)}</td>
+      <td style="padding:3px 6px;text-align:right;color:${vColor(m, p75)};font-size:11px;">${vFmt(m, p75)}</td>
+      <td style="padding:3px 6px;text-align:right;color:#666;font-size:11px;">${info.n}</td>
+    </tr>`;
+  }).join('');
+
   const fe = panel('Capa Frontend', '🖥️', '#1976d2', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
       ${stat('Service Worker', ctx.swCache, 'cache versión')}
       ${stat('Host', 'GitHub Pages', 'static CDN')}
     </div>
-    <div style="margin-top:0.8rem;font-size:11px;color:#888;line-height:1.5;">
-      <i class="fas fa-info-circle"></i> GitHub Pages no expone métricas de CPU/RAM/tráfico — son recursos estáticos servidos por CDN.
+    <details style="margin-top:0.8rem;" open>
+      <summary style="cursor:pointer;font-size:12px;color:#1976d2;font-weight:600;">⚡ Web Vitals 24h (medianos vs p75)</summary>
+      <table style="width:100%;margin-top:0.5rem;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="background:#f5f5f5;">
+          <th style="text-align:left;padding:4px 6px;">Métrica</th>
+          <th style="text-align:right;padding:4px 6px;">Mediana</th>
+          <th style="text-align:right;padding:4px 6px;">P75</th>
+          <th style="text-align:right;padding:4px 6px;">Muestras</th>
+        </tr></thead>
+        <tbody>${vitalsRows}</tbody>
+      </table>
+      <div style="font-size:10px;color:#999;margin-top:0.4rem;line-height:1.4;">
+        Verde = Good, Naranja = Needs improvement, Rojo = Poor (umbrales Google CWV 2024).<br>
+        LCP &lt;2.5s · INP &lt;200ms · CLS &lt;0.1 · TTFB &lt;800ms · FCP &lt;1.8s
+      </div>
+    </details>
+    <div style="margin-top:0.6rem;font-size:11px;color:#888;line-height:1.5;">
+      <i class="fas fa-info-circle"></i> Métricas capturadas en el navegador del usuario final (web-vitals lib). GitHub Pages no expone CPU/RAM.
     </div>`);
+
+  const edgeFns = snap?.edge_functions || {};
+  const bdWrites = snap?.bd_writes_24h || {};
+  // Helper para render de cada edge function con calls_24h, ok, err
+  const fnRow = (slug, label, m) => {
+    if (!m) return '';
+    const calls = m.calls_24h || 0;
+    const errs = m.err || m.errors || 0;
+    const errPct = calls > 0 ? Math.round(100 * errs / calls) : 0;
+    const okColor = errPct === 0 ? '#388e3c' : errPct < 10 ? '#f57c00' : '#c62828';
+    return `
+      <tr style="border-bottom:1px solid #f0f0f0;">
+        <td style="padding:4px 6px;font-family:monospace;font-size:11px;">${escapeHtml(slug)}</td>
+        <td style="padding:4px 6px;color:#666;font-size:11px;">${escapeHtml(label)}</td>
+        <td style="padding:4px 6px;text-align:right;font-weight:600;">${calls.toLocaleString('es-MX')}</td>
+        <td style="padding:4px 6px;text-align:right;color:${okColor};">${errPct}%</td>
+      </tr>`;
+  };
+  const writesRows = Object.entries(bdWrites)
+    .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+    .slice(0, 6)
+    .map(([t, n]) => `<tr><td style="padding:3px 6px;font-family:monospace;">${escapeHtml(t)}</td><td style="text-align:right;padding:3px 6px;color:#5b8b7d;font-weight:600;">${n}</td></tr>`)
+    .join('');
 
   const be = panel('Capa Backend', '⚙️', '#7b1fa2', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
       ${stat('Edge Functions', ctx.edgeFnsCount, 'desplegadas activas')}
       ${stat('Storage', stor.size_pretty || '—', `${stor.file_count || 0} archivos`)}
     </div>
+    <details style="margin-top:0.8rem;" open>
+      <summary style="cursor:pointer;font-size:12px;color:#7b1fa2;font-weight:600;">⚡ Edge Functions — actividad 24h (inferida)</summary>
+      <table style="width:100%;margin-top:0.5rem;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="background:#f5f5f5;">
+          <th style="text-align:left;padding:4px 6px;">Slug</th>
+          <th style="text-align:left;padding:4px 6px;">Fuente</th>
+          <th style="text-align:right;padding:4px 6px;">Calls</th>
+          <th style="text-align:right;padding:4px 6px;">% Err</th>
+        </tr></thead>
+        <tbody>
+          ${fnRow('pum-ai / filter', 'gemini_usage', edgeFns.pum_ai)}
+          ${fnRow('secure-login', 'auth_attempts', edgeFns.secure_login)}
+          ${fnRow('send-telegram-notification', 'telegram_messages_log', edgeFns.send_telegram)}
+          ${fnRow('log-security-event', 'security_events', edgeFns.log_security_event)}
+          ${fnRow('log-error', 'app_logs', edgeFns.log_error)}
+        </tbody>
+      </table>
+      <div style="font-size:10px;color:#999;margin-top:0.4rem;line-height:1.4;">
+        Conteo inferido de las tablas que cada función escribe. Funciones sin tabla propia (admin-users, batch-invite-users, weather-sync, etc.) no aparecen aquí. Para conteo exacto se necesita instrumentación adicional.
+      </div>
+    </details>
+    ${writesRows ? `
+      <details style="margin-top:0.6rem;">
+        <summary style="cursor:pointer;font-size:12px;color:#7b1fa2;font-weight:600;">✍️ Escrituras BD por tabla (24h)</summary>
+        <table style="width:100%;margin-top:0.5rem;border-collapse:collapse;font-size:11px;">
+          <thead><tr style="background:#f5f5f5;"><th style="text-align:left;padding:3px 6px;">Tabla</th><th style="text-align:right;padding:3px 6px;">Operaciones</th></tr></thead>
+          <tbody>${writesRows}</tbody>
+        </table>
+      </details>` : ''}
     <div style="margin-top:0.8rem;font-size:11px;color:#888;line-height:1.5;">
       <i class="fas fa-info-circle"></i> CPU/RAM por función no disponible (Deno isolate). Ver logs por función para latencia.
     </div>`);
@@ -4407,7 +4488,7 @@ function _renderPerfHtml(snap, ctx) {
     </div>
   `;
 }
-window._loadPerfSection = _loadPerfSection;
+window.loadPerformanceTab = loadPerformanceTab;
 
 // Cache de eventos de seguridad para filtrado client-side
 let _secEventsCache = [];

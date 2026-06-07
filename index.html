@@ -6,7 +6,7 @@
     <title>Proyecto Árbol UNAM 475 — FES Iztacala</title>
 
     <!-- Security Headers (frame-ancestors y X-Frame-Options se setean a nivel HTTP en GH Pages) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com www.gstatic.com challenges.cloudflare.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com dl.polyhaven.org cdn.polyhaven.com; connect-src 'self' blob: data: *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net dl.polyhaven.org cdn.polyhaven.com api.polyhaven.com www.gstatic.com challenges.cloudflare.com ipapi.co ipwho.is; font-src fonts.gstatic.com cdnjs.cloudflare.com; frame-src challenges.cloudflare.com; worker-src 'self' blob:">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com www.gstatic.com challenges.cloudflare.com unpkg.com 'unsafe-inline'; style-src 'self' cdnjs.cloudflare.com fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob: *.supabase.co *.tile.openstreetmap.org cdnjs.cloudflare.com dl.polyhaven.org cdn.polyhaven.com; connect-src 'self' blob: data: *.supabase.co generativelanguage.googleapis.com api.openweathermap.org cdnjs.cloudflare.com cdn.jsdelivr.net unpkg.com dl.polyhaven.org cdn.polyhaven.com api.polyhaven.com www.gstatic.com challenges.cloudflare.com ipapi.co ipwho.is; font-src fonts.gstatic.com cdnjs.cloudflare.com; frame-src challenges.cloudflare.com; worker-src 'self' blob:">
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
@@ -409,6 +409,7 @@
                             <button class="admin-tab" data-tab="security" data-group="seguridad" onclick="switchAdminTab('security')"><i class="fas fa-shield-alt"></i> Acceso e IPs</button>
                             <button class="admin-tab" data-tab="quotas" data-group="seguridad" onclick="switchAdminTab('quotas')"><i class="fas fa-gauge-high"></i> Cuotas y alertas</button>
                             <button class="admin-tab" data-tab="logs" data-group="seguridad" onclick="switchAdminTab('logs')"><i class="fas fa-bug"></i> Logs</button>
+                            <button class="admin-tab" data-tab="performance" data-group="seguridad" onclick="switchAdminTab('performance')"><i class="fas fa-tachometer-alt"></i> Performance</button>
                         </div>
 
                         <div class="admin-content">
@@ -1514,6 +1515,15 @@
                                 </div>
                                 <div id="logs-container">Cargando…</div>
                             </div>
+
+                            <!-- PERFORMANCE TAB -->
+                            <div id="performanceTab" class="tab-pane">
+                                <h4 style="margin-bottom:0.4rem;"><i class="fas fa-tachometer-alt"></i> Performance del sistema</h4>
+                                <p class="text-muted text-small" style="margin-bottom:1rem;">
+                                    Métricas de las 3 capas: Frontend (Service Worker, GitHub Pages), Backend (Edge Functions, Storage) y BD (Postgres). Más uso de PUM-AI.
+                                </p>
+                                <div id="performance-container">Cargando…</div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -1733,6 +1743,8 @@
     <!-- Scripts -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
+    <!-- Captura Web Vitals (LCP, CLS, INP, TTFB, FCP) — batched, no bloquea -->
+    <script src="js/web-vitals-capture.js" defer></script>
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/offline-queue.js"></script>
