@@ -1371,6 +1371,10 @@ function _setupAdminTreesFilters() {
         <input type="checkbox" id="ft-no-gps" onchange="_filterAdminTrees()" style="margin:0;cursor:pointer;">
         📍 Sin GPS
       </label>
+      <label style="display:inline-flex;align-items:center;gap:0.25rem;font-size:0.75rem;color:#555;margin-right:0.4rem;cursor:pointer;" title="Mostrar solo árboles sin foto registrada">
+        <input type="checkbox" id="ft-no-photo" onchange="_filterAdminTrees()" style="margin:0;cursor:pointer;">
+        📷 Sin foto
+      </label>
       <button type="button" onclick="_exportTreesNoGpsCsv()"
         style="background:transparent;color:#5b8b7d;border:1px solid #c2dcd3;padding:0.3rem 0.5rem;border-radius:6px;font-size:0.72rem;cursor:pointer;margin-right:0.25rem;"
         title="Exportar CSV de árboles sin GPS">⬇ CSV</button>
@@ -1390,6 +1394,7 @@ function _filterAdminTrees() {
   const status = (document.getElementById('ft-status')?.value || '').trim();
   const healthMin = parseInt(document.getElementById('ft-health-min')?.value);
   const noGps = !!document.getElementById('ft-no-gps')?.checked;
+  const noPhoto = !!document.getElementById('ft-no-photo')?.checked;
 
   const filtered = _adminTreesCache.filter(t => {
     if (code && !(t.tree_code || '').toLowerCase().includes(code)) return false;
@@ -1408,6 +1413,13 @@ function _filterAdminTrees() {
       const hasLocOnTree = t.location_lat != null && t.location_lng != null;
       const hasLocOnMeas = _adminTreesHasLoc && _adminTreesHasLoc.has(t.id);
       if (hasLocOnTree || hasLocOnMeas) return false;
+    }
+    // "Sin foto": misma lógica — un árbol cuenta como "con foto" si tiene
+    // photo_url en trees_catalog O alguna medición con foto registrada.
+    if (noPhoto) {
+      const hasPhotoOnTree = t.photo_url && String(t.photo_url).length > 0;
+      const hasPhotoOnMeas = _adminTreesHasPhoto && _adminTreesHasPhoto.has(t.id);
+      if (hasPhotoOnTree || hasPhotoOnMeas) return false;
     }
     return true;
   });
@@ -1437,6 +1449,8 @@ function _clearAdminTreesFilters() {
   });
   const noGpsEl = document.getElementById('ft-no-gps');
   if (noGpsEl) noGpsEl.checked = false;
+  const noPhotoEl = document.getElementById('ft-no-photo');
+  if (noPhotoEl) noPhotoEl.checked = false;
   _adminSortState.trees = { field: null, dir: null };
   _renderAdminTreesRows(_adminTreesCache);
   _updateSortIndicators('table[data-sort-table="trees"]');
@@ -1537,9 +1551,13 @@ function _renderAdminTreesRows(trees) {
           : `<span title="${escapeHtml(photoTooltip)}" style="margin-left:4px;opacity:0.4;">📷</span>`}
       </td>
       <td>${tree.health_score || 0}%${co2Tag}</td>
-      <td>${editButtons}
-        <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
-        <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>${deleteButton}
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;justify-content:flex-start;">
+          ${editButtons}
+          <button class="btn btn-sm" style="background:#1a4480;color:white;" onclick="viewTreeMeasurementsAdmin(${tree.id})" title="Ver seguimientos">📋</button>
+          <button class="btn btn-sm" style="background:#0288d1;color:white;" onclick="showTreeQR(${tree.id}, '${safeJsAttr(tree.tree_code)}', '${safeJsAttr(tree.common_name || '')}')" title="QR">📱</button>
+          ${deleteButton}
+        </div>
       </td>
     `;
     tbody.appendChild(row);
