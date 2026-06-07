@@ -1400,9 +1400,15 @@ function _filterAdminTrees() {
     if (campus && t.campus !== campus) return false;
     if (status && t.status !== status) return false;
     if (!isNaN(healthMin) && (t.health_score || 0) < healthMin) return false;
-    // "Sin GPS": el árbol no tiene coords en trees_catalog. (No considera
-    // mediciones porque la columna en BD es la que cuenta para mapas/exports.)
-    if (noGps && (t.location_lat != null && t.location_lng != null)) return false;
+    // "Sin GPS": consistente con el icono 📍 de la tabla — un árbol cuenta
+    // como "con GPS" si tiene coords en trees_catalog O en cualquier medición.
+    // Antes solo veía trees_catalog y mostraba como "sin GPS" árboles que sí
+    // estaban geolocalizados vía medición (caso FESI 30 FRESNO).
+    if (noGps) {
+      const hasLocOnTree = t.location_lat != null && t.location_lng != null;
+      const hasLocOnMeas = _adminTreesHasLoc && _adminTreesHasLoc.has(t.id);
+      if (hasLocOnTree || hasLocOnMeas) return false;
+    }
     return true;
   });
 
@@ -1443,7 +1449,12 @@ function _exportTreesNoGpsCsv() {
     showToast('No hay árboles cargados', 'info');
     return;
   }
-  const rows = _adminTreesCache.filter(t => t.location_lat == null || t.location_lng == null);
+  // "Sin GPS" mismo criterio que el filtro: ni trees_catalog ni mediciones tienen coords.
+  const rows = _adminTreesCache.filter(t => {
+    const hasLocOnTree = t.location_lat != null && t.location_lng != null;
+    const hasLocOnMeas = _adminTreesHasLoc && _adminTreesHasLoc.has(t.id);
+    return !hasLocOnTree && !hasLocOnMeas;
+  });
   if (rows.length === 0) {
     showToast('¡Todos los árboles cargados tienen GPS!', 'success');
     return;
