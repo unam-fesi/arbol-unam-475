@@ -92,8 +92,10 @@ async function initApp() {
   const _isReportShortcut = !!_params.get('report');  // legacy
   // SECURITY: validar que el tree_code matchea el formato esperado antes de
   // usarlo en CUALQUIER lado. Esto bloquea vectores XSS de tipo
-  // ?tree=');alert(1)// y limita a códigos legítimos (alfanuméricos, guiones).
-  if (_treeCode && !/^[A-Za-z0-9_-]{1,40}$/.test(_treeCode)) {
+  // ?tree=');alert(1)// pero ahora permite los caracteres reales que usan
+  // los códigos FESI: espacios y acentos (ej. "FESI 14 FRESNO", "FESI 64 NÍSPERO").
+  // Solo letras (con acentos), dígitos, espacios, guiones y underscores. Length 60.
+  if (_treeCode && !/^[A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ _-]{1,60}$/.test(_treeCode)) {
     console.warn('[auth] tree code inválido, ignorando:', _treeCode);
     _treeCode = null;
   }
