@@ -4903,6 +4903,24 @@ async function loadQuotasDashboard() {
 
     const colorFor = pct => pct >= 95 ? '#b54f3a' : pct >= 80 ? '#d4a574' : '#3b7a3a';
     const labelFor = pct => pct >= 95 ? 'CRÍTICO' : pct >= 90 ? 'Alerta' : pct >= 80 ? 'Advertencia' : 'OK';
+    // Display labels: cualquier servicio "gemini_*" se muestra como PUM-AI
+    // (el nombre del servicio en BD se mantiene técnico, solo el label cambia).
+    const SERVICE_LABEL = {
+      'gemini_api':           'PUM-AI (calls)',
+      'gemini_tokens':        'PUM-AI (tokens)',
+      'gemini_cost':          'PUM-AI (costo USD)',
+      'supabase_db_size':     'Supabase BD',
+      'supabase_db_rows':     'Supabase BD (filas)',
+      'supabase_storage':     'Supabase Storage',
+      'supabase_egress':      'Supabase Egress',
+      'supabase_invocations': 'Edge Functions (invocaciones)',
+    };
+    const displayLabel = (s) => {
+      if (SERVICE_LABEL[s]) return SERVICE_LABEL[s];
+      // Fallback: cualquier "gemini*" sin mapeo explícito también se vuelve PUM-AI
+      if (/^gemini/i.test(s)) return 'PUM-AI (' + s.replace(/^gemini_?/i, '') + ')';
+      return s.replace(/_/g, ' ');
+    };
 
     wrap.innerHTML = `
       <p class="text-muted text-small" style="margin-bottom:14px;">
@@ -4918,7 +4936,7 @@ async function loadQuotasDashboard() {
         <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:12px;border-left:4px solid ${colorFor(q.pct)};">
           <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
             <div>
-              <div style="font-size:13px;font-weight:600;color:#333;text-transform:capitalize;">${q.service.replace(/_/g,' ')}</div>
+              <div style="font-size:13px;font-weight:600;color:#333;">${escapeHtml(displayLabel(q.service))}</div>
               <div style="font-size:11px;color:#777;margin-top:2px;">
                 ${Number(q.current_usage).toLocaleString('es-MX')} / ${Number(q.quota_limit).toLocaleString('es-MX')} ${q.metric}
                 ${q.period_end ? ` · ciclo termina ${new Date(q.period_end).toLocaleDateString('es-MX')}` : ''}
