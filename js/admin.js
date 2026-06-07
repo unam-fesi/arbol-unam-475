@@ -4253,7 +4253,7 @@ async function loadSecurityDashboard() {
 // ============================================================================
 // Llama a la RPC performance_snapshot() que devuelve un JSON con todo agregado
 // + agrega métricas client-side (SW cache version, repo metadata) y de Storage.
-// Renderiza widgets visuales tipo "gauge" en el contenedor #perf-section.
+// Renderiza widgets visuales tipo "gauge" en el contenedor #performance-container.
 async function loadPerformanceTab() {
   const container = document.getElementById('performance-container');
   if (!container) return;
@@ -4284,7 +4284,7 @@ async function loadPerformanceTab() {
 
     container.innerHTML = _renderPerfHtml(snap, { swCache, edgeFnsCount });
   } catch (err) {
-    console.warn('_loadPerfSection:', err);
+    console.warn('loadPerformanceTab:', err);
     container.innerHTML = `<p style="color:#a33;text-align:center;padding:1rem;">Error: ${escapeHtml(err?.message || String(err))}</p>`;
   }
 }
