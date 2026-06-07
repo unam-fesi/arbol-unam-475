@@ -102,7 +102,7 @@ async function _fetchAssignedTrees() {
       .from('trees_catalog')
       .select('id, tree_code, common_name, species, garden_id, photo_url, status')
       .in('id', [...ids])
-      .order('common_name');
+      .order('tree_code');   // ordenar por código identificador, no por especie (evita agrupar todos los Fresnos juntos sin distinguir)
     return trees || [];
   } catch (e) {
     console.error('_fetchAssignedTrees error:', e);
@@ -186,7 +186,11 @@ function _renderSelector() {
 
   const treeChips = _myTreeRecords.map(t =>
     chip('tree', t.id,
-      t.common_name || t.tree_code || `Árbol #${t.id}`,
+      // Para usuarios con muchos árboles asignados (caso Isabel con 87), el
+      // tree_code es la única forma de distinguir. Lo mostramos como label
+      // principal con el common_name de complemento si existe.
+      t.tree_code ? (t.common_name ? `${t.tree_code} · ${t.common_name}` : t.tree_code)
+                  : (t.common_name || `Árbol #${t.id}`),
       '🌳',
       _activeEntity?.type === 'tree' && String(_activeEntity.id) === String(t.id))
   ).join('');
@@ -558,8 +562,9 @@ function _renderGardenSeguimiento(trees, visits) {
       return `
         <tr>
           <td style="padding:0.7rem 0.5rem;font-weight:500;">
-            ${escapeHtml(t.common_name || 'Árbol')}
-            ${t.tree_code ? `<span style="color:#999;font-size:0.7rem;font-family:ui-monospace,monospace;margin-left:0.4rem;">${escapeHtml(t.tree_code)}</span>` : ''}
+            ${t.tree_code
+              ? `<span style="font-family:ui-monospace,monospace;color:#1b5e20;">${escapeHtml(t.tree_code)}</span>${t.common_name ? `<br><span style="color:#666;font-size:0.78rem;font-weight:400;">${escapeHtml(t.common_name)}</span>` : ''}`
+              : escapeHtml(t.common_name || 'Árbol')}
           </td>
           <td style="padding:0.7rem 0.5rem;color:#666;font-size:0.85rem;font-style:italic;">${escapeHtml(t.species || '-')}</td>
           <td style="padding:0.7rem 0.5rem;text-align:center;">
@@ -759,9 +764,9 @@ function _renderGardenRegistro(garden, trees, visits) {
         onmouseout="this.style.borderColor='#d6d6d6';this.style.boxShadow='';">
         <div style="width:8px;height:48px;background:${color};border-radius:4px;flex-shrink:0;"></div>
         <div style="flex:1;min-width:0;">
-          <div style="font-weight:600;color:#1b5e20;">${escapeHtml(t.common_name || 'Árbol')}</div>
+          <div style="font-weight:600;color:#1b5e20;font-family:ui-monospace,monospace;">${escapeHtml(t.tree_code || 'Árbol #' + t.id)}</div>
+          ${t.common_name ? `<div style="color:#333;font-size:0.85rem;">${escapeHtml(t.common_name)}</div>` : ''}
           ${t.species ? `<div style="color:#666;font-size:0.78rem;font-style:italic;">${escapeHtml(t.species)}</div>` : ''}
-          ${t.tree_code ? `<div style="color:#999;font-size:0.7rem;font-family:ui-monospace,monospace;margin-top:2px;">${escapeHtml(t.tree_code)}</div>` : ''}
         </div>
         <i class="fas fa-chevron-right" style="color:#bbb;"></i>
       </div>`;
@@ -1039,7 +1044,8 @@ function _initGardenMap(garden, trees) {
     });
     L.marker([t.location_lat, t.location_lng], { icon })
       .addTo(map)
-      .bindPopup(`<strong>${escapeHtml(t.common_name || 'Árbol')}</strong><br>
+      .bindPopup(`<strong style="font-family:ui-monospace,monospace;">${escapeHtml(t.tree_code || 'Árbol #' + t.id)}</strong><br>
+        ${t.common_name ? `${escapeHtml(t.common_name)}<br>` : ''}
         ${t.species ? `<em>${escapeHtml(t.species)}</em><br>` : ''}
         Salud: ${score != null ? score + '/100' : 's/d'}<br>
         <a href="#" data-portfolio-action="select-entity" data-entity-type="tree" data-entity-id="${escapeHtml(String(t.id))}">Ver detalle</a>`);
