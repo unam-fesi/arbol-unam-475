@@ -47,26 +47,14 @@
     [19.47289, -99.04390], [19.47211, -99.03995], [19.47591, -99.03910]
   ];
 
-  // FES Cuautitlán Campus 1 (Jiménez Cantú, zona Hospital Veterinario UNAM)
-  // Polígono manual sobre bbox conocido — OSM no tiene polígono propio del campus
-  const POLY_CUAUTITLAN_C1 = [
+  // FES Cuautitlán — polígono manual sobre la zona REAL del campus
+  // (lat ~19.69, zona Hospital Veterinario UNAM, Jiménez Cantú).
+  // Antes había entradas separadas "Campus 1" + "Campus 4"; la C4 con OSM
+  // relation 12323197 (lat 19.637) NO correspondía a un campus real activo,
+  // y dejaba los árboles 5km fuera. Consolidamos a una sola entrada.
+  const POLY_CUAUTITLAN = [
     [19.69500, -99.19500], [19.69500, -99.18500],
     [19.68700, -99.18500], [19.68700, -99.19500]
-  ];
-
-  // FES Cuautitlán Campus 4 — polígono REAL de OSM relation 12323197 (Romero Rubio)
-  const POLY_CUAUTITLAN = [
-    [19.63911, -99.20722], [19.63866, -99.20715], [19.63831, -99.20709],
-    [19.63808, -99.20710], [19.63799, -99.20696], [19.63760, -99.20690],
-    [19.63729, -99.20686], [19.63561, -99.20665], [19.63554, -99.20691],
-    [19.63549, -99.20710], [19.63542, -99.20733], [19.63533, -99.20761],
-    [19.63518, -99.20804], [19.63488, -99.20869], [19.63507, -99.20880],
-    [19.63538, -99.20892], [19.63571, -99.20895], [19.63594, -99.20891],
-    [19.63648, -99.20874], [19.63785, -99.20829], [19.63790, -99.20828],
-    [19.63799, -99.20807], [19.63811, -99.20809], [19.63870, -99.20849],
-    [19.63889, -99.20837], [19.63904, -99.20820], [19.63909, -99.20803],
-    [19.63914, -99.20767], [19.63920, -99.20732], [19.63919, -99.20728],
-    [19.63916, -99.20724], [19.63911, -99.20722]
   ];
 
   // FES Zaragoza — polígono REAL de OSM relation 12313406 (multi-edificios)
@@ -136,25 +124,15 @@
       mPerLon: 104951.11,
       displayName: 'FES Aragón',
     },
-    'Cuautitlan1': {
-      polygon: POLY_CUAUTITLAN_C1,
-      centroid: [19.691000, -99.190000],   // Campus 1 — zona Hospital Vet UNAM
-      hasRealModel: true,
-      glb: null,
-      json: 'data/cuautitlan1_campus.json',
-      mPerLat: 110574.0,
-      mPerLon: 104810.39,
-      displayName: 'FES Cuautitlán Campus 1',
-    },
     'Cuautitlan': {
       polygon: POLY_CUAUTITLAN,
-      centroid: [19.637575, -99.207842],   // Campus 4 — real OSM relation 12323197
+      centroid: [19.691000, -99.190000],   // FES Cuautitlán — zona Hospital Vet UNAM
       hasRealModel: true,
       glb: null,
       json: 'data/cuautitlan_campus.json',
       mPerLat: 110574.0,
-      mPerLon: 104845.32,
-      displayName: 'FES Cuautitlán Campus 4',
+      mPerLon: 104810.39,
+      displayName: 'FES Cuautitlán',
     },
     'Zaragoza': {
       polygon: POLY_ZARAGOZA,
