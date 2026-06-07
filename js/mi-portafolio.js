@@ -101,9 +101,12 @@ async function _fetchAssignedTrees() {
     const { data: trees } = await sb
       .from('trees_catalog')
       .select('id, tree_code, common_name, species, garden_id, photo_url, status')
-      .in('id', [...ids])
-      .order('tree_code');   // ordenar por código identificador, no por especie (evita agrupar todos los Fresnos juntos sin distinguir)
-    return trees || [];
+      .in('id', [...ids]);
+    // NATURAL SORT en cliente: Postgres ordena por bytes, así que "FESI 100"
+    // sale antes de "FESI 11". localeCompare con numeric:true lo arregla.
+    return (trees || []).sort((a, b) =>
+      String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
+    );
   } catch (e) {
     console.error('_fetchAssignedTrees error:', e);
     return [];

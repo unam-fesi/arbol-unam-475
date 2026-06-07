@@ -1212,12 +1212,17 @@ async function loadAdminTrees() {
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
   try {
-    let q = sb.from('trees_catalog').select('*').order('tree_code');
+    let q = sb.from('trees_catalog').select('*');
     const campusFilter = effectiveCampusFilter();
     if (campusFilter) q = q.eq('campus', campusFilter);
     const { data, error } = await q;
     if (error) throw error;
-    _adminTreesCache = data || [];
+    // NATURAL SORT por tree_code: Postgres ordena por bytes (FESI 100 < FESI 11);
+    // necesitamos orden numérico ("FESI 11" antes que "FESI 100"). Ordenamos
+    // en cliente con localeCompare numeric:true que sí entiende números.
+    _adminTreesCache = (data || []).sort((a, b) =>
+      String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
+    );
     _setupAdminTreesFilters();
     _renderAdminTreesRows(_adminTreesCache);
     // Hidratar info de foto/GPS desde tree_measurements (incluye legacy
@@ -3052,7 +3057,10 @@ async function loadAssignments() {
     // por campus en populateAssignTarget / assign-tree funcione correctamente.
     const { data: users } = await sb.from('user_profiles').select('id, full_name, campus, role').order('full_name');
     const { data: groups } = await sb.from('user_groups').select('id, name, campus').order('name');
-    const { data: trees } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, campus').order('tree_code');
+    const { data: treesRaw } = await sb.from('trees_catalog').select('id, tree_code, common_name, species, campus');
+    const trees = (treesRaw || []).sort((a, b) =>
+      String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
+    );
     const { data: gardens } = await sb.from('gardens').select('id, name, campus').order('name');
 
     // Tree assignment target dropdown
@@ -5772,7 +5780,10 @@ async function exportTreesToExcel() {
   if (typeof XLSX === 'undefined') { showToast('SheetJS no cargada', 'error'); return; }
   showToast('Generando Excel...', 'info');
   try {
-    const { data: trees } = await sb.from('trees_catalog').select('*').order('tree_code');
+    const { data: treesRaw } = await sb.from('trees_catalog').select('*');
+    const trees = (treesRaw || []).sort((a, b) =>
+      String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
+    );
     const { data: meas } = await sb.from('tree_measurements')
       .select('tree_id, measurement_date, height_cm, trunk_diameter_cm, crown_diameter_cm, health_score')
       .order('measurement_date', { ascending: false });
@@ -7605,14 +7616,16 @@ async function showStudentDetail(userId) {
 // ---- Asignar árbol a estudiante (selecciona uno de los disponibles en el campus) ----
 async function openAssignTreeToStudent(userId, userName, userCampus) {
   try {
-    // Árboles del campus que NO están asignados a NADIE
-    const { data: trees } = await sb.from('trees_catalog')
+    // Árboles del campus que NO están asignados a NADIE — natural sort por tree_code
+    const { data: treesRaw } = await sb.from('trees_catalog')
       .select('id, tree_code, common_name, species, campus, health_score')
-      .eq('campus', userCampus)
-      .order('tree_code');
+      .eq('campus', userCampus);
+    const trees = (treesRaw || []).sort((a, b) =>
+      String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
+    );
     const { data: existing } = await sb.from('tree_assignments').select('tree_id');
     const assigned = new Set((existing || []).map(a => a.tree_id));
-    const available = (trees || []).filter(t => !assigned.has(t.id));
+    const available = trees.filter(t => !assigned.has(t.id));
 
     if (available.length === 0) {
       showToast('No hay árboles disponibles en ' + userCampus + ' (todos están asignados)', 'warning');
