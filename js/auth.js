@@ -325,6 +325,12 @@ function showMainApp() {
     if (window.RealtimeFeatures && ['admin','admin-campus','rectoria','specialist','responsable'].includes(role)) {
       window.RealtimeFeatures.start(currentUser, currentUserProfile);
     }
+    // Modo Presentación — suscribe el canal solo si el rol está habilitado
+    // para ser viewer (admin/admin-campus/rectoria/specialist/responsable).
+    // El user normal queda fuera del canal por completo.
+    if (window.PresentationMode && ['admin','admin-campus','rectoria','specialist','responsable'].includes(role)) {
+      window.PresentationMode.init(currentUser, currentUserProfile);
+    }
   } catch (e) { console.warn('Realtime start:', e); }
   // Sync any offline-queued measurements
   if (window.OfflineQueue && navigator.onLine) {
@@ -576,6 +582,10 @@ async function handleLogout() {
     // Detener Realtime channels (latido, security feed, presence)
     if (window.RealtimeFeatures) {
       try { window.RealtimeFeatures.stop(); } catch (_) {}
+    }
+    // Cleanup del Modo Presentación (suelta el canal y desuscribe)
+    if (window.PresentationMode) {
+      try { window.PresentationMode.cleanup(); } catch (_) {}
     }
     // Detener Walkthrough (canto del colibrí, animation loop) si está activo —
     // si no se hace, el audio sigue sonando incluso después del logout
