@@ -322,12 +322,15 @@ function showMainApp() {
   // Solo para admin/admin-campus/specialist/rectoria — el resto no se beneficia
   try {
     const role = String(currentUserProfile?.role || '').toLowerCase();
+    // Realtime + Modo Presentación DESACTIVADOS temporalmente (pre-inauguración).
+    // Razón: en compute Nano/Micro las conexiones permanentes de CDC + parsing
+    // de WAL agotaban el Disk IO Budget. Reactivar post-evento rediseñando
+    // con Broadcast directo (sin postgres_changes) o tras upgrade a Small.
+    // Los módulos window.RealtimeFeatures / window.PresentationMode quedan
+    // sin script tag en index.html — los if(...) abajo simplemente no entran.
     if (window.RealtimeFeatures && ['admin','admin-campus','rectoria','specialist','responsable'].includes(role)) {
       window.RealtimeFeatures.start(currentUser, currentUserProfile);
     }
-    // Modo Presentación — suscribe el canal solo si el rol está habilitado
-    // para ser viewer (admin/admin-campus/rectoria/specialist/responsable).
-    // El user normal queda fuera del canal por completo.
     if (window.PresentationMode && ['admin','admin-campus','rectoria','specialist','responsable'].includes(role)) {
       window.PresentationMode.init(currentUser, currentUserProfile);
     }
