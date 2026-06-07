@@ -7087,7 +7087,7 @@ function _showCampusUnderConstruction(selector, campusName) {
           Solo el campus <strong>FES Iztacala</strong> tiene modelo disponible por ahora.
         </p>
         <p style="color:#888;font-size:0.85rem;margin-top:1rem;">
-          Por mientras, usa el <strong>Heatmap campus</strong> o el <strong>Mapa 3D</strong>, que sí funcionan para cualquier campus.
+          Por mientras, usa el <strong>Heatmap campus</strong> o el <strong>Mapa 2D</strong>, que sí funcionan para cualquier campus.
         </p>
       </div>
     </div>

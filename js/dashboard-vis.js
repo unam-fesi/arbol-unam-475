@@ -54,19 +54,53 @@
       attribution: '&copy; OpenStreetMap', maxZoom: 19
     }).addTo(mapaInstance);
 
+    // Helper: ¿puede este user editar la ubicación de este árbol?
+    //  • admin → cualquier árbol
+    //  • admin-campus / responsable → solo árboles de su mismo campus
+    //  • rectoria/specialist/user → no edita (read-only)
+    function canEditTreeLocation(t) {
+      if (typeof currentUserProfile === 'undefined' || !currentUserProfile) return false;
+      const role = String(currentUserProfile.role || '').toLowerCase();
+      if (role === 'admin') return true;
+      if (role === 'admin-campus' || role === 'responsable') {
+        return (t.campus || '') === (currentUserProfile.campus || '');
+      }
+      return false;
+    }
+
+    // Inyectar CSS para cursor "grab" en markers draggable (una sola vez)
+    if (!document.getElementById('mapa-drag-styles')) {
+      const s = document.createElement('style');
+      s.id = 'mapa-drag-styles';
+      s.textContent = `
+        .mapa-tree-marker.editable > div { cursor: grab; box-shadow: 0 4px 14px rgba(46,125,50,0.55) !important; }
+        .mapa-tree-marker.editable.leaflet-marker-draggable:active > div { cursor: grabbing; }
+      `;
+      document.head.appendChild(s);
+    }
+
     // Markers — div icons coloreados por salud, con animación pulse
     treesWithCoord.forEach(t => {
       const color = colorByHealthHex(t.health_score);
       const size = 28;
+      const editable = canEditTreeLocation(t);
       const icon = L.divIcon({
-        className: 'mapa-tree-marker',
+        className: 'mapa-tree-marker' + (editable ? ' editable' : ''),
         html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
                    border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);
                    display:flex;align-items:center;justify-content:center;color:white;
                    font-size:14px;font-weight:bold;">🌳</div>`,
         iconSize: [size, size], iconAnchor: [size/2, size/2]
       });
-      const marker = L.marker([t.location_lat, t.location_lng], { icon }).addTo(mapaInstance);
+      const marker = L.marker([t.location_lat, t.location_lng], {
+        icon,
+        draggable: editable,
+        title: editable ? 'Arrastra para reubicar este árbol' : (t.tree_code || ''),
+      }).addTo(mapaInstance);
+
+      const hint = editable
+        ? `<div style="font-size:0.72rem;color:#2d5016;margin-top:6px;font-style:italic;">✋ Arrástralo para corregir su ubicación</div>`
+        : '';
       marker.bindPopup(`
         <div style="font-family:Inter,sans-serif;min-width:180px;">
           <strong>${escapeHtml(t.common_name || t.species || 'Árbol')}</strong>
@@ -79,8 +113,45 @@
                   style="margin-top:8px;background:#2d5016;color:white;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.8rem;">
             Abrir árbol
           </button>
+          ${hint}
         </div>
       `);
+
+      // Drag → confirmar → UPDATE
+      if (editable) {
+        marker.on('dragend', async (e) => {
+          const ll = e.target.getLatLng();
+          const oldLat = t.location_lat, oldLng = t.location_lng;
+          const lblCode = t.tree_code || `árbol #${t.id}`;
+          const ok = window.confirm(
+            `¿Mover ${lblCode} a la nueva ubicación?\n\n` +
+            `De: ${oldLat.toFixed(6)}, ${oldLng.toFixed(6)}\n` +
+            `A:  ${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}`
+          );
+          if (!ok) {
+            marker.setLatLng([oldLat, oldLng]);
+            return;
+          }
+          try {
+            const { error } = await sb.from('trees_catalog')
+              .update({ location_lat: ll.lat, location_lng: ll.lng, updated_at: new Date().toISOString() })
+              .eq('id', t.id);
+            if (error) throw error;
+            // Actualizar referencia in-place para que próximos render usen la nueva coord
+            t.location_lat = ll.lat;
+            t.location_lng = ll.lng;
+            if (typeof showToast === 'function') {
+              showToast(`✅ ${lblCode} reubicado`, 'success', 2800);
+            }
+          } catch (err) {
+            console.warn('[mapa] update location failed:', err);
+            marker.setLatLng([oldLat, oldLng]);
+            if (typeof showToast === 'function') {
+              showToast(`No se pudo guardar: ${err.message || err}`, 'error', 4000);
+            }
+          }
+        });
+      }
     });
 
     // Fit bounds
