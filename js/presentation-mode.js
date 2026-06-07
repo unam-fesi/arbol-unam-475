@@ -122,11 +122,28 @@ window.PresentationMode = (function () {
         catch (e) { console.warn('[pm] applyNavEvent:', e); }
       });
 
-      _channel.subscribe((status) => {
+      _channel.subscribe(async (status) => {
         console.log('[pm] channel status:', status);
         if (status === 'SUBSCRIBED') {
-          // Re-check explícito por si ya había un presenter antes de suscribirnos
-          // y el sync inicial no contenía los datos esperados.
+          // CRÍTICO: track inmediatamente con is_presenter:false para que
+          // Supabase active la presence para este cliente. Si esperamos hasta
+          // que el user pulse "Iniciar", el track tardío a veces se acepta
+          // pero NO se propaga al state (cliente queda como lurker).
+          // Patrón idéntico al de RealtimeFeatures.admin-presence que sí
+          // funciona.
+          try {
+            const baseTrack = {
+              user_id: _currentUser.id,
+              full_name: _currentProfile.full_name || _currentUser.email,
+              role: _currentProfile.role,
+              is_presenter: false,
+              online_at: new Date().toISOString(),
+            };
+            console.log('[pm] initial track (lurker):', baseTrack);
+            const r = await _channel.track(baseTrack);
+            console.log('[pm] initial track result:', r);
+          } catch (e) { console.warn('[pm] initial track failed:', e); }
+          // Re-check explícito por si ya había un presenter en el canal
           setTimeout(checkState, 300);
           setTimeout(checkState, 1500);
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
