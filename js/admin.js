@@ -4930,7 +4930,7 @@ async function loadQuotasDashboard() {
       </p>
       ${services.length === 0 ? `
         <div style="background:#fff;padding:24px;border-radius:10px;text-align:center;color:#888;">
-          No hay datos de cuotas todavía. Despliega <code>check-quotas</code> y agrega su cron.
+          No hay datos de cuotas todavía.
         </div>
       ` : services.map(q => `
         <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:12px;border-left:4px solid ${colorFor(q.pct)};">
