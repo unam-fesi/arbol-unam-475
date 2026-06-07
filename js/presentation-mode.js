@@ -31,7 +31,8 @@
 window.PresentationMode = (function () {
   'use strict';
 
-  const PRESENTER_ROLES = ['admin', 'admin-campus', 'rectoria'];
+  // Rectoría es read-only multicampus, NO presenta. Sí puede ver presentaciones.
+  const PRESENTER_ROLES = ['admin', 'admin-campus'];
   const VIEWER_ROLES    = ['admin', 'admin-campus', 'rectoria', 'specialist', 'responsable'];
 
   let _channel = null;
@@ -83,12 +84,12 @@ window.PresentationMode = (function () {
   function _subscribeChannel() {
     if (_channel) return;
     try {
+      console.log('[pm] init — rol:', _currentProfile?.role, '· puede presentar:', canPresent(_currentProfile));
       _channel = sb.channel('presentation-mode', {
         config: { presence: { key: _currentUser.id } },
       });
 
-      // Sync de presence: detectamos si hay un presenter activo
-      _channel.on('presence', { event: 'sync' }, () => {
+      const checkState = () => {
         try {
           const state = _channel.presenceState();
           let presenter = null;
@@ -96,8 +97,21 @@ window.PresentationMode = (function () {
             const meta = state[k][0];
             if (meta && meta.is_presenter) presenter = meta;
           });
+          console.log('[pm] presence sync — keys:', Object.keys(state).length, '· presenter:', presenter?.full_name || 'ninguno');
           _onPresenterChange(presenter);
         } catch (e) { console.warn('[pm] presence sync:', e); }
+      };
+
+      // Sync de presence: detectamos si hay un presenter activo
+      _channel.on('presence', { event: 'sync' }, checkState);
+      // Tambien escuchamos joins/leaves explícitos por si sync no llega
+      _channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('[pm] join:', key, newPresences?.[0]?.full_name);
+        checkState();
+      });
+      _channel.on('presence', { event: 'leave' }, ({ key }) => {
+        console.log('[pm] leave:', key);
+        checkState();
       });
 
       // Broadcast: cuando soy viewer, aplico los nav events del presenter
@@ -109,8 +123,14 @@ window.PresentationMode = (function () {
       });
 
       _channel.subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('[pm] channel status:', status);
+        console.log('[pm] channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          // Re-check explícito por si ya había un presenter antes de suscribirnos
+          // y el sync inicial no contenía los datos esperados.
+          setTimeout(checkState, 300);
+          setTimeout(checkState, 1500);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[pm] channel error:', status);
         }
       });
     } catch (e) {
