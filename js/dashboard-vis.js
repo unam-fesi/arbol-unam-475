@@ -197,105 +197,100 @@
             if (typeof showToast === 'function') showToast('jsPDF no cargado, espera 2 s', 'warning');
             return;
           }
-          if (typeof showToast === 'function') showToast('Generando PDF (10 s)…', 'info', 8000);
+          if (typeof showToast === 'function') showToast('Generando PDF (8-10 s)…', 'info', 10000);
 
-          // Estado original que restauramos al final
-          const originalBounds = mapaInstance.getBounds();
-          const originalZoom = mapaInstance.getZoom();
-          const originalStyle = {
-            width: el.style.width, height: el.style.height,
-            position: el.style.position, zIndex: el.style.zIndex,
-          };
-          const swapped = [];
-          const hiddenNonFesi = [];
+          // Trabajamos sobre un MAPA TEMPORAL OCULTO 1600x1000, sin tocar el visible.
+          // Eso evita los bugs de resize de Leaflet en el mapa interactivo.
+          const tmpEl = document.createElement('div');
+          tmpEl.style.cssText = 'position:fixed;left:-9999px;top:0;width:1600px;height:1000px;background:#FAFAF7;';
+          document.body.appendChild(tmpEl);
+          let tmpMap = null;
 
           try {
-            // 1) FORZAR tamaño del DIV a 1600×1000 (landscape A3 ratio) ANTES de
-            // capturar — sino el chorizo vertical persiste.
-            el.style.width = '1600px';
-            el.style.height = '1000px';
-            mapaInstance.invalidateSize();
+            // 1) Crear mapa temporal
+            tmpMap = L.map(tmpEl, { zoomControl: false, attributionControl: false });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              maxZoom: 19, crossOrigin: 'anonymous'
+            }).addTo(tmpMap);
 
-            // 2) Ocultar markers que NO son FESI* (no son del 475)
-            el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="0"]').forEach(div => {
-              const wrapper = div.closest('.leaflet-marker-icon');
-              if (wrapper) {
-                hiddenNonFesi.push({ wrapper, originalDisplay: wrapper.style.display || '' });
-                wrapper.style.display = 'none';
-              }
+            // 2) Agregar solo árboles FESI* con su NÚMERO en el círculo
+            const fesi = treesWithCoord.filter(t => /^FES/i.test(t.tree_code || ''));
+            fesi.forEach(t => {
+              const color = colorByHealthHex(t.health_score);
+              const num = shortLabel(t.tree_code);
+              const fs = num.length <= 2 ? 13 : (num.length === 3 ? 11 : 9);
+              const isRector = /AHUEHUETE/i.test(t.tree_code || '') && /00/.test(t.tree_code || '');
+              const size = isRector ? 38 : 30;
+              const bg = isRector ? '#C62828' : color;
+              const border = isRector ? '4px solid #FFC107' : '2.5px solid white';
+              const icon = L.divIcon({
+                className: 'pdf-marker',
+                html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};
+                       border:${border};box-shadow:0 3px 10px rgba(0,0,0,0.35);
+                       display:flex;align-items:center;justify-content:center;color:white;
+                       font-size:${fs}px;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+                       font-family:-apple-system,sans-serif;letter-spacing:-0.5px;">${num}</div>`,
+                iconSize: [size, size], iconAnchor: [size/2, size/2]
+              });
+              L.marker([t.location_lat, t.location_lng], { icon }).addTo(tmpMap);
             });
 
-            // 3) Reajustar viewport SOLO a los árboles FESI* sobre el nuevo tamaño
-            const fesiCoords = treesWithCoord
-              .filter(t => /^FES/i.test(t.tree_code || ''))
-              .map(t => [t.location_lat, t.location_lng]);
-            if (fesiCoords.length > 1) {
-              mapaInstance.fitBounds(L.latLngBounds(fesiCoords), { padding: [80, 80], animate: false });
-            }
-            mapaInstance.invalidateSize();
+            // 3) Fit bounds a los FESI*
+            const bounds = L.latLngBounds(fesi.map(t => [t.location_lat, t.location_lng]));
+            tmpMap.fitBounds(bounds, { padding: [60, 60] });
+            tmpMap.invalidateSize();
 
-            // 4) Esperar a que las tiles del nuevo tamaño y viewport carguen
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            // 4) Swap del 🌳 por número (solo en los FESI* visibles)
-            el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="1"]').forEach(div => {
-              swapped.push({ div, original: div.innerHTML, originalFs: div.style.fontSize });
-              const num = div.getAttribute('data-tree-num') || '';
-              const fs = num.length <= 2 ? '12' : (num.length === 3 ? '10' : '8');
-              div.innerHTML = num;
-              div.style.fontSize = fs + 'px';
-              div.style.letterSpacing = '-0.5px';
-              div.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+            // 4) Esperar a que TODAS las tiles del viewport carguen
+            // (más fiable que un sleep fijo)
+            await new Promise(resolve => {
+              let pending = 0, settled = false;
+              const tiles = tmpEl.querySelectorAll('img.leaflet-tile');
+              if (!tiles.length) { setTimeout(resolve, 4000); return; }
+              tiles.forEach(img => {
+                if (img.complete) return;
+                pending++;
+                img.addEventListener('load', () => { if (--pending <= 0 && !settled) { settled = true; resolve(); } });
+                img.addEventListener('error', () => { if (--pending <= 0 && !settled) { settled = true; resolve(); } });
+              });
+              if (pending === 0) resolve();
+              // Hard cap: máximo 7 segundos
+              setTimeout(() => { if (!settled) { settled = true; resolve(); } }, 7000);
             });
+            await new Promise(r => setTimeout(r, 500));  // small grace period
 
             // 5) Captura
-            const canvas = await html2canvas(el, {
+            const canvas = await html2canvas(tmpEl, {
               useCORS: true, allowTaint: true, backgroundColor: '#FAFAF7',
-              logging: false, scale: 2,
+              logging: false, scale: 2, width: 1600, height: 1000,
             });
 
-            // 6) Envolver en PDF — orientación según aspecto del canvas
-            const w = canvas.width, h = canvas.height;
-            const landscape = w >= h;
-            const pdf = new jspdfLib({
-              orientation: landscape ? 'landscape' : 'portrait',
-              unit: 'mm', format: 'a3',
-            });
+            // 6) PDF A3 landscape
+            const pdf = new jspdfLib({ orientation: 'landscape', unit: 'mm', format: 'a3' });
             const pageW = pdf.internal.pageSize.getWidth();
             const pageH = pdf.internal.pageSize.getHeight();
-            const margin = 10;
+            const margin = 8;
+            // Título + atribución
+            pdf.setFontSize(14); pdf.setTextColor(26, 68, 128);
+            pdf.text('FES IZTACALA — UNAM · Proyecto Árbol 475', margin, 12);
+            pdf.setFontSize(8); pdf.setTextColor(120, 120, 120);
+            pdf.text('Mapa de árboles FESI* · © OpenStreetMap contributors', margin, 17);
+            // Imagen
             const availW = pageW - margin * 2;
-            const availH = pageH - margin * 2;
-            const ratio = Math.min(availW / w, availH / h);
-            const imgW = w * ratio, imgH = h * ratio;
-            const x = (pageW - imgW) / 2, y = (pageH - imgH) / 2;
+            const availH = pageH - 25 - margin;
+            const ratio = Math.min(availW / canvas.width, availH / canvas.height);
+            const imgW = canvas.width * ratio, imgH = canvas.height * ratio;
+            const x = (pageW - imgW) / 2, y = 22;
             pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, imgW, imgH);
             const stamp = new Date().toISOString().slice(0, 10);
             pdf.save(`mapa-iztacala-${stamp}.pdf`);
-            if (typeof showToast === 'function') showToast('✅ PDF descargado', 'success', 2500);
+            if (typeof showToast === 'function') showToast('✅ PDF descargado', 'success', 2800);
           } catch (err) {
             console.warn('[mapa] export PDF failed:', err);
             if (typeof showToast === 'function') showToast('Error al exportar: ' + (err.message || err), 'error', 4500);
           } finally {
-            // Restaurar TODO al estado original
-            swapped.forEach(({ div, original, originalFs }) => {
-              div.innerHTML = original;
-              div.style.fontSize = originalFs || '';
-              div.style.letterSpacing = ''; div.style.textShadow = '';
-            });
-            hiddenNonFesi.forEach(({ wrapper, originalDisplay }) => {
-              wrapper.style.display = originalDisplay;
-            });
-            // Restaurar tamaño original del DIV
-            el.style.width = originalStyle.width;
-            el.style.height = originalStyle.height;
-            el.style.position = originalStyle.position;
-            el.style.zIndex = originalStyle.zIndex;
-            try {
-              mapaInstance.invalidateSize();
-              mapaInstance.fitBounds(originalBounds, { animate: false });
-              if (originalZoom != null) mapaInstance.setZoom(originalZoom);
-            } catch (_) {}
+            // Cleanup garantizado del mapa temporal
+            try { if (tmpMap) tmpMap.remove(); } catch (_) {}
+            try { tmpEl.remove(); } catch (_) {}
           }
         };
         return btn;
