@@ -79,14 +79,24 @@
       document.head.appendChild(s);
     }
 
-    // Markers — div icons coloreados por salud, con animación pulse
+    // Helper: extraer número corto del tree_code (FESI 12 FRESNO → "12")
+    // Solo se usa al EXPORTAR PDF, NO en el mapa interactivo
+    function shortLabel(code) {
+      if (!code) return '·';
+      const m = String(code).match(/^FES\w*\s*(\d+)/i);
+      if (m) return m[1].padStart(2, '0');
+      return String(code).slice(0, 3);
+    }
+
+    // Markers — div icons coloreados por salud, mismo estilo de siempre
     treesWithCoord.forEach(t => {
       const color = colorByHealthHex(t.health_score);
       const size = 28;
       const editable = canEditTreeLocation(t);
       const icon = L.divIcon({
         className: 'mapa-tree-marker' + (editable ? ' editable' : ''),
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
+        // data-tree-num para que el exportador sepa qué número poner en cada marker
+        html: `<div data-tree-num="${shortLabel(t.tree_code)}" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
                    border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);
                    display:flex;align-items:center;justify-content:center;color:white;
                    font-size:14px;font-weight:bold;">🌳</div>`,
@@ -159,6 +169,92 @@
     if (treesWithCoord.length > 1) mapaInstance.fitBounds(bounds, { padding: [40, 40] });
 
     setTimeout(() => mapaInstance.invalidateSize(), 200);
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Botón "📄 Descargar PDF" — solo en el momento del export:
+    //   1) reemplaza el 🌳 de cada marker por su número (data-tree-num)
+    //   2) html2canvas captura el mapa
+    //   3) restaura el 🌳 original (sin alterar lo que ve el user)
+    //   4) envuelve la imagen en un PDF con jsPDF y la descarga
+    // ──────────────────────────────────────────────────────────────────────
+    const DownloadCtrl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: function () {
+        const btn = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        btn.innerHTML = '<a href="#" title="Descargar mapa como PDF con números visibles" ' +
+          'style="background:white;color:#1a4480;width:auto;padding:0 12px;height:30px;' +
+          'line-height:30px;font-size:13px;font-weight:600;display:flex;align-items:center;' +
+          'gap:6px;text-decoration:none;">📄 Descargar PDF</a>';
+        L.DomEvent.disableClickPropagation(btn);
+        btn.onclick = async (e) => {
+          e.preventDefault();
+          if (typeof html2canvas !== 'function') {
+            if (typeof showToast === 'function') showToast('html2canvas no cargado, espera 2 s', 'warning');
+            return;
+          }
+          const jspdfLib = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+          if (typeof jspdfLib !== 'function') {
+            if (typeof showToast === 'function') showToast('jsPDF no cargado, espera 2 s', 'warning');
+            return;
+          }
+          if (typeof showToast === 'function') showToast('Generando PDF…', 'info', 2200);
+
+          // 1) Swap visual: 🌳 → número del árbol (solo durante la captura)
+          const swapped = [];
+          el.querySelectorAll('.mapa-tree-marker > div[data-tree-num]').forEach(div => {
+            swapped.push({ div, original: div.innerHTML });
+            const num = div.getAttribute('data-tree-num') || '';
+            const fs = num.length <= 2 ? '12' : (num.length === 3 ? '10' : '8');
+            div.innerHTML = num;
+            div.style.fontSize = fs + 'px';
+            div.style.letterSpacing = '-0.5px';
+            div.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+          });
+
+          try {
+            const canvas = await html2canvas(el, {
+              useCORS: true, allowTaint: false, backgroundColor: '#FAFAF7',
+              logging: false, scale: 2,
+            });
+
+            // 2) Restaurar markers ANTES de cualquier otra cosa
+            swapped.forEach(({ div, original }) => {
+              div.innerHTML = original;
+              div.style.fontSize = ''; div.style.letterSpacing = ''; div.style.textShadow = '';
+            });
+
+            // 3) Envolver en PDF (orientación según aspecto)
+            const w = canvas.width, h = canvas.height;
+            const landscape = w >= h;
+            const pdf = new jspdfLib({
+              orientation: landscape ? 'landscape' : 'portrait',
+              unit: 'mm', format: 'a3',
+            });
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            // Calcular tamaño manteniendo aspecto
+            const ratio = Math.min(pageW / w, pageH / h);
+            const imgW = w * ratio, imgH = h * ratio;
+            const x = (pageW - imgW) / 2, y = (pageH - imgH) / 2;
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', x, y, imgW, imgH);
+            const stamp = new Date().toISOString().slice(0, 10);
+            pdf.save(`mapa-iztacala-${stamp}.pdf`);
+            if (typeof showToast === 'function') showToast('✅ PDF descargado', 'success', 2500);
+          } catch (err) {
+            // En caso de error, también restaurar markers
+            swapped.forEach(({ div, original }) => {
+              div.innerHTML = original;
+              div.style.fontSize = ''; div.style.letterSpacing = ''; div.style.textShadow = '';
+            });
+            console.warn('[mapa] export PDF failed:', err);
+            if (typeof showToast === 'function') showToast('Error al exportar: ' + (err.message || err), 'error', 4000);
+          }
+        };
+        return btn;
+      }
+    });
+    new DownloadCtrl().addTo(mapaInstance);
+
     return true;
   }
 
