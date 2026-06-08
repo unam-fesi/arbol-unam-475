@@ -49,9 +49,9 @@
     const avgLng = treesWithCoord.reduce((s,t) => s + t.location_lng, 0) / treesWithCoord.length;
 
     mapaInstance = L.map(el, { zoomControl: true }).setView([avgLat, avgLng], 14);
-    // Tiles Esri World Imagery (vista satélite, da look "3D-ish")
+    // Tiles OSM con crossOrigin para que html2canvas pueda exportarlos a PDF
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap', maxZoom: 19
+      attribution: '&copy; OpenStreetMap', maxZoom: 19, crossOrigin: 'anonymous'
     }).addTo(mapaInstance);
 
     // Helper: ¿puede este user editar la ubicación de este árbol?
@@ -95,8 +95,8 @@
       const editable = canEditTreeLocation(t);
       const icon = L.divIcon({
         className: 'mapa-tree-marker' + (editable ? ' editable' : ''),
-        // data-tree-num para que el exportador sepa qué número poner en cada marker
-        html: `<div data-tree-num="${shortLabel(t.tree_code)}" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
+        // data-* para que el exportador filtre solo 475 (FESI*) y ponga el número
+        html: `<div data-tree-num="${shortLabel(t.tree_code)}" data-is-fesi="${/^FES/i.test(t.tree_code || '') ? '1' : '0'}" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
                    border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);
                    display:flex;align-items:center;justify-content:center;color:white;
                    font-size:14px;font-weight:bold;">🌳</div>`,
@@ -197,33 +197,54 @@
             if (typeof showToast === 'function') showToast('jsPDF no cargado, espera 2 s', 'warning');
             return;
           }
-          if (typeof showToast === 'function') showToast('Generando PDF…', 'info', 2200);
+          if (typeof showToast === 'function') showToast('Generando PDF (10 s)…', 'info', 8000);
 
-          // 1) Swap visual: 🌳 → número del árbol (solo durante la captura)
+          // Estado original que restauramos al final
+          const originalBounds = mapaInstance.getBounds();
+          const originalZoom = mapaInstance.getZoom();
           const swapped = [];
-          el.querySelectorAll('.mapa-tree-marker > div[data-tree-num]').forEach(div => {
-            swapped.push({ div, original: div.innerHTML });
-            const num = div.getAttribute('data-tree-num') || '';
-            const fs = num.length <= 2 ? '12' : (num.length === 3 ? '10' : '8');
-            div.innerHTML = num;
-            div.style.fontSize = fs + 'px';
-            div.style.letterSpacing = '-0.5px';
-            div.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
-          });
+          const hiddenNonFesi = [];
 
           try {
+            // 1) Ocultar markers que NO son FESI* (no son del 475)
+            el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="0"]').forEach(div => {
+              const wrapper = div.closest('.leaflet-marker-icon');
+              if (wrapper) {
+                hiddenNonFesi.push({ wrapper, originalDisplay: wrapper.style.display || '' });
+                wrapper.style.display = 'none';
+              }
+            });
+
+            // 2) Reajustar viewport SOLO a los árboles FESI* (mejor aspecto)
+            const fesiCoords = treesWithCoord
+              .filter(t => /^FES/i.test(t.tree_code || ''))
+              .map(t => [t.location_lat, t.location_lng]);
+            if (fesiCoords.length > 1) {
+              mapaInstance.fitBounds(L.latLngBounds(fesiCoords), { padding: [60, 60], animate: false });
+            }
+            mapaInstance.invalidateSize();
+
+            // 3) Esperar a que las tiles del nuevo viewport carguen
+            await new Promise(resolve => setTimeout(resolve, 1800));
+
+            // 4) Swap del 🌳 por número (solo en los FESI* visibles)
+            el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="1"]').forEach(div => {
+              swapped.push({ div, original: div.innerHTML, originalFs: div.style.fontSize });
+              const num = div.getAttribute('data-tree-num') || '';
+              const fs = num.length <= 2 ? '12' : (num.length === 3 ? '10' : '8');
+              div.innerHTML = num;
+              div.style.fontSize = fs + 'px';
+              div.style.letterSpacing = '-0.5px';
+              div.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+            });
+
+            // 5) Captura
             const canvas = await html2canvas(el, {
-              useCORS: true, allowTaint: false, backgroundColor: '#FAFAF7',
+              useCORS: true, allowTaint: true, backgroundColor: '#FAFAF7',
               logging: false, scale: 2,
             });
 
-            // 2) Restaurar markers ANTES de cualquier otra cosa
-            swapped.forEach(({ div, original }) => {
-              div.innerHTML = original;
-              div.style.fontSize = ''; div.style.letterSpacing = ''; div.style.textShadow = '';
-            });
-
-            // 3) Envolver en PDF (orientación según aspecto)
+            // 6) Envolver en PDF — orientación según aspecto del canvas
             const w = canvas.width, h = canvas.height;
             const landscape = w >= h;
             const pdf = new jspdfLib({
@@ -232,22 +253,33 @@
             });
             const pageW = pdf.internal.pageSize.getWidth();
             const pageH = pdf.internal.pageSize.getHeight();
-            // Calcular tamaño manteniendo aspecto
-            const ratio = Math.min(pageW / w, pageH / h);
+            const margin = 10;
+            const availW = pageW - margin * 2;
+            const availH = pageH - margin * 2;
+            const ratio = Math.min(availW / w, availH / h);
             const imgW = w * ratio, imgH = h * ratio;
             const x = (pageW - imgW) / 2, y = (pageH - imgH) / 2;
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', x, y, imgW, imgH);
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, imgW, imgH);
             const stamp = new Date().toISOString().slice(0, 10);
             pdf.save(`mapa-iztacala-${stamp}.pdf`);
             if (typeof showToast === 'function') showToast('✅ PDF descargado', 'success', 2500);
           } catch (err) {
-            // En caso de error, también restaurar markers
-            swapped.forEach(({ div, original }) => {
-              div.innerHTML = original;
-              div.style.fontSize = ''; div.style.letterSpacing = ''; div.style.textShadow = '';
-            });
             console.warn('[mapa] export PDF failed:', err);
-            if (typeof showToast === 'function') showToast('Error al exportar: ' + (err.message || err), 'error', 4000);
+            if (typeof showToast === 'function') showToast('Error al exportar: ' + (err.message || err), 'error', 4500);
+          } finally {
+            // Restaurar TODO al estado original
+            swapped.forEach(({ div, original, originalFs }) => {
+              div.innerHTML = original;
+              div.style.fontSize = originalFs || '';
+              div.style.letterSpacing = ''; div.style.textShadow = '';
+            });
+            hiddenNonFesi.forEach(({ wrapper, originalDisplay }) => {
+              wrapper.style.display = originalDisplay;
+            });
+            try {
+              mapaInstance.fitBounds(originalBounds, { animate: false });
+              if (originalZoom != null) mapaInstance.setZoom(originalZoom);
+            } catch (_) {}
           }
         };
         return btn;
