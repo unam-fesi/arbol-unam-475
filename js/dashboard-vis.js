@@ -202,11 +202,21 @@
           // Estado original que restauramos al final
           const originalBounds = mapaInstance.getBounds();
           const originalZoom = mapaInstance.getZoom();
+          const originalStyle = {
+            width: el.style.width, height: el.style.height,
+            position: el.style.position, zIndex: el.style.zIndex,
+          };
           const swapped = [];
           const hiddenNonFesi = [];
 
           try {
-            // 1) Ocultar markers que NO son FESI* (no son del 475)
+            // 1) FORZAR tamaño del DIV a 1600×1000 (landscape A3 ratio) ANTES de
+            // capturar — sino el chorizo vertical persiste.
+            el.style.width = '1600px';
+            el.style.height = '1000px';
+            mapaInstance.invalidateSize();
+
+            // 2) Ocultar markers que NO son FESI* (no son del 475)
             el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="0"]').forEach(div => {
               const wrapper = div.closest('.leaflet-marker-icon');
               if (wrapper) {
@@ -215,17 +225,17 @@
               }
             });
 
-            // 2) Reajustar viewport SOLO a los árboles FESI* (mejor aspecto)
+            // 3) Reajustar viewport SOLO a los árboles FESI* sobre el nuevo tamaño
             const fesiCoords = treesWithCoord
               .filter(t => /^FES/i.test(t.tree_code || ''))
               .map(t => [t.location_lat, t.location_lng]);
             if (fesiCoords.length > 1) {
-              mapaInstance.fitBounds(L.latLngBounds(fesiCoords), { padding: [60, 60], animate: false });
+              mapaInstance.fitBounds(L.latLngBounds(fesiCoords), { padding: [80, 80], animate: false });
             }
             mapaInstance.invalidateSize();
 
-            // 3) Esperar a que las tiles del nuevo viewport carguen
-            await new Promise(resolve => setTimeout(resolve, 1800));
+            // 4) Esperar a que las tiles del nuevo tamaño y viewport carguen
+            await new Promise(resolve => setTimeout(resolve, 3000));
 
             // 4) Swap del 🌳 por número (solo en los FESI* visibles)
             el.querySelectorAll('.mapa-tree-marker > div[data-is-fesi="1"]').forEach(div => {
@@ -276,7 +286,13 @@
             hiddenNonFesi.forEach(({ wrapper, originalDisplay }) => {
               wrapper.style.display = originalDisplay;
             });
+            // Restaurar tamaño original del DIV
+            el.style.width = originalStyle.width;
+            el.style.height = originalStyle.height;
+            el.style.position = originalStyle.position;
+            el.style.zIndex = originalStyle.zIndex;
             try {
+              mapaInstance.invalidateSize();
               mapaInstance.fitBounds(originalBounds, { animate: false });
               if (originalZoom != null) mapaInstance.setZoom(originalZoom);
             } catch (_) {}
