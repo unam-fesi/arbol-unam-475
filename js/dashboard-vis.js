@@ -213,10 +213,57 @@
               maxZoom: 19, crossOrigin: 'anonymous'
             }).addTo(tmpMap);
 
-            // 2) Markers FESI*: tamaño 26px (sobre canvas 3200x2000 = ratio
-            // similar a 16px sobre 2400x1500, pero con más detalle)
+            // 2) Markers FESI*: detectar clusters de árboles muy cercanos
+            // (1-5 m) y aplicar jitter visual para que sus círculos no se encimen.
+            // Solo afecta la posición del PDF — NO modifica coords en BD.
             const fesi = treesWithCoord.filter(t => /^FES/i.test(t.tree_code || ''));
+
+            // Helper: distancia aproximada en metros entre dos coords
+            const METERS_PER_DEG = 111320;
+            function distM(a, b) {
+              const dy = (a.location_lat - b.location_lat) * METERS_PER_DEG;
+              const dx = (a.location_lng - b.location_lng) * METERS_PER_DEG * Math.cos(a.location_lat * Math.PI / 180);
+              return Math.sqrt(dx*dx + dy*dy);
+            }
+            // Agrupar árboles a < 4 m de distancia mutua
+            const CLUSTER_M = 4;
+            const remaining = [...fesi];
+            const clusters = [];
+            while (remaining.length) {
+              const seed = remaining.shift();
+              const cl = [seed];
+              for (let i = remaining.length - 1; i >= 0; i--) {
+                if (distM(seed, remaining[i]) <= CLUSTER_M) {
+                  cl.push(remaining[i]);
+                  remaining.splice(i, 1);
+                }
+              }
+              clusters.push(cl);
+            }
+            // Construir posiciones finales: si cluster tiene >1, distribuir
+            // en círculo alrededor del centro a radio proporcional
+            const M_PER_DEG_LAT = 111320;
+            const finalPos = new Map();  // tree_code → {lat, lng}
+            clusters.forEach(cl => {
+              if (cl.length === 1) {
+                finalPos.set(cl[0].tree_code, { lat: cl[0].location_lat, lng: cl[0].location_lng });
+              } else {
+                const cx = cl.reduce((s,t) => s + t.location_lat, 0) / cl.length;
+                const cy = cl.reduce((s,t) => s + t.location_lng, 0) / cl.length;
+                const cosLat = Math.cos(cx * Math.PI / 180);
+                const radiusM = Math.max(2.5, 0.9 * cl.length);
+                const sorted = [...cl].sort((a,b) => String(a.tree_code).localeCompare(b.tree_code));
+                sorted.forEach((t, i) => {
+                  const ang = 2 * Math.PI * i / cl.length - Math.PI / 2;
+                  const dLat = (radiusM * Math.sin(ang)) / M_PER_DEG_LAT;
+                  const dLng = (radiusM * Math.cos(ang)) / (M_PER_DEG_LAT * cosLat);
+                  finalPos.set(t.tree_code, { lat: cx + dLat, lng: cy + dLng });
+                });
+              }
+            });
+
             fesi.forEach(t => {
+              const fp = finalPos.get(t.tree_code) || { lat: t.location_lat, lng: t.location_lng };
               const color = colorByHealthHex(t.health_score);
               const num = shortLabel(t.tree_code);
               const fs = num.length <= 2 ? 11 : (num.length === 3 ? 9 : 7);
@@ -233,11 +280,16 @@
                        font-family:-apple-system,sans-serif;letter-spacing:-0.3px;">${num}</div>`,
                 iconSize: [size, size], iconAnchor: [size/2, size/2]
               });
-              L.marker([t.location_lat, t.location_lng], { icon }).addTo(tmpMap);
+              L.marker([fp.lat, fp.lng], { icon }).addTo(tmpMap);
             });
 
-            // 3) Fit bounds a los FESI* con padding generoso (más zoom)
-            const bounds = L.latLngBounds(fesi.map(t => [t.location_lat, t.location_lng]));
+            // 3) Fit bounds usando las posiciones JITTERED (no las originales)
+            const bounds = L.latLngBounds(
+              fesi.map(t => {
+                const fp = finalPos.get(t.tree_code) || { lat: t.location_lat, lng: t.location_lng };
+                return [fp.lat, fp.lng];
+              })
+            );
             tmpMap.fitBounds(bounds, { padding: [100, 100], maxZoom: 19 });
             tmpMap.invalidateSize();
 
