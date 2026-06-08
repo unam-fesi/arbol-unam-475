@@ -199,10 +199,10 @@
           }
           if (typeof showToast === 'function') showToast('Generando PDF (8-10 s)…', 'info', 10000);
 
-          // Trabajamos sobre un MAPA TEMPORAL OCULTO 2400x1500 (alta resolución
-          // para que los markers no se vean amontonados).
+          // Mapa temporal a 3200×2000 (más píxeles → markers proporcionalmente
+          // más chicos sobre el área real, menos amontonamiento)
           const tmpEl = document.createElement('div');
-          tmpEl.style.cssText = 'position:fixed;left:-9999px;top:0;width:2400px;height:1500px;background:#FAFAF7;';
+          tmpEl.style.cssText = 'position:fixed;left:-9999px;top:0;width:3200px;height:2000px;background:#FAFAF7;';
           document.body.appendChild(tmpEl);
           let tmpMap = null;
 
@@ -213,32 +213,32 @@
               maxZoom: 19, crossOrigin: 'anonymous'
             }).addTo(tmpMap);
 
-            // 2) Agregar solo árboles FESI* con su NÚMERO en el círculo
-            // Markers más chicos para que no se amontonen
+            // 2) Markers FESI*: tamaño 26px (sobre canvas 3200x2000 = ratio
+            // similar a 16px sobre 2400x1500, pero con más detalle)
             const fesi = treesWithCoord.filter(t => /^FES/i.test(t.tree_code || ''));
             fesi.forEach(t => {
               const color = colorByHealthHex(t.health_score);
               const num = shortLabel(t.tree_code);
-              const fs = num.length <= 2 ? 10 : (num.length === 3 ? 8 : 7);
+              const fs = num.length <= 2 ? 11 : (num.length === 3 ? 9 : 7);
               const isRector = /AHUEHUETE/i.test(t.tree_code || '') && /00/.test(t.tree_code || '');
-              const size = isRector ? 30 : 22;
+              const size = isRector ? 36 : 26;
               const bg = isRector ? '#C62828' : color;
-              const border = isRector ? '3px solid #FFC107' : '2px solid white';
+              const border = isRector ? '3px solid #FFC107' : '2.5px solid white';
               const icon = L.divIcon({
                 className: 'pdf-marker',
                 html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};
-                       border:${border};box-shadow:0 2px 6px rgba(0,0,0,0.4);
+                       border:${border};box-shadow:0 2px 5px rgba(0,0,0,0.5);
                        display:flex;align-items:center;justify-content:center;color:white;
-                       font-size:${fs}px;font-weight:800;text-shadow:0 1px 1px rgba(0,0,0,0.7);
+                       font-size:${fs}px;font-weight:900;text-shadow:0 1px 2px rgba(0,0,0,0.85);
                        font-family:-apple-system,sans-serif;letter-spacing:-0.3px;">${num}</div>`,
                 iconSize: [size, size], iconAnchor: [size/2, size/2]
               });
               L.marker([t.location_lat, t.location_lng], { icon }).addTo(tmpMap);
             });
 
-            // 3) Fit bounds a los FESI* con padding pequeño para zoomear más
+            // 3) Fit bounds a los FESI* con padding generoso (más zoom)
             const bounds = L.latLngBounds(fesi.map(t => [t.location_lat, t.location_lng]));
-            tmpMap.fitBounds(bounds, { padding: [80, 80], maxZoom: 19 });
+            tmpMap.fitBounds(bounds, { padding: [100, 100], maxZoom: 19 });
             tmpMap.invalidateSize();
 
             // 4) Esperar a que TODAS las tiles del viewport carguen
@@ -259,10 +259,10 @@
             });
             await new Promise(r => setTimeout(r, 500));  // small grace period
 
-            // 5) Captura (sin escalar más, ya estamos a 2400x1500 nativo)
+            // 5) Captura nativa (sin escala extra, ya estamos a 3200x2000)
             const canvas = await html2canvas(tmpEl, {
               useCORS: true, allowTaint: true, backgroundColor: '#FAFAF7',
-              logging: false, scale: 1.5, width: 2400, height: 1500,
+              logging: false, scale: 1, width: 3200, height: 2000,
             });
 
             // 6) PDF A3 landscape
