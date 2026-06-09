@@ -93,8 +93,8 @@ window.IztacalaDragEdit = (function () {
     btn.innerHTML = `<span class="lock-icon">🔒</span><span class="lock-text">Editar ubicación</span>`;
     btn.style.cssText = `
       position: absolute;
-      top: 12px;
-      left: 12px;
+      top: 55px;
+      right: 11px;
       z-index: 50;
       display: flex;
       align-items: center;
