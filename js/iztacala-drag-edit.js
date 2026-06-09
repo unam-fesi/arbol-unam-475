@@ -165,7 +165,15 @@ window.IztacalaDragEdit = (function () {
       return;
     }
 
-    const { lat, lng } = _modelXYZToLatLng(newPos.x, newPos.z);
+    // CRÍTICO: el árbol GLB tiene posición LOCAL fija dentro del group, así
+    // que group.position NO equivale a la world position del árbol. En vez
+    // de tratar de calcular eso, aplico el DELTA del drag (dx, dz en metros)
+    // sobre las coords originales en lat/lng. Esto es independiente de cómo
+    // esté estructurado el group y evita errores por bbox que incluye etiquetas.
+    const dLat = -dz / ctx.M_PER_LAT;   // Z negativo = norte (lat aumenta)
+    const dLng = dx / ctx.M_PER_LON;
+    const lat = drag.originalCoords.lat + dLat;
+    const lng = drag.originalCoords.lng + dLng;
     const t = drag.entry.data;
     const lbl = t.nickname || t.tree_code || ('árbol #' + t.id);
     const ok = window.confirm(
