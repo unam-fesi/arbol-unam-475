@@ -1260,6 +1260,26 @@ window.IztacalaMap = (function() {
           catch (err) { console.warn('JuanFicus enhance err:', err); }
         }, 1200);
       }
+      // Caso especial Cuitláhuac (árbol del Rector, FESI 00 AHUEHUETE)
+      // Placa azul marino + dorado, halo dorado pulsante. Sin paloma.
+      if (window.IztacalaCuitlahuac?.enhance) {
+        setTimeout(() => {
+          try { window.IztacalaCuitlahuac.enhance(scene, treeMeshes); }
+          catch (err) { console.warn('Cuitlahuac enhance err:', err); }
+        }, 1300);
+      }
+      // Drag-edit (solo admin/rectoria): permite arrastrar árboles para
+      // corregir su ubicación. Lo intentamos siempre; el módulo verifica rol.
+      if (window.IztacalaDragEdit?.init) {
+        setTimeout(() => {
+          try {
+            window.IztacalaDragEdit.init({
+              scene, camera, renderer, controls, treeMeshes,
+              CENTER_LAT, CENTER_LON, M_PER_LAT, M_PER_LON,
+            });
+          } catch (err) { console.warn('DragEdit init err:', err); }
+        }, 1500);
+      }
     } catch (e) {
       console.error('loadTrees error:', e);
       updateTreeCountHUD(0, 0, true);
