@@ -30,7 +30,10 @@ window.IztacalaDragEdit = (function () {
 
   function _canEdit() {
     try {
-      const role = String(window.currentUserProfile?.role || '').toLowerCase();
+      // currentUserProfile es 'let' en config.js — variable global del archivo,
+      // NO está en window. Hay que accederla directamente.
+      const profile = (typeof currentUserProfile !== 'undefined') ? currentUserProfile : null;
+      const role = String(profile?.role || '').toLowerCase();
       return ALLOWED_ROLES.includes(role);
     } catch { return false; }
   }
@@ -59,7 +62,7 @@ window.IztacalaDragEdit = (function () {
     dom.addEventListener('pointercancel', _cancelDrag);
     dom.style.cursor = ''; // limpia
 
-    console.log('[DragEdit] habilitado para rol:', window.currentUserProfile?.role);
+    console.log('[DragEdit] habilitado para rol:', (typeof currentUserProfile !== 'undefined' ? currentUserProfile?.role : '?'));
     toast('Modo edición activado: arrastra cualquier árbol para reubicarlo', 'info', 3500);
   }
 
@@ -76,9 +79,11 @@ window.IztacalaDragEdit = (function () {
     _updateMouseFromEvent(ev);
     raycaster.setFromCamera(mouse, ctx.camera);
 
-    // Buscar pickable meshes de los árboles
+    // Buscar pickable meshes de los árboles — solo los VISIBLES (filtrados).
+    // Si un árbol está oculto por filtro, no debe capturar el drag.
     const allPickable = [];
     for (const t of ctx.treeMeshes) {
+      if (t.group?.visible === false) continue;
       if (t.pickable && Array.isArray(t.pickable)) {
         for (const m of t.pickable) {
           m.userData._treeEntry = t;

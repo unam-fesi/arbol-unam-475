@@ -1670,8 +1670,12 @@ window.IztacalaMap = (function() {
     mouse.set(ndc.x, ndc.y);
     raycaster.setFromCamera(mouse, camera);
 
-    // Primero árboles (capa que está encima) — usamos TODAS las partes del árbol
-    const treeObjs = treeMeshes.flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
+    // Primero árboles (capa que está encima) — solo los VISIBLES (filtrados).
+    // Si un árbol está oculto por filtro, su group.visible = false; no debe
+    // capturar clicks "al aire" sobre la región donde estaría.
+    const treeObjs = treeMeshes
+      .filter(t => t.group?.visible !== false)
+      .flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
     let hit = raycaster.intersectObjects(treeObjs, false)[0];
     if (hit) {
       // Subir al group
@@ -1702,7 +1706,9 @@ window.IztacalaMap = (function() {
     mouse.set(ndc.x, ndc.y);
     raycaster.setFromCamera(mouse, camera);
 
-    const treeObjs = treeMeshes.flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
+    const treeObjs = treeMeshes
+      .filter(t => t.group?.visible !== false)
+      .flatMap(t => t.pickable || [t.crown, t.trunk].filter(Boolean));
     const allObjs = [...treeObjs, ...buildingMeshes];
     const hit = raycaster.intersectObjects(allObjs, false)[0];
 
