@@ -97,6 +97,19 @@ window.IztacalaDragEdit = (function () {
     const entry = hits[0].object.userData._treeEntry;
     if (!entry || !entry.group || !entry.data) return;
 
+    // Calcular el "offset de agarre": diferencia entre la posición del árbol
+    // y dónde el cursor toca el suelo en ese momento. Esto es CRÍTICO para
+    // que el árbol no salte al iniciar el drag — si agarras la copa (a 15m
+    // de altura), el ray proyecta el cursor más lejos en el ground plane que
+    // la base del árbol. Sin offset, el árbol "salta" a esa posición.
+    const groundHit = new THREE.Vector3();
+    let grabOffset = new THREE.Vector3(0, 0, 0);
+    if (raycaster.ray.intersectPlane(groundPlane, groundHit)) {
+      grabOffset.copy(entry.group.position).sub(groundHit);
+      // Solo X y Z importan (Y se mantiene constante en el ground plane)
+      grabOffset.y = 0;
+    }
+
     // Empezar drag
     ev.preventDefault();
     ev.stopPropagation();
@@ -104,6 +117,7 @@ window.IztacalaDragEdit = (function () {
       entry,
       group: entry.group,
       originalPos: entry.group.position.clone(),
+      grabOffset,            // posición árbol – posición cursor-suelo al iniciar
       originalCoords: {
         lat: entry.data.location_lat,
         lng: entry.data.location_lng,
@@ -118,7 +132,12 @@ window.IztacalaDragEdit = (function () {
     _updateMouseFromEvent(ev);
     raycaster.setFromCamera(mouse, ctx.camera);
     if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
-      dragging.group.position.set(intersection.x, dragging.originalPos.y, intersection.z);
+      // Aplicar el offset capturado al inicio del drag para mantener el
+      // "agarre" — el árbol sigue al cursor exactamente desde donde lo agarraste,
+      // sin saltos.
+      const newX = intersection.x + dragging.grabOffset.x;
+      const newZ = intersection.z + dragging.grabOffset.z;
+      dragging.group.position.set(newX, dragging.originalPos.y, newZ);
     }
   }
 
