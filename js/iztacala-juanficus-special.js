@@ -67,8 +67,12 @@ window.IztacalaJuanFicus = (function() {
     enhanced = true;
     clock = new THREE.Clock();
 
-    // 1) Destacar visualmente el árbol — escala un poco mayor para sobresalir
-    targetGroup.scale.multiplyScalar(1.15);
+    // 1) Destacar visualmente el árbol — escala +15% SOLO en children
+    //    pre-existentes (árbol GLB + health marker). Si escaláramos el group
+    //    entero, los enhancements (halo, label) que viajan con el drag
+    //    también se escalarían y se desposicionarían.
+    const preExisting = targetGroup.children.slice();
+    preExisting.forEach(child => { child.scale.multiplyScalar(1.15); });
 
     // 2) Halo dorado en la base
     _addHalo(scene);
@@ -121,7 +125,7 @@ window.IztacalaJuanFicus = (function() {
     halo.position.set(c.x, 0.10, c.z);
     halo.userData = { type: 'juanFicusHalo' };
     halo.renderOrder = 2;
-    scene.add(halo);
+    targetGroup.add(halo);  // child del group para viajar con drag
 
     // Halo interior más pequeño y más sólido para hacer el "centro" más rico
     const innerGeo = new THREE.CircleGeometry(5.5, 64);
@@ -136,7 +140,7 @@ window.IztacalaJuanFicus = (function() {
     inner.rotation.x = -Math.PI / 2;
     inner.position.set(c.x, 0.08, c.z);
     inner.renderOrder = 1;
-    scene.add(inner);
+    targetGroup.add(inner);
   }
 
   function _addGlowLight(scene) {
@@ -144,7 +148,7 @@ window.IztacalaJuanFicus = (function() {
     glowLight = new THREE.PointLight(0xfff4cc, 1.2, 30, 1.6);
     glowLight.position.set(c.x, 18, c.z);
     glowLight.castShadow = false;
-    scene.add(glowLight);
+    targetGroup.add(glowLight);
   }
 
   function _addLabel(scene) {
@@ -185,7 +189,7 @@ window.IztacalaJuanFicus = (function() {
     // Sube el sprite un poco más para que no choque con la copa del árbol
     sprite.position.set(c.x, 26, c.z);
     sprite.userData = { type: 'juanFicusLabel' };
-    scene.add(sprite);
+    targetGroup.add(sprite);  // child del group para viajar con drag
   }
 
   function _roundRect(ctx, x, y, w, h, r) {

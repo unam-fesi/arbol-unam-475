@@ -42,8 +42,12 @@ window.IztacalaCuitlahuac = (function () {
     targetGroup = entry.group;
     enhanced = true;
 
-    // 1) Escala un poco mayor — el ahuehuete del rector debe sobresalir
-    targetGroup.scale.multiplyScalar(1.18);
+    // 1) Escala +18% SOLO en los children pre-existentes (árbol GLB +
+    //    health marker), NO en el group entero. Si escaláramos el group,
+    //    los enhancements que vamos a agregar abajo (halo, sprite, glow)
+    //    también heredarían esa escala y quedarían des-posicionados.
+    const preExisting = targetGroup.children.slice();
+    preExisting.forEach(child => { child.scale.multiplyScalar(1.18); });
 
     // 2) Halo dorado en la base
     _addHalo(scene);
@@ -67,6 +71,11 @@ window.IztacalaCuitlahuac = (function () {
   }
 
   function _addHalo(scene) {
+    // Como targetGroup está en (0,0,0) world y el árbol-child interno está
+    // posicionado con su offset local, _treeCenter() (world) coincide con
+    // la posición local cuando el group está en el origen. Agregamos el
+    // halo COMO HIJO del group para que se mueva junto con el árbol al hacer
+    // drag (si lo agregamos a scene se quedaría fijo).
     const c = _treeCenter();
     const geom = new THREE.RingGeometry(HALO_RADIUS * 0.6, HALO_RADIUS, 64);
     const mat = new THREE.MeshBasicMaterial({
@@ -77,7 +86,7 @@ window.IztacalaCuitlahuac = (function () {
     halo.rotation.x = -Math.PI / 2;
     halo.position.set(c.x, c.y + HALO_HEIGHT, c.z);
     halo.userData = { type: 'cuitlahuacHalo' };
-    scene.add(halo);
+    targetGroup.add(halo);
   }
 
   function _addGlowLight(scene) {
@@ -85,7 +94,7 @@ window.IztacalaCuitlahuac = (function () {
     glowLight = new THREE.PointLight(GOLD_HEX, 1.4, 30, 2);
     glowLight.position.set(c.x, c.y + 16, c.z);
     glowLight.userData = { type: 'cuitlahuacGlow' };
-    scene.add(glowLight);
+    targetGroup.add(glowLight);
   }
 
   function _roundRect(ctx, x, y, w, h, r) {
@@ -169,7 +178,7 @@ window.IztacalaCuitlahuac = (function () {
     const c = _treeCenter();
     sprite.position.set(c.x, 30, c.z);   // ligeramente más alto que Juan Ficus
     sprite.userData = { type: 'cuitlahuacLabel' };
-    scene.add(sprite);
+    targetGroup.add(sprite);  // child del group para que viaje con el drag
   }
 
   // Dibujar texto con letter-spacing manual (Canvas no soporta letterSpacing
