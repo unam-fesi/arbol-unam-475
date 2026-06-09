@@ -334,6 +334,17 @@ async function renderGardenView(gardenId) {
   // Cache visitas para chart on-demand
   _lastGardenVisits = gardenVisits;
 
+  // Pre-resolver photo_url de cada visita a signed URL (bucket privado).
+  // Si es path relativo (ej "431/123.jpg") se convierte a signed URL temporal.
+  // Se hace async sin bloquear el render — re-asigna in-place al objeto.
+  if (Array.isArray(gardenVisits) && typeof resolvePhotoUrl === 'function') {
+    gardenVisits.forEach(async (v) => {
+      if (v.photo_url && !/^https?:\/\//.test(v.photo_url)) {
+        try { v.photo_url = await resolvePhotoUrl(v.photo_url) || v.photo_url; } catch (_) {}
+      }
+    });
+  }
+
   // Cargar bitácora mensual + anual del jardín (PUM-AI, bajo demanda con cache)
   _loadBitacoraGarden(garden.id);
 
@@ -1584,10 +1595,15 @@ function _compressImageGarden(dataUrl, maxW, maxH, quality) {
 // ============================================================================
 // MODAL DE DETALLE DE VISITA AL JARDÍN
 // ============================================================================
-function showGardenVisitDetail(visitId) {
+async function showGardenVisitDetail(visitId) {
   if (!_lastGardenVisits) return;
   const v = _lastGardenVisits.find(x => String(x.id) === String(visitId));
   if (!v) return;
+
+  // Pre-resolver photo_url a signed URL si es path relativo del bucket
+  if (v.photo_url && !/^https?:\/\//.test(v.photo_url) && typeof resolvePhotoUrl === 'function') {
+    try { v.photo_url = await resolvePhotoUrl(v.photo_url) || v.photo_url; } catch (_) {}
+  }
 
   let modal = document.getElementById('garden-visit-detail-modal');
   if (modal) modal.remove();

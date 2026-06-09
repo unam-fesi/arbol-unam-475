@@ -415,15 +415,26 @@ Datos ${year}:
     });
   }
 
+  // Mapeo tabla → columnas de la unique constraint, para que upsert sepa
+  // qué hacer match cuando ya existe el resumen (en vez de fallar con 23505).
+  const _ONCONFLICT = {
+    'tree_monthly_summaries':   'tree_id,year,month',
+    'tree_annual_summaries':    'tree_id,year',
+    'garden_monthly_summaries': 'garden_id,year,month',
+    'garden_annual_summaries':  'garden_id,year',
+  };
+
   async function _save(table, record) {
     // generated_by_user para auditoría (qué usuario generó la bitácora).
     // Si la tabla destino no tiene esa columna, hacemos un retry sin ella.
     record.generated_by_user = currentUser?.id;
-    let { data, error } = await sb.from(table).upsert(record).select().single();
+    const onConflict = _ONCONFLICT[table];
+    const upsertOpts = onConflict ? { onConflict } : undefined;
+    let { data, error } = await sb.from(table).upsert(record, upsertOpts).select().single();
     if (error && (error.code === 'PGRST204' || /generated_by_user/.test(error.message || ''))) {
       // Retry sin la columna (la tabla legacy no la tiene)
       const { generated_by_user: _, ...recordNoGen } = record;
-      ({ data, error } = await sb.from(table).upsert(recordNoGen).select().single());
+      ({ data, error } = await sb.from(table).upsert(recordNoGen, upsertOpts).select().single());
     }
     if (error) { console.warn(`Bitacora save error (${table}):`, error); return record; }
     return data;
