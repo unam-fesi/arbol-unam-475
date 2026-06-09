@@ -70,16 +70,21 @@ window.IztacalaDragEdit = (function () {
   }
 
   function _renderToggle() {
-    // Insertar el toggle SOBRE el contenedor del mapa (no del canvas), para
-    // que no compita por z-index con popups o filtros.
     const dom = ctx.renderer.domElement;
     const container = dom.parentElement;
-    if (!container) return;
-    if (container.querySelector('#izta-edit-toggle')) return;
+    if (!container) {
+      console.warn('[DragEdit] no parent del renderer — toggle no se puede renderizar');
+      return;
+    }
+    if (container.querySelector('#izta-edit-toggle')) {
+      console.log('[DragEdit] toggle ya existe, no duplico');
+      return;
+    }
 
     // Asegurar position:relative en el contenedor para que absolute funcione
     const cs = getComputedStyle(container);
     if (cs.position === 'static') container.style.position = 'relative';
+    console.log('[DragEdit] renderizando toggle dentro de:', container.tagName + (container.id ? '#'+container.id : '') + '.' + (container.className||''));
 
     const btn = document.createElement('button');
     btn.id = 'izta-edit-toggle';

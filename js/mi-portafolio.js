@@ -694,8 +694,9 @@ function _buildGardenVisitTimeline(visits) {
 
     const borderColor = i === 0 ? '#2E7D32' : '#e0e0e0';
     const photoUrl = v.photo_url || '';
+    // data-photo-path → el MutationObserver lo detecta y resuelve a signed URL
     const photoThumb = photoUrl ? `
-      <img src="${escapeHtml(photoUrl)}"
+      <img data-photo-path="${escapeHtml(photoUrl)}"
         style="width:80px;height:80px;object-fit:cover;border-radius:10px;flex-shrink:0;border:1px solid #eee;"
         onerror="this.style.display='none'">` : '';
 
@@ -1670,7 +1671,7 @@ async function showGardenVisitDetail(visitId) {
       <div style="padding:1.3rem 1.4rem;">
         ${v.photo_url ? `
           <div style="margin-bottom:1.2rem;">
-            <img src="${escapeHtml(v.photo_url)}"
+            <img data-photo-path="${escapeHtml(v.photo_url)}"
               style="width:100%;border-radius:12px;cursor:zoom-in;"
               onclick="window.open(this.src,'_blank')"
               onerror="this.style.display='none'">
@@ -1758,3 +1759,50 @@ async function _loadBitacoraGarden(gardenId) {
 window._loadBitacoraGarden = _loadBitacoraGarden;
 window.showGardenVisitDetail = showGardenVisitDetail;
 window.closeGardenVisitDetail = closeGardenVisitDetail;
+
+// ============================================================================
+// Photo hydration: cuando se inyecta un <img data-photo-path="..."> al DOM,
+// el MutationObserver lo detecta y resuelve la ruta del bucket privado
+// tree-photos a una signed URL temporal (vía resolvePhotoUrl).
+// Esto evita 404 cuando el path es relativo (ej. "431/123.jpg") y el browser
+// intentaba cargarlo como ruta del sitio.
+// ============================================================================
+(function _installPhotoHydrator() {
+  if (typeof window === 'undefined' || window.__photoHydrateInstalled) return;
+  window.__photoHydrateInstalled = true;
+
+  async function _hydrate(img) {
+    const path = img.getAttribute('data-photo-path');
+    if (!path) return;
+    img.removeAttribute('data-photo-path');
+    if (/^https?:\/\//.test(path)) { img.src = path; return; }
+    if (typeof resolvePhotoUrl === 'function') {
+      try {
+        const url = await resolvePhotoUrl(path);
+        if (url) img.src = url;
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  function _scan(root) {
+    if (!root || root.nodeType !== 1) return;
+    if (root.matches && root.matches('img[data-photo-path]')) { _hydrate(root); return; }
+    const list = root.querySelectorAll && root.querySelectorAll('img[data-photo-path]');
+    if (list) list.forEach(_hydrate);
+  }
+
+  // Hidrata todo lo que ya esté en el DOM al cargar
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => _scan(document.body));
+  } else {
+    _scan(document.body);
+  }
+
+  // Escucha nuevos elementos
+  const obs = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) _scan(node);
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+})();
