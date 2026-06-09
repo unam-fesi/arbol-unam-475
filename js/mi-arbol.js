@@ -900,6 +900,23 @@ async function saveMeasurement(e) {
     }
 
     showToast(isFirst ? 'Plantación registrada con ubicación' : 'Registro de seguimiento guardado', 'success');
+
+    // 🎉 Celebración para el PRIMER seguimiento — todos los users del 475
+    // El nombre que va en la placa:
+    //   1) nickname si está set (ej. "Cuitláhuac", "Juan Ficus")
+    //   2) si no, tree_code (ej. "FESI 56 MANZANO")
+    if (isFirst && window.FirstMeasurementCelebration) {
+      try {
+        const nick = String(currentTreeData.nickname || '').trim();
+        const treeName = nick || currentTreeData.tree_code || 'Mi Árbol';
+        // Pequeño delay para que el toast aparezca primero
+        setTimeout(() => {
+          try { window.FirstMeasurementCelebration.show(treeName); }
+          catch (e) { console.warn('[mi-arbol] celebration failed:', e); }
+        }, 600);
+      } catch (e) { console.warn('[mi-arbol] celebration setup failed:', e); }
+    }
+
     pendingPhotoBase64 = null;
     pendingPhotoFile = null;
     myTreeLoaded = false;

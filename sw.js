@@ -4,7 +4,7 @@
 // ⚠ IMPORTANTE: cuando agregues nuevos archivos JS o cambies HTML,
 // SUBE EL NÚMERO DE VERSIÓN (v1 → v2 → v3 ...) para forzar invalidación
 // del cache en los navegadores de los usuarios.
-const CACHE_NAME = 'arbol-unam-v267';
+const CACHE_NAME = 'arbol-unam-v269';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './js/config.js',
   './js/utils.js',
   './js/web-vitals-capture.js',
+  './js/first-measurement-celebration.js',
   // realtime-features.js y presentation-mode.js desactivados pre-inauguración
   // (quemaban Disk IO Budget en compute pequeño). Reactivar post-evento.
   './js/auth.js',
