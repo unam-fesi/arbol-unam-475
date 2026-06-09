@@ -23,10 +23,12 @@ window.IztacalaDragEdit = (function () {
   const ALLOWED_ROLES = ['admin', 'rectoria'];
 
   let installed = false;
+  let enabled = false;     // modo edición OFF por default (toggle del user)
   let ctx = null;          // { scene, camera, renderer, controls, treeMeshes, ... }
   let dragging = null;     // { entry, group, originalPos: Vector3, originalCoords: {lat,lng} }
   let raycaster, mouse, groundPlane, intersection;
   let toast = null;        // función showToast del global
+  let toggleBtn = null;    // referencia al botón flotante para actualizar estado visual
 
   function _canEdit() {
     try {
@@ -60,10 +62,97 @@ window.IztacalaDragEdit = (function () {
     dom.addEventListener('pointermove', _onPointerMove);
     dom.addEventListener('pointerup', _onPointerUp);
     dom.addEventListener('pointercancel', _cancelDrag);
-    dom.style.cursor = ''; // limpia
+    dom.style.cursor = '';
 
-    console.log('[DragEdit] habilitado para rol:', (typeof currentUserProfile !== 'undefined' ? currentUserProfile?.role : '?'));
-    toast('Modo edición activado: arrastra cualquier árbol para reubicarlo', 'info', 3500);
+    _renderToggle();
+
+    console.log('[DragEdit] disponible para rol:', (typeof currentUserProfile !== 'undefined' ? currentUserProfile?.role : '?'), '— modo edición:', enabled ? 'ON' : 'OFF');
+  }
+
+  function _renderToggle() {
+    // Insertar el toggle SOBRE el contenedor del mapa (no del canvas), para
+    // que no compita por z-index con popups o filtros.
+    const dom = ctx.renderer.domElement;
+    const container = dom.parentElement;
+    if (!container) return;
+    if (container.querySelector('#izta-edit-toggle')) return;
+
+    // Asegurar position:relative en el contenedor para que absolute funcione
+    const cs = getComputedStyle(container);
+    if (cs.position === 'static') container.style.position = 'relative';
+
+    const btn = document.createElement('button');
+    btn.id = 'izta-edit-toggle';
+    btn.type = 'button';
+    btn.title = 'Modo edición — arrastrar árboles';
+    btn.innerHTML = `<span class="lock-icon">🔒</span><span class="lock-text">Editar ubicación</span>`;
+    btn.style.cssText = `
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.85);
+      color: #555;
+      border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      user-select: none;
+      transition: all 0.15s ease;
+    `;
+    btn.addEventListener('mouseenter', () => {
+      if (!enabled) btn.style.background = 'rgba(255,255,255,0.95)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      _updateToggleVisual();
+    });
+    btn.addEventListener('click', _toggleEnabled);
+    // En iPad evitar que el touch sobre el botón inicie drag del mapa
+    btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    btn.addEventListener('touchstart', (e) => e.stopPropagation());
+
+    container.appendChild(btn);
+    toggleBtn = btn;
+  }
+
+  function _updateToggleVisual() {
+    if (!toggleBtn) return;
+    if (enabled) {
+      toggleBtn.style.background = 'rgba(46,125,50,0.92)';
+      toggleBtn.style.color = '#fff';
+      toggleBtn.style.borderColor = 'rgba(46,125,50,0.6)';
+      toggleBtn.style.boxShadow = '0 2px 12px rgba(46,125,50,0.4)';
+      toggleBtn.querySelector('.lock-icon').textContent = '✏️';
+      toggleBtn.querySelector('.lock-text').textContent = 'Modo edición ON';
+    } else {
+      toggleBtn.style.background = 'rgba(255,255,255,0.85)';
+      toggleBtn.style.color = '#555';
+      toggleBtn.style.borderColor = 'rgba(0,0,0,0.15)';
+      toggleBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+      toggleBtn.querySelector('.lock-icon').textContent = '🔒';
+      toggleBtn.querySelector('.lock-text').textContent = 'Editar ubicación';
+    }
+  }
+
+  function _toggleEnabled() {
+    enabled = !enabled;
+    _updateToggleVisual();
+    if (enabled) {
+      toast('Modo edición ACTIVADO — arrastra árboles para reubicarlos', 'success', 3200);
+    } else {
+      // Si había drag en curso, cancelarlo
+      if (dragging) _cancelDrag();
+      toast('Modo edición desactivado', 'info', 1800);
+    }
   }
 
   function _updateMouseFromEvent(ev) {
@@ -74,7 +163,8 @@ window.IztacalaDragEdit = (function () {
   }
 
   function _onPointerDown(ev) {
-    if (ev.button !== 0) return;   // solo botón izquierdo
+    if (!enabled) return;          // toggle OFF → no interceptamos clicks
+    if (ev.button !== 0 && ev.pointerType !== 'touch') return;  // izq o touch
     if (dragging) return;
     _updateMouseFromEvent(ev);
     raycaster.setFromCamera(mouse, ctx.camera);
