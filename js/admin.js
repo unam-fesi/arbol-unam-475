@@ -4121,7 +4121,7 @@ async function loadSecurityDashboard() {
         <details style="margin-top:0.6rem;">
           <summary style="cursor:pointer;font-size:0.78rem;color:#888;">¿Cómo obtengo mi chat_id?</summary>
           <p style="font-size:0.78rem;color:#666;margin:0.4rem 0 0;line-height:1.5;">
-            1. Abre <a href="https://t.me/Pumai_treebot" target="_blank" style="color:#0d6acb;">@Pumai_treebot</a> en Telegram.<br>
+            1. Abre <a href="https://t.me/Pumai_treebot" target="_blank" rel="noopener noreferrer" style="color:#0d6acb;">@Pumai_treebot</a> en Telegram.<br>
             2. Manda <code>/start</code> y vincula tu cuenta desde tu perfil (si aún no lo has hecho).<br>
             3. Luego manda <code>/status</code> al bot. El número que comienza con <code>123…</code> es tu chat_id, o pídeselo a tu administrador.<br>
             <strong>Tip:</strong> también puedes usar un grupo dedicado — agrega el bot, manda cualquier mensaje y el chat_id del grupo aparece en los logs del webhook (empieza con <code>-100…</code>).
@@ -5257,7 +5257,7 @@ async function viewTreeMeasurementsAdmin(treeId) {
         // ── Indicador de ubicación ──
         const hasLoc = (m.location_lat != null && m.location_lng != null);
         const locTag = hasLoc
-          ? `<a href="https://www.google.com/maps?q=${m.location_lat},${m.location_lng}" target="_blank" title="Ver ubicación en Google Maps (${m.location_lat.toFixed(5)}, ${m.location_lng.toFixed(5)})" style="width:64px;height:30px;background:rgba(46,125,50,0.12);color:#1b5e20;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:0.2rem;font-size:0.78rem;text-decoration:none;flex-shrink:0;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> GPS</a>`
+          ? `<a href="https://www.google.com/maps?q=${m.location_lat},${m.location_lng}" target="_blank" rel="noopener noreferrer" title="Ver ubicación en Google Maps (${m.location_lat.toFixed(5)}, ${m.location_lng.toFixed(5)})" style="width:64px;height:30px;background:rgba(46,125,50,0.12);color:#1b5e20;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:0.2rem;font-size:0.78rem;text-decoration:none;flex-shrink:0;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> GPS</a>`
           : `<div title="Sin ubicación registrada en este seguimiento" style="width:64px;height:30px;background:#eee;color:#bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:0.2rem;font-size:0.78rem;flex-shrink:0;margin-top:4px;"><i class="fas fa-map-marker-alt"></i> —</div>`;
 
         // Wrapper foto + pin (columna)

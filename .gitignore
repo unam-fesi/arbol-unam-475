@@ -17,3 +17,8 @@ backups/
 # Proyecto iOS — NADA de iOS se versiona (decisión del proyecto).
 ios/
 ios-source-tree/
+
+# Outputs de generación de planos / exports (no versionar)
+iztacala_arboles_475*.pdf
+iztacala_arboles_475*.png
+iztacala_arboles_475*.dxf

@@ -137,7 +137,14 @@ function addPumaiMessage(content, isUser) {
   if (isUser) {
     bubble.textContent = content;
   } else {
-    bubble.innerHTML = content;
+    // SEGURIDAD: el contenido viene del LLM (Gemini via Edge Function pum-ai).
+    // Si la respuesta contiene HTML adversarial (vía prompt injection o input
+    // del usuario reflejado), un innerHTML directo permitiría XSS en el contexto
+    // del usuario logueado. Escapamos primero y luego convertimos saltos de
+    // línea a <br> para preservar el formato básico del chat. Markdown más rico
+    // requeriría DOMPurify o un renderizador controlado.
+    const esc = (window.escapeHtml || (s => String(s ?? '')))(content);
+    bubble.innerHTML = esc.replace(/\n/g, '<br>');
   }
 
   wrapper.appendChild(bubble);

@@ -2122,15 +2122,19 @@ window.IztacalaMap = (function() {
       clearSmartSearch();
       return;
     }
+    // result.label puede venir de pum-ai-filter (Edge Function que devuelve
+    // texto generado por Gemini). Escapamos antes de interpolar en innerHTML
+    // para evitar XSS si el LLM reflejara HTML del input del usuario.
+    const esc = (window.escapeHtml || (s => String(s ?? '')));
     let result = null;
     if (!forceAI) {
       result = _parseLocalQuery(raw);
-      if (result && status) status.innerHTML = `🟢 Filtro local: <em>${result.label}</em>`;
+      if (result && status) status.innerHTML = `🟢 Filtro local: <em>${esc(result.label)}</em>`;
     }
     if (!result) {
       if (status) status.innerHTML = '🤖 Consultando PUM-AI…';
       result = await _pumAiQuery(raw);
-      if (result && status) status.innerHTML = `🤖 PUM-AI: <em>${result.label}</em>`;
+      if (result && status) status.innerHTML = `🤖 PUM-AI: <em>${esc(result.label)}</em>`;
     }
     if (!result) {
       if (status) status.innerHTML = '⚠️ No entendí la consulta. Prueba: "salud baja", "sin foto", "FESI 64".';
@@ -2189,7 +2193,10 @@ window.IztacalaMap = (function() {
       const tCampus = _totalRegCampus > 0 ? `Campus: ${visibleCampus} / ${_totalRegCampus} reg.` : `Campus: ${visibleCampus}`;
       let txt = `${t475} · ${tCampus}`;
       if (hidden > 0) txt += ` · ${hidden} ocultos`;
-      if (_customLabel) txt += `<br><span style="color:#5b8b7d;font-style:italic;">🔍 ${_customLabel}</span>`;
+      if (_customLabel) {
+        const esc = (window.escapeHtml || (s => String(s ?? '')));
+        txt += `<br><span style="color:#5b8b7d;font-style:italic;">🔍 ${esc(_customLabel)}</span>`;
+      }
       out.innerHTML = txt;
     }
   }
