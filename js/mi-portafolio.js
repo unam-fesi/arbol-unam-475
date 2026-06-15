@@ -239,10 +239,15 @@ function _setupPortfolioDelegation() {
       if (type && id != null) selectPortfolioEntity(type, id);
       return;
     }
-    // Abrir form de visita al jardín
+    // Abrir form de visita al jardín — solo admin (modelo Q3 jun-2026:
+    // gardens y garden-photos son gestionados exclusivamente por Iztacala admin)
     const visitBtn = e.target.closest('[data-portfolio-action="open-garden-visit"]');
     if (visitBtn) {
       e.preventDefault();
+      if ((currentUserProfile?.role || '') !== 'admin') {
+        showToast('Solo Iztacala admin puede registrar visitas a huertos', 'warning');
+        return;
+      }
       openGardenVisitForm(visitBtn.dataset.gardenId);
       return;
     }
@@ -741,7 +746,11 @@ function _renderGardenRegistro(garden, trees, visits) {
     ? 'Este será el registro inicial del jardín. Necesita foto y rúbrica de salud.'
     : 'Riego, limpieza, mantenimiento general. Foto + actividades + rúbrica.';
 
-  const visitButton = `
+  // Modelo Q3 jun-2026: gardens y garden-photos son gestionados exclusivamente
+  // por Iztacala admin (storage policy garden_photos_insert solo permite role='admin').
+  // Para no-admin escondemos el botón en vez de que reciba 403 al subir foto.
+  const _isAdminGlobal = (currentUserProfile?.role || '') === 'admin';
+  const visitButton = _isAdminGlobal ? `
     <div class="card" style="padding:1.2rem;background:linear-gradient(135deg,rgba(46,125,50,0.10),rgba(102,153,204,0.08));border:2px dashed rgba(46,125,50,0.35);">
       <h4 style="margin:0 0 0.4rem;color:#1a4480;"><i class="fas fa-leaf"></i> Visita al jardín</h4>
       <p style="color:#555;font-size:0.85rem;margin:0 0 0.9rem;">${visitButtonHelp}</p>
@@ -754,7 +763,7 @@ function _renderGardenRegistro(garden, trees, visits) {
         ${visitButtonLabel}
       </button>
     </div>
-  `;
+  ` : '';
 
   if (!trees || trees.length === 0) {
     return `
