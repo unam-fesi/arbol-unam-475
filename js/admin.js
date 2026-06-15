@@ -2818,7 +2818,7 @@ function onTgFilterChange() {
   sel.innerHTML = '';
   inp.value = '';
 
-  if (f === 'all') return;
+  if (f === 'all') { _tgUpdateRecipientsPreview(); return; }
 
   wrap.style.display = '';
 
@@ -2826,6 +2826,7 @@ function onTgFilterChange() {
     label.textContent = 'Rol';
     sel.style.display = '';
     sel.innerHTML = TG_ROLES.map(r => `<option value="${r}">${r}</option>`).join('');
+    _tgUpdateRecipientsPreview();
   } else if (f === 'campus') {
     label.textContent = 'Campus';
     sel.style.display = '';
@@ -2835,6 +2836,7 @@ function onTgFilterChange() {
       sel.value = _userCampus();
       sel.disabled = true;
     }
+    _tgUpdateRecipientsPreview();
   } else if (f === 'group') {
     label.textContent = 'Grupo';
     sel.style.display = '';
@@ -2846,13 +2848,214 @@ function onTgFilterChange() {
         sel.innerHTML = groups.length
           ? groups.map(g => `<option value="${g.id}">${g.name} (${g.campus||'—'})</option>`).join('')
           : '<option value="">No hay grupos</option>';
+        _tgUpdateRecipientsPreview();
       });
   } else if (f === 'user') {
     label.textContent = 'Email o ID del usuario';
     inp.style.display = '';
     inp.placeholder = 'correo@unam.mx o UUID';
+    _tgUpdateRecipientsPreview();
   }
 }
+
+// ============================================================================
+// PREVIEW AUTOMÁTICO DE DESTINATARIOS
+// ----------------------------------------------------------------------------
+// Cuando cambia el filtro o el valor, hacemos query directa a user_profiles
+// con las mismas reglas que send-telegram-notification para mostrar quiénes
+// recibirán el mensaje ANTES de mandarlo. Usamos RLS del frontend (admin/
+// admin-campus tienen acceso a user_profiles según las policies).
+// ============================================================================
+let _tgPreviewToken = 0;  // anti-race: si el user cambia filtro rápido, ignoramos respuestas viejas
+function onTgValueChange() { _tgUpdateRecipientsPreview(); }
+window.onTgValueChange = onTgValueChange;
+
+async function _tgUpdateRecipientsPreview() {
+  const out = document.getElementById('tg-recipients-preview');
+  if (!out) return;
+  const myToken = ++_tgPreviewToken;
+
+  const { filter, value } = _tgGetFilterValue();
+  if (filter !== 'all' && !value) {
+    out.innerHTML = '<span style="color:#888;">Elige un valor para ver los destinatarios…</span>';
+    return;
+  }
+
+  out.innerHTML = '<span style="color:#888;">Calculando destinatarios…</span>';
+
+  try {
+    let q = sb.from('user_profiles')
+      .select('id, full_name, role, campus, telegram_chat_id, telegram_active')
+      .not('telegram_chat_id', 'is', null);
+
+    if (filter === 'role') q = q.eq('role', String(value));
+    else if (filter === 'campus') q = q.eq('campus', String(value));
+    else if (filter === 'user') {
+      // value puede ser UUID o email. Si es UUID lo filtramos directo;
+      // si es email no podemos resolverlo aquí (user_profiles no tiene email).
+      const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
+      if (looksLikeUuid) q = q.eq('id', String(value));
+      else {
+        out.innerHTML = '<span style="color:#c62828;">Para "Usuario específico" pega el UUID (no email). Lo encuentras en el tab Usuarios.</span>';
+        return;
+      }
+    } else if (filter === 'group') {
+      const { data: gm } = await sb.from('group_members').select('user_id').eq('group_id', String(value));
+      const ids = (gm || []).map(r => r.user_id);
+      if (myToken !== _tgPreviewToken) return;  // cambió el filtro mientras esperábamos
+      if (!ids.length) { out.innerHTML = '<span style="color:#c62828;">Grupo sin miembros.</span>'; return; }
+      q = q.in('id', ids);
+    }
+
+    // admin-campus solo ve su campus (espeja el server)
+    if (typeof isAdminCampusRole === 'function' && isAdminCampusRole()) {
+      q = q.eq('campus', _userCampus());
+    }
+
+    const { data, error } = await q.order('full_name');
+    if (myToken !== _tgPreviewToken) return;  // cambió el filtro
+    if (error) throw error;
+
+    const list = (data || []).filter(u => u.telegram_chat_id);
+    const total = list.length;
+    const esc = window.escapeHtml || (s => String(s ?? ''));
+
+    if (total === 0) {
+      out.innerHTML = '<span style="color:#c62828;"><strong>0 destinatarios</strong> — nadie con Telegram vinculado coincide con este filtro.</span>';
+      return;
+    }
+
+    // Construir lista visible
+    const rowsHtml = list.map(u => {
+      const inactive = u.telegram_active === false
+        ? ' <span title="Telegram marcado inactivo" style="color:#c62828;font-size:0.78rem;">[inactivo]</span>'
+        : '';
+      return `<div style="padding:3px 0;border-bottom:1px dashed #eee;">
+        <span style="font-weight:600;">${esc(u.full_name || '(sin nombre)')}</span>
+        <span style="color:#777;font-size:0.8rem;"> · ${esc(u.role || '')} · ${esc(u.campus || '')}</span>${inactive}
+      </div>`;
+    }).join('');
+
+    out.innerHTML = `
+      <div style="font-weight:600;color:#0d2d5c;margin-bottom:0.4rem;">
+        <i class="fab fa-telegram" style="color:#229ED9;"></i>
+        ${total} destinatario${total === 1 ? '' : 's'} con Telegram vinculado
+      </div>
+      <details${total <= 15 ? ' open' : ''} style="margin-top:0.3rem;">
+        <summary style="cursor:pointer;font-size:0.82rem;color:#0d6acb;">Ver lista completa</summary>
+        <div style="max-height:240px;overflow-y:auto;margin-top:0.4rem;font-size:0.85rem;background:#fafbfc;padding:0.4rem 0.6rem;border-radius:4px;">
+          ${rowsHtml}
+        </div>
+      </details>`;
+  } catch (err) {
+    if (myToken !== _tgPreviewToken) return;
+    out.innerHTML = '<span style="color:#c62828;">Error: ' + (window.escapeHtml||(s=>s))(err.message || err) + '</span>';
+  }
+}
+window._tgUpdateRecipientsPreview = _tgUpdateRecipientsPreview;
+
+// ============================================================================
+// USUARIOS VINCULADOS A TELEGRAM — tabla + desvincular
+// ----------------------------------------------------------------------------
+// Lista todos los user_profiles con telegram_chat_id != NULL. Permite
+// desvincular individualmente (UPDATE telegram_chat_id = NULL). Útil para
+// limpiar vinculaciones huérfanas (usuario cambió de cuenta Telegram, etc.).
+// ============================================================================
+let _tgLinkedCache = [];
+
+async function loadTelegramLinkedUsers() {
+  const c = document.getElementById('tg-linked-container');
+  const counter = document.getElementById('tg-linked-count');
+  if (!c) return;
+  c.innerHTML = '<p class="text-muted">Cargando…</p>';
+  if (counter) counter.textContent = '';
+  try {
+    let q = sb.from('user_profiles')
+      .select('id, full_name, role, campus, telegram_chat_id, telegram_active')
+      .not('telegram_chat_id', 'is', null);
+    if (typeof isAdminCampusRole === 'function' && isAdminCampusRole()) {
+      q = q.eq('campus', _userCampus());
+    }
+    const { data, error } = await q.order('full_name');
+    if (error) throw error;
+    _tgLinkedCache = data || [];
+    if (counter) counter.textContent = `(${_tgLinkedCache.length})`;
+    _renderTelegramLinked(_tgLinkedCache);
+  } catch (err) {
+    c.innerHTML = '<p style="color:var(--danger);">Error: ' + (window.escapeHtml||(s=>s))(err.message) + '</p>';
+    if (typeof logError === 'function') logError({ action: 'loadTelegramLinkedUsers', error: err });
+  }
+}
+
+function _renderTelegramLinked(rows) {
+  const c = document.getElementById('tg-linked-container');
+  if (!c) return;
+  if (!rows.length) {
+    c.innerHTML = '<p class="text-muted">Sin usuarios vinculados.</p>';
+    return;
+  }
+  const esc = window.escapeHtml || (s => String(s ?? ''));
+  const safe = window.safeJsAttr || (s => String(s ?? '').replace(/'/g, "\\'"));
+  let html = '<div style="overflow-x:auto;"><table class="admin-table"><thead><tr>' +
+    '<th>Nombre</th><th>Rol</th><th>Campus</th><th>Chat ID</th><th>Estado</th><th>Acciones</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(u => {
+    const chatPartial = String(u.telegram_chat_id || '').replace(/^(.{4}).+(.{3})$/, '$1•••$2');
+    const active = u.telegram_active === false
+      ? '<span style="color:#c62828;font-weight:600;">⏸ Inactivo</span>'
+      : '<span style="color:#2e7d32;font-weight:600;">✅ Activo</span>';
+    html += `<tr>
+      <td data-label="Nombre">${esc(u.full_name || '(sin nombre)')}</td>
+      <td data-label="Rol"><code style="font-size:0.78rem;">${esc(u.role || '')}</code></td>
+      <td data-label="Campus"><code style="font-size:0.78rem;">${esc(u.campus || '')}</code></td>
+      <td data-label="Chat ID" style="font-family:monospace;font-size:0.78rem;color:#555;">${esc(chatPartial)}</td>
+      <td data-label="Estado">${active}</td>
+      <td data-label="Acciones" style="white-space:nowrap;">
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;"
+                onclick="unlinkTelegramUser('${safe(u.id)}','${safe(u.full_name || '')}')">
+          <i class="fas fa-unlink"></i> Desvincular
+        </button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  c.innerHTML = html;
+}
+
+function _filterTelegramLinked() {
+  const q = (document.getElementById('tg-linked-search')?.value || '').trim().toLowerCase();
+  if (!q) { _renderTelegramLinked(_tgLinkedCache); return; }
+  const filtered = _tgLinkedCache.filter(u => {
+    return (u.full_name || '').toLowerCase().includes(q)
+        || (u.role || '').toLowerCase().includes(q)
+        || (u.campus || '').toLowerCase().includes(q);
+  });
+  _renderTelegramLinked(filtered);
+}
+
+async function unlinkTelegramUser(userId, userName) {
+  if (!userId) return;
+  if (!confirm(`¿Desvincular Telegram de "${userName || userId}"?\n\nDejará de recibir notificaciones por Telegram hasta que vuelva a vincular su cuenta.`)) return;
+  try {
+    const { error } = await sb.from('user_profiles')
+      .update({ telegram_chat_id: null })
+      .eq('id', userId);
+    if (error) throw error;
+    showToast(`Telegram desvinculado de ${userName || userId}`, 'success');
+    // Actualizar la lista (sin recargar todo)
+    _tgLinkedCache = _tgLinkedCache.filter(u => u.id !== userId);
+    const counter = document.getElementById('tg-linked-count');
+    if (counter) counter.textContent = `(${_tgLinkedCache.length})`;
+    _renderTelegramLinked(_tgLinkedCache);
+  } catch (err) {
+    showToast('Error al desvincular: ' + (err.message || err), 'error');
+    if (typeof logError === 'function') logError({ action: 'unlinkTelegramUser', userId, error: err });
+  }
+}
+
+window.loadTelegramLinkedUsers = loadTelegramLinkedUsers;
+window._filterTelegramLinked = _filterTelegramLinked;
+window.unlinkTelegramUser = unlinkTelegramUser;
 
 function _tgGetFilterValue() {
   const f = document.getElementById('tg-filter').value;

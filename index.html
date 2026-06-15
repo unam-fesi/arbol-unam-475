@@ -1053,9 +1053,13 @@
                                             </div>
                                             <div class="form-group" id="tg-value-wrap" style="display:none;">
                                                 <label id="tg-value-label" for="tg-value">Valor</label>
-                                                <select id="tg-value-select" style="display:none;"></select>
-                                                <input type="text" id="tg-value-input" placeholder="" style="display:none;">
+                                                <select id="tg-value-select" style="display:none;" onchange="onTgValueChange()"></select>
+                                                <input type="text" id="tg-value-input" placeholder="" style="display:none;" oninput="onTgValueChange()">
                                             </div>
+                                        </div>
+                                        <!-- Preview de destinatarios — se actualiza automáticamente al cambiar filtro/valor -->
+                                        <div id="tg-recipients-preview" style="background:#fff;border:1px solid #d0e3f2;border-radius:8px;padding:0.7rem 0.9rem;margin-bottom:0.8rem;font-size:0.85rem;color:#555;">
+                                            <span style="color:#888;">Elige un filtro para ver los destinatarios…</span>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group" style="grid-column: 1 / -1;">
@@ -1084,6 +1088,23 @@
                                         </div>
                                     </form>
                                 </div>
+
+                                <!-- Usuarios vinculados a Telegram -->
+                                <details class="admin-collapsible" style="margin:1.5rem 0 1rem;" ontoggle="if(this.open) loadTelegramLinkedUsers()">
+                                    <summary><h4 style="margin:0;"><i class="fab fa-telegram" style="color:#229ED9;"></i> Usuarios vinculados a Telegram <span id="tg-linked-count" style="font-size:0.78rem;color:#888;font-weight:normal;"></span></h4></summary>
+                                    <div style="margin-top:0.8rem;">
+                                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.8rem;">
+                                            <input type="search" id="tg-linked-search" placeholder="🔍 Buscar por nombre, rol o campus…" oninput="_filterTelegramLinked()"
+                                                   style="flex:1;min-width:200px;padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;">
+                                            <button type="button" class="btn btn-sm btn-outline" onclick="loadTelegramLinkedUsers()">
+                                                <i class="fas fa-refresh"></i> Recargar
+                                            </button>
+                                        </div>
+                                        <div id="tg-linked-container">
+                                            <p class="text-muted">Cargando…</p>
+                                        </div>
+                                    </div>
+                                </details>
 
                                 <!-- Histórico de Telegram (telegram_messages_log) -->
                                 <details class="admin-collapsible" style="margin:1.5rem 0 1rem;">
