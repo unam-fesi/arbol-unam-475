@@ -1208,6 +1208,8 @@ async function loadAdminTrees() {
   // alguien forzara el formulario por consola, el INSERT/UPDATE/DELETE se
   // rechaza desde la BD.)
   _applyTreeAdminOnlyUI();
+  // Mostrar/ocultar la sección de GPS (solo admin global Iztacala)
+  initAdminTreeGpsSection();
 
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
@@ -1567,20 +1569,113 @@ function _renderAdminTreesRows(trees) {
 window._filterAdminTrees = _filterAdminTrees;
 window._clearAdminTreesFilters = _clearAdminTreesFilters;
 
+// ============================================================================
+// GPS al alta de árbol — SOLO admin global (Iztacala)
+// ----------------------------------------------------------------------------
+// Muestra/oculta la sección #admin-tree-gps-section según rol del caller.
+// Llamado al cargar el tab "Árboles" del panel admin.
+// ============================================================================
+function initAdminTreeGpsSection() {
+  const section = document.getElementById('admin-tree-gps-section');
+  if (!section) return;
+  const isAdminGlobal = (currentUserProfile?.role || '') === 'admin';
+  section.style.display = isAdminGlobal ? '' : 'none';
+}
+window.initAdminTreeGpsSection = initAdminTreeGpsSection;
+
+function captureAdminTreeGPS() {
+  if ((currentUserProfile?.role || '') !== 'admin') {
+    showToast('Solo admin global (Iztacala) puede capturar GPS al alta', 'error');
+    return;
+  }
+  const status = document.getElementById('admin-tree-gps-status');
+  const btn = document.getElementById('admin-tree-gps-btn');
+  if (!navigator.geolocation) {
+    if (status) status.textContent = '⚠️ Tu navegador no soporta geolocalización';
+    return;
+  }
+  if (status) status.innerHTML = '⏳ Obteniendo ubicación…';
+  if (btn) btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = pos.coords.accuracy;
+      document.getElementById('admin-tree-lat').value = lat.toFixed(7);
+      document.getElementById('admin-tree-lng').value = lng.toFixed(7);
+      if (status) {
+        const accColor = acc < 15 ? '#2E7D32' : acc < 50 ? '#FFA000' : '#c62828';
+        status.innerHTML = `✅ Coordenadas capturadas — precisión: <b style="color:${accColor}">±${acc.toFixed(0)}m</b>`;
+      }
+      if (btn) btn.disabled = false;
+    },
+    (err) => {
+      if (status) status.innerHTML = '❌ Error: ' + (err.message || 'No se pudo obtener ubicación');
+      if (btn) btn.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+window.captureAdminTreeGPS = captureAdminTreeGPS;
+
+function clearAdminTreeGPS() {
+  document.getElementById('admin-tree-lat').value = '';
+  document.getElementById('admin-tree-lng').value = '';
+  const status = document.getElementById('admin-tree-gps-status');
+  if (status) status.textContent = '';
+}
+window.clearAdminTreeGPS = clearAdminTreeGPS;
+
+// ============================================================================
+// TOGGLE de campos de planta (quantity, location_in_garden) según tipo
+// Feature 2 jun-2026: si el tipo es planta_* o arbusto, mostrar campos extra.
+// ============================================================================
+function onAdminTreeTypeChange() {
+  const typeSel = document.getElementById('admin-tree-type');
+  const plantRow = document.getElementById('admin-tree-plant-row');
+  if (!typeSel || !plantRow) return;
+  const isPlant = treeTypeCategory(typeSel.value) === 'planta';
+  plantRow.style.display = isPlant ? '' : 'none';
+  // Reset quantity a 1 si vuelve a árbol (no aplica)
+  if (!isPlant) {
+    const q = document.getElementById('admin-tree-quantity');
+    if (q) q.value = 1;
+  }
+}
+window.onAdminTreeTypeChange = onAdminTreeTypeChange;
+
 // Valid CHECK constraint values (must match BD)
 const TREE_STATUS_VALUES = ['nuevo','activo','enfermo','en_tratamiento','seco','retirado'];
-const TREE_TYPE_VALUES = ['nativo','endemico','ornamental','frutal'];
+// tree_type ahora incluye plantas de jardín además de árboles.
+// Los valores 'planta_*' y 'arbusto' los introduce la migración 'trees_catalog_garden_plants_support'.
+const TREE_TYPE_VALUES = [
+  // Árboles
+  'nativo','endemico','ornamental','frutal',
+  // Plantas (para jardines de Iztacala)
+  'planta_ornamental','planta_hortaliza','planta_aromatica',
+  'planta_medicinal','planta_suculenta','arbusto'
+];
 const TREE_SIZE_VALUES = ['pequeno','mediano','grande','muy_grande'];
 const TREE_STATUS_LABELS = {
   nuevo: 'Nuevo', activo: 'Activo', enfermo: 'Enfermo',
   en_tratamiento: 'En tratamiento', seco: 'Seco', retirado: 'Retirado'
 };
 const TREE_TYPE_LABELS = {
-  nativo: 'Nativo', endemico: 'Endémico', ornamental: 'Ornamental', frutal: 'Frutal'
+  nativo: 'Nativo (árbol)', endemico: 'Endémico (árbol)',
+  ornamental: 'Ornamental (árbol)', frutal: 'Frutal (árbol)',
+  planta_ornamental: '🌿 Planta ornamental', planta_hortaliza: '🥬 Hortaliza',
+  planta_aromatica: '🌱 Aromática', planta_medicinal: '🌾 Medicinal',
+  planta_suculenta: '🌵 Suculenta', arbusto: '🪴 Arbusto'
 };
 const TREE_SIZE_LABELS = {
   pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande', muy_grande: 'Muy grande'
 };
+// Categoría derivada del tipo: 'arbol' | 'planta'
+function treeTypeCategory(tt) {
+  if (!tt) return 'arbol';
+  return (tt.startsWith('planta_') || tt === 'arbusto') ? 'planta' : 'arbol';
+}
+window.treeTypeCategory = treeTypeCategory;
 
 async function populateGardenDropdown(selectId, currentValue) {
   const sel = document.getElementById(selectId);
@@ -1615,6 +1710,21 @@ async function saveAdminTree(e) {
   // Recoger metas del árbol (sección "Metas del árbol")
   const goals = _readTreeGoalsFromForm('admin-tree');
 
+  // GPS opcional al alta — solo admin global lo puede usar (la UI lo esconde
+  // para no-admin, pero validamos también aquí por defensa).
+  const _lat = (currentUserProfile?.role === 'admin')
+    ? parseFloat(document.getElementById('admin-tree-lat')?.value) : NaN;
+  const _lng = (currentUserProfile?.role === 'admin')
+    ? parseFloat(document.getElementById('admin-tree-lng')?.value) : NaN;
+  const _hasGps = Number.isFinite(_lat) && Number.isFinite(_lng);
+  if (currentUserProfile?.role === 'admin' && _hasGps) {
+    // Validar rango (México aprox.)
+    if (_lat < 14 || _lat > 33 || _lng < -120 || _lng > -85) {
+      showToast('Coordenadas fuera de México. Verifica.', 'warning');
+      return;
+    }
+  }
+
   const tree = {
     tree_code: document.getElementById('admin-tree-code')?.value.trim(),
     species: document.getElementById('admin-tree-species')?.value.trim(),
@@ -1632,6 +1742,12 @@ async function saveAdminTree(e) {
     initial_notes: document.getElementById('admin-tree-notes')?.value.trim() || null,
     goals: goals,
     created_by: currentUser?.id,
+    // GPS si admin lo capturó:
+    location_lat: _hasGps ? _lat : null,
+    location_lng: _hasGps ? _lng : null,
+    // Soporte para plantas en jardines (Feature 2 jun-2026):
+    quantity: Math.max(1, parseInt(document.getElementById('admin-tree-quantity')?.value || '1') || 1),
+    location_in_garden: document.getElementById('admin-tree-location-in-garden')?.value.trim() || null,
   };
   if (!tree.tree_code || !tree.species) { showToast('Código y especie son requeridos', 'error'); return; }
   if (!TREE_STATUS_VALUES.includes(tree.status)) { showToast('Estado inválido', 'error'); return; }
@@ -3306,42 +3422,55 @@ async function loadAssignments() {
       .order('assigned_at', { ascending: false });
     const assignedTreeIds = new Set((treeAssignmentsData || []).map(a => a.tree_id));
 
-    // Tree dropdown — filtrado por campus para admin-campus/responsable
-    const treeSelect = document.getElementById('assign-tree');
-    if (treeSelect) {
-      treeSelect.innerHTML = '<option value="">Selecciona árbol...</option>';
-      const campusFilter = effectiveCampusFilter();
-      (trees || []).filter(t => !campusFilter || t.campus === campusFilter).forEach(t => {
+    // Tree combobox — typeahead, items disabled si ya están asignados
+    const campusFilter = effectiveCampusFilter();
+    const treeItems = (trees || [])
+      .filter(t => !campusFilter || t.campus === campusFilter)
+      .map(t => {
         const isAssigned = assignedTreeIds.has(t.id);
         const suffix = isAssigned ? ' (Ya asignado)' : '';
-        const disabled = isAssigned ? 'disabled' : '';
-        treeSelect.innerHTML += `<option value="${t.id}" ${disabled}>${escapeHtml(t.tree_code)} - ${escapeHtml(t.common_name || t.species)} (${escapeHtml(t.campus || '?')})${suffix}</option>`;
+        return {
+          id: t.id,
+          _label: `${t.tree_code} - ${t.common_name || t.species} (${t.campus || '?'})${suffix}`,
+          _disabled: isAssigned,
+        };
       });
-    }
+    setupCombobox('assign-tree', treeItems, (it) => it._label, (it) => it.id);
 
-    // Garden dropdown
-    const gardenSelect = document.getElementById('assign-garden-select');
-    if (gardenSelect) {
-      gardenSelect.innerHTML = '<option value="">Selecciona jardín...</option>';
-      (gardens || []).forEach(g => {
-        gardenSelect.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)} (${escapeHtml(g.campus || '-')})</option>`;
-      });
-    }
+    // Garden combobox
+    const gardenItems = (gardens || []).map(g => ({
+      id: g.id,
+      _label: `${g.name} (${g.campus || '-'})`,
+    }));
+    setupCombobox('assign-garden-select', gardenItems, (it) => it._label, (it) => it.id);
 
-    // Specialist dropdown — populated dynamically from BD (no more hardcoded list)
-    const specSelect = document.getElementById('assign-specialist');
-    if (specSelect) {
-      const { data: specs } = await sb.from('user_profiles')
-        .select('id, full_name, specialty')
-        .eq('role', 'specialist')
-        .order('full_name');
-      specSelect.innerHTML = '<option value="">Ninguno</option>';
-      (specs || []).forEach(s => {
-        const label = `${s.full_name}${s.specialty ? ' — ' + s.specialty : ''}`;
-        specSelect.innerHTML += `<option value="${escapeHtml(s.id)}">${escapeHtml(label)}</option>`;
-      });
-      specSelect.innerHTML += '<option value="Otro">Otro (texto libre)</option>';
-    }
+    // Specialist combobox (dynamic from BD)
+    const { data: specs } = await sb.from('user_profiles')
+      .select('id, full_name, specialty')
+      .eq('role', 'specialist')
+      .order('full_name');
+    const specItems = [
+      ...((specs || []).map(s => ({
+        id: s.id,
+        _label: `${s.full_name}${s.specialty ? ' — ' + s.specialty : ''}`,
+      }))),
+      { id: 'Otro', _label: '✏️ Otro (texto libre)' },
+    ];
+    setupCombobox('assign-specialist', specItems, (it) => it._label, (it) => it.id, {
+      onSelect: (value) => {
+        // Mostrar/esconder input custom como antes
+        const customRow = document.getElementById('specialist-custom-row');
+        if (!customRow) return;
+        if (value === 'Otro') {
+          customRow.style.display = 'block';
+          document.getElementById('assign-specialist-custom')?.focus();
+        } else {
+          customRow.style.display = 'none';
+          const ci = document.getElementById('assign-specialist-custom');
+          if (ci) ci.value = '';
+        }
+      },
+    });
 
     // Listen for type changes
     document.getElementById('assign-target-type')?.addEventListener('change', function() {
@@ -3351,17 +3480,8 @@ async function loadAssignments() {
       populateAssignTarget('assign-garden-target-type', 'assign-garden-target', users, groups);
     });
 
-    // Listen for specialist dropdown changes to show/hide custom specialist input
-    document.getElementById('assign-specialist')?.addEventListener('change', function() {
-      const customRow = document.getElementById('specialist-custom-row');
-      if (this.value === 'Otro') {
-        customRow.style.display = 'block';
-        document.getElementById('assign-specialist-custom')?.focus();
-      } else {
-        customRow.style.display = 'none';
-        document.getElementById('assign-specialist-custom').value = '';
-      }
-    });
+    // (specialist 'Otro' show/hide ya lo maneja onSelect del combobox 'assign-specialist'
+    //  declarado arriba en setupCombobox).
 
     // Load existing tree assignments (simple query, then lookup names)
     const { data: treeAssignments } = await sb.from('tree_assignments')
@@ -3577,31 +3697,174 @@ window._clearTreeAssignmentFilters = _clearTreeAssignmentFilters;
 window._filterGardenAssignments = _filterGardenAssignments;
 window._clearGardenAssignmentFilters = _clearGardenAssignmentFilters;
 
-function populateAssignTarget(typeSelectId, targetSelectId, users, groups) {
+// ============================================================================
+// COMBOBOX TYPEAHEAD — helper reutilizable
+// ----------------------------------------------------------------------------
+// Convierte un <input type="text"> en combobox con dropdown filtrable.
+// - input.dataset.value = el value seleccionado (UUID o id)
+// - input.value         = el label visible al user (full_name, tree_code, etc.)
+// - Soporta keyboard: ↑↓ navegar, Enter seleccionar, Esc cerrar
+// - Items con `_disabled:true` se ven grises y no son seleccionables
+// ============================================================================
+function setupCombobox(inputId, items, getLabel, getValue, opts) {
+  opts = opts || {};
+  const input = document.getElementById(inputId);
+  if (!input) return;
+
+  // Reset estado previo (idempotente — esta función se re-llama al recargar tab)
+  input.dataset.value = '';
+  if (!opts.keepValue) input.value = '';
+  input.autocomplete = 'off';
+
+  // Dropdown debajo del input
+  let dropdown = document.getElementById(inputId + '-cbdd');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = inputId + '-cbdd';
+    dropdown.className = 'combobox-dropdown';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:#fff;' +
+      'border:1px solid #ddd;border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,.12);' +
+      'max-height:280px;overflow-y:auto;z-index:1000;display:none;font-size:0.85rem;margin-top:2px;';
+    // Asegurar position:relative en el padre para que absolute funcione
+    if (getComputedStyle(input.parentNode).position === 'static') {
+      input.parentNode.style.position = 'relative';
+    }
+    input.parentNode.appendChild(dropdown);
+  }
+
+  let highlighted = -1;
+  const esc = window.escapeHtml || (s => String(s ?? ''));
+
+  function render(filter) {
+    const q = (filter || '').trim().toLowerCase();
+    const matches = items.filter(it => {
+      const lbl = String(getLabel(it) || '').toLowerCase();
+      return q === '' || lbl.includes(q);
+    });
+    if (matches.length === 0) {
+      dropdown.innerHTML = '<div style="padding:.6rem .8rem;color:#888;">Sin coincidencias</div>';
+      dropdown.style.display = 'block';
+      highlighted = -1;
+      return;
+    }
+    const shown = matches.slice(0, 100);  // cap a 100 items renderizados
+    dropdown.innerHTML = shown.map((item) => {
+      const label = String(getLabel(item) || '');
+      const val   = String(getValue(item));
+      const dis   = item._disabled ? '1' : '';
+      const style = item._disabled
+        ? 'padding:.5rem .8rem;border-bottom:1px solid #f0f0f0;color:#aaa;background:#fafafa;cursor:not-allowed;'
+        : 'padding:.5rem .8rem;border-bottom:1px solid #f0f0f0;cursor:pointer;';
+      return `<div class="combobox-item" data-value="${esc(val)}" data-label="${esc(label)}" ${dis ? 'data-disabled="1"' : ''} style="${style}">${esc(label)}</div>`;
+    }).join('') + (matches.length > 100 ? `<div style="padding:.5rem .8rem;color:#888;font-style:italic;">+${matches.length - 100} más — afina la búsqueda…</div>` : '');
+    dropdown.style.display = 'block';
+    highlighted = -1;
+  }
+
+  function getActiveEls() {
+    return dropdown.querySelectorAll('.combobox-item:not([data-disabled])');
+  }
+  function setHighlight(idx) {
+    const els = getActiveEls();
+    els.forEach((el, i) => { el.style.background = i === idx ? '#e8f4ff' : ''; });
+    if (els[idx]) els[idx].scrollIntoView({ block: 'nearest' });
+  }
+  function selectEl(el) {
+    if (!el || el.dataset.disabled) return;
+    input.value = el.dataset.label;
+    input.dataset.value = el.dataset.value;
+    dropdown.style.display = 'none';
+    input.dispatchEvent(new Event('combobox:change'));
+    if (opts.onSelect) opts.onSelect(el.dataset.value, el.dataset.label);
+  }
+
+  // Listeners — limpiamos clones previos para idempotencia
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  // ⚠ después de cloneNode, el dropdown sigue como hijo del parent. Re-asignar refs.
+  const _input = document.getElementById(inputId);
+
+  _input.addEventListener('input', () => {
+    _input.dataset.value = '';
+    render(_input.value);
+  });
+  _input.addEventListener('focus', () => render(_input.value));
+  _input.addEventListener('blur', () => {
+    // delay para permitir que el click en dropdown registre primero
+    setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+  });
+  _input.addEventListener('keydown', (e) => {
+    const els = getActiveEls();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (dropdown.style.display === 'none') render(_input.value);
+      highlighted = Math.min(highlighted + 1, els.length - 1);
+      setHighlight(highlighted);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlighted = Math.max(highlighted - 1, 0);
+      setHighlight(highlighted);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlighted >= 0 && els[highlighted]) selectEl(els[highlighted]);
+    } else if (e.key === 'Escape') {
+      dropdown.style.display = 'none';
+    }
+  });
+  dropdown.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.combobox-item');
+    if (item) selectEl(item);
+  });
+}
+
+/** Lee el value seleccionado del combobox */
+function getComboboxValue(inputId) {
+  return document.getElementById(inputId)?.dataset?.value || '';
+}
+function clearCombobox(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.value = '';
+  el.dataset.value = '';
+  const dd = document.getElementById(inputId + '-cbdd');
+  if (dd) dd.style.display = 'none';
+}
+window.setupCombobox = setupCombobox;
+window.getComboboxValue = getComboboxValue;
+window.clearCombobox = clearCombobox;
+
+// populateAssignTarget — ahora monta combobox en el input destinatario
+function populateAssignTarget(typeSelectId, targetInputId, users, groups) {
   const typeSelect = document.getElementById(typeSelectId);
-  const targetSelect = document.getElementById(targetSelectId);
-  if (!typeSelect || !targetSelect) return;
+  const targetInput = document.getElementById(targetInputId);
+  if (!typeSelect || !targetInput) return;
 
   const type = typeSelect.value;
-  targetSelect.innerHTML = '<option value="">Selecciona...</option>';
-  // Filtrado por campus para admin-campus / responsable / cuando admin tiene filter global
   const campusFilter = effectiveCampusFilter();
+  let items;
   if (type === 'user') {
-    (users || []).filter(u => !campusFilter || u.campus === campusFilter).forEach(u => {
-      targetSelect.innerHTML += `<option value="${u.id}">👤 ${escapeHtml(u.full_name || 'Sin nombre')} (${escapeHtml(u.campus || '?')})</option>`;
-    });
+    items = (users || [])
+      .filter(u => !campusFilter || u.campus === campusFilter)
+      .map(u => ({
+        id: u.id,
+        _label: `👤 ${u.full_name || 'Sin nombre'} (${u.campus || '?'})`,
+      }));
   } else {
-    (groups || []).forEach(g => {
-      targetSelect.innerHTML += `<option value="${g.id}">📂 ${escapeHtml(g.name)}</option>`;
-    });
+    items = (groups || []).map(g => ({
+      id: g.id,
+      _label: `📂 ${g.name}${g.campus ? ' · ' + g.campus : ''}`,
+    }));
   }
+  setupCombobox(targetInputId, items, (it) => it._label, (it) => it.id);
 }
 
 async function doAssignTreeFromTab() {
   const targetType = document.getElementById('assign-target-type')?.value;
-  const targetId = document.getElementById('assign-target')?.value;
-  const treeId = document.getElementById('assign-tree')?.value;
-  const specialist = document.getElementById('assign-specialist')?.value;
+  // ⚠ Los inputs ahora son comboboxes: leer dataset.value, NO .value (que es el texto)
+  const targetId = getComboboxValue('assign-target');
+  const treeId   = getComboboxValue('assign-tree');
+  const specialist = getComboboxValue('assign-specialist');
+  const specialistLabel = document.getElementById('assign-specialist')?.value || '';
   const specialistCustom = document.getElementById('assign-specialist-custom')?.value.trim();
   const notes = document.getElementById('assign-notes')?.value.trim();
 
@@ -3613,11 +3876,9 @@ async function doAssignTreeFromTab() {
     if (!specialistCustom) { showToast('Ingresa nombre del especialista personalizado', 'warning'); return; }
     finalSpecialist = specialistCustom;
   } else if (specialist && specialist !== '') {
-    // BUG FIX: el value del select es el UUID, pero queremos guardar el NOMBRE
-    // (el textContent de la opción). Si el value es UUID, sacar el texto.
-    const specEl = document.getElementById('assign-specialist');
-    const opt = specEl?.options[specEl.selectedIndex];
-    finalSpecialist = (opt?.textContent || specialist).trim();
+    // Guardar el NOMBRE visible (label) del combobox en vez del UUID,
+    // para que aparezca legible en la columna Especialista de la tabla.
+    finalSpecialist = (specialistLabel || specialist).replace(/^✏️\s*/, '').trim();
   }
 
   // Build notes with specialist prefix if specialist is selected
@@ -3641,8 +3902,13 @@ async function doAssignTreeFromTab() {
     const { error } = await sb.from('tree_assignments').insert([data]);
     if (error) throw error;
     showToast('Árbol asignado exitosamente', 'success');
+    // Reset: form normal + clear comboboxes (que tienen dataset.value)
     document.getElementById('form-assign-tree')?.reset();
-    document.getElementById('specialist-custom-row').style.display = 'none';
+    clearCombobox('assign-target');
+    clearCombobox('assign-tree');
+    clearCombobox('assign-specialist');
+    const customRow = document.getElementById('specialist-custom-row');
+    if (customRow) customRow.style.display = 'none';
     loadAssignments();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
@@ -3651,8 +3917,8 @@ async function doAssignTreeFromTab() {
 
 async function doAssignGardenFromTab() {
   const targetType = document.getElementById('assign-garden-target-type')?.value;
-  const targetId = document.getElementById('assign-garden-target')?.value;
-  const gardenId = document.getElementById('assign-garden-select')?.value;
+  const targetId = getComboboxValue('assign-garden-target');
+  const gardenId = getComboboxValue('assign-garden-select');
 
   if (!targetId || !gardenId) { showToast('Selecciona destinatario y jardín', 'warning'); return; }
 
@@ -3668,6 +3934,8 @@ async function doAssignGardenFromTab() {
     if (error) throw error;
     showToast('Jardín asignado exitosamente', 'success');
     document.getElementById('form-assign-garden')?.reset();
+    clearCombobox('assign-garden-target');
+    clearCombobox('assign-garden-select');
     loadAssignments();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');

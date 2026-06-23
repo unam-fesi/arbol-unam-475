@@ -560,11 +560,21 @@
                                             </div>
                                             <div class="form-group">
                                                 <label for="admin-tree-type">Tipo</label>
-                                                <select id="admin-tree-type">
-                                                    <option value="nativo">Nativo</option>
-                                                    <option value="endemico" selected>End&eacute;mico</option>
-                                                    <option value="ornamental">Ornamental</option>
-                                                    <option value="frutal">Frutal</option>
+                                                <select id="admin-tree-type" onchange="onAdminTreeTypeChange()">
+                                                    <optgroup label="🌳 Árboles">
+                                                        <option value="nativo">Nativo</option>
+                                                        <option value="endemico" selected>End&eacute;mico</option>
+                                                        <option value="ornamental">Ornamental</option>
+                                                        <option value="frutal">Frutal</option>
+                                                    </optgroup>
+                                                    <optgroup label="🌿 Plantas de jard&iacute;n">
+                                                        <option value="planta_ornamental">Planta ornamental</option>
+                                                        <option value="planta_hortaliza">Hortaliza</option>
+                                                        <option value="planta_aromatica">Arom&aacute;tica</option>
+                                                        <option value="planta_medicinal">Medicinal</option>
+                                                        <option value="planta_suculenta">Suculenta</option>
+                                                        <option value="arbusto">Arbusto</option>
+                                                    </optgroup>
                                                 </select>
                                             </div>
                                         </div>
@@ -602,6 +612,17 @@
                                                 <input type="date" id="admin-tree-planting-date">
                                             </div>
                                         </div>
+                                        <!-- Fila SOLO para plantas de jard&iacute;n (display:none por default; JS toggle seg&uacute;n tipo) -->
+                                        <div class="form-row" id="admin-tree-plant-row" style="display:none;background:rgba(102,153,204,0.06);border:1px dashed #5b8b7d;border-radius:8px;padding:0.6rem;margin-bottom:0.8rem;">
+                                            <div class="form-group">
+                                                <label for="admin-tree-quantity">Cantidad <small class="text-muted">(plantas iguales agrupadas)</small></label>
+                                                <input type="number" id="admin-tree-quantity" min="1" value="1" style="width:100%;padding:0.5rem;">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="admin-tree-location-in-garden">Ubicaci&oacute;n en el jard&iacute;n</label>
+                                                <input type="text" id="admin-tree-location-in-garden" placeholder="Ej: Cama 3, fila 2 / Maceta NE" style="width:100%;padding:0.5rem;">
+                                            </div>
+                                        </div>
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label for="admin-tree-status">Estado</label>
@@ -622,8 +643,36 @@
                                         <p class="text-muted text-small" style="margin:0 0 0.5rem;">
                                             <i class="fas fa-info-circle"></i> El alta es de inventario.
                                             La <b>ubicaci&oacute;n exacta</b> (lat/lng) se captura cuando el usuario asignado
-                                            haga su primer seguimiento (con GPS o mapa).
+                                            haga su primer seguimiento, o puedes capturarla ahora si est&aacute;s parado en el lugar.
                                         </p>
+
+                                        <!-- ===== Geolocalizaci&oacute;n (solo admin Iztacala) =====
+                                             Visible si currentUserProfile.role === 'admin'. JS lo desbloquea en initAdminTreeForm(). -->
+                                        <div id="admin-tree-gps-section" class="form-row" style="display:none;background:rgba(46,125,50,0.06);border:1px dashed #2E7D32;border-radius:8px;padding:0.8rem;margin-bottom:0.8rem;">
+                                            <div class="form-group" style="grid-column:1/-1;">
+                                                <label style="display:flex;align-items:center;gap:0.4rem;color:#1a4480;font-weight:600;">
+                                                    <i class="fas fa-map-marker-alt" style="color:#2E7D32;"></i> Geolocalizaci&oacute;n inicial (opcional)
+                                                </label>
+                                                <div style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;margin-top:0.5rem;">
+                                                    <div style="flex:1;min-width:140px;">
+                                                        <label for="admin-tree-lat" style="font-size:0.78rem;color:#555;display:block;margin-bottom:3px;">Latitud</label>
+                                                        <input type="number" step="0.0000001" id="admin-tree-lat" placeholder="19.488..." style="width:100%;padding:0.4rem;font-family:monospace;font-size:0.85rem;">
+                                                    </div>
+                                                    <div style="flex:1;min-width:140px;">
+                                                        <label for="admin-tree-lng" style="font-size:0.78rem;color:#555;display:block;margin-bottom:3px;">Longitud</label>
+                                                        <input type="number" step="0.0000001" id="admin-tree-lng" placeholder="-99.207..." style="width:100%;padding:0.4rem;font-family:monospace;font-size:0.85rem;">
+                                                    </div>
+                                                    <button type="button" class="btn btn-sm" id="admin-tree-gps-btn" onclick="captureAdminTreeGPS()"
+                                                            style="background:#2E7D32;color:#fff;padding:0.5rem 1rem;border:none;border-radius:6px;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.4rem;">
+                                                        <i class="fas fa-crosshairs"></i> Usar mi ubicaci&oacute;n actual
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline" onclick="clearAdminTreeGPS()" style="padding:0.5rem 0.8rem;">
+                                                        <i class="fas fa-eraser"></i> Limpiar
+                                                    </button>
+                                                </div>
+                                                <small id="admin-tree-gps-status" style="display:block;margin-top:0.5rem;color:#666;font-size:0.78rem;"></small>
+                                            </div>
+                                        </div>
                                         <h4 style="margin:1.5rem 0 0.75rem;padding-top:0.75rem;border-top:1px solid #eee;">Medidas Iniciales</h4>
                                         <div class="form-row">
                                             <div class="form-group">
@@ -1159,24 +1208,17 @@
                 </div>
                 <div class="form-group">
                     <label for="assign-target">Destinatario</label>
-                    <select id="assign-target">
-                        <option value="">Selecciona...</option>
-                    </select>
+                    <input type="text" id="assign-target" autocomplete="off" placeholder="Escribe para buscar usuario o grupo…">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label for="assign-tree">Árbol</label>
-                    <select id="assign-tree">
-                        <option value="">Selecciona árbol...</option>
-                    </select>
+                    <input type="text" id="assign-tree" autocomplete="off" placeholder="Escribe código o nombre del árbol…">
                 </div>
                 <div class="form-group">
                     <label for="assign-specialist">Especialista (opcional)</label>
-                    <select id="assign-specialist">
-                        <option value="">Ninguno</option>
-                        <!-- Populated dynamically from user_profiles where role='specialist' -->
-                    </select>
+                    <input type="text" id="assign-specialist" autocomplete="off" placeholder="Escribe nombre o especialidad…">
                 </div>
             </div>
             <div class="form-row" id="specialist-custom-row" style="display:none;">
@@ -1208,17 +1250,13 @@
                 </div>
                 <div class="form-group">
                     <label for="assign-garden-target">Destinatario</label>
-                    <select id="assign-garden-target">
-                        <option value="">Selecciona...</option>
-                    </select>
+                    <input type="text" id="assign-garden-target" autocomplete="off" placeholder="Escribe para buscar usuario o grupo…">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label for="assign-garden-select">Jardín</label>
-                    <select id="assign-garden-select">
-                        <option value="">Selecciona jardín...</option>
-                    </select>
+                    <input type="text" id="assign-garden-select" autocomplete="off" placeholder="Escribe nombre del jardín…">
                 </div>
             </div>
             <button type="button" class="btn btn-primary" onclick="doAssignGardenFromTab()">Asignar Jardín</button>
