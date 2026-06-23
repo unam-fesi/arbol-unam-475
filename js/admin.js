@@ -304,17 +304,22 @@ function applyRoleBasedUIRestrictions() {
       }
     }, 100);
   }
-  // El responsable solo ve la tab "Coordinación"
+  // El responsable ve: Coordinación (su default) + Usuarios (para crear users
+  // de su campus) + Asignaciones (para asignar árboles a esos users).
+  // La edge create-user le fuerza target='user' + campus propio, y la policy
+  // RLS de tree_assignments le permite insertar solo árboles de su campus.
+  // El resto de tabs (trees catalog, gardens, groups, etc.) quedan ocultas.
   if (isResponsableRole()) {
+    const RESP_VISIBLE = new Set(['coordinacion', 'users', 'assignments']);
     document.querySelectorAll('.admin-tab').forEach(t => {
-      if (t.dataset.tab !== 'coordinacion') {
+      if (!RESP_VISIBLE.has(t.dataset.tab)) {
         t.style.display = 'none';
       }
     });
-    // Forzar landing en coordinacion si está en otra tab
+    // Forzar landing en coordinacion si está en una tab oculta
     setTimeout(() => {
       const active = document.querySelector('.admin-tab.active');
-      if (!active || active.dataset.tab !== 'coordinacion') {
+      if (!active || !RESP_VISIBLE.has(active.dataset.tab)) {
         switchAdminTab('coordinacion');
       }
     }, 100);
@@ -377,26 +382,41 @@ function _applyCampusRestrictionsToForms() {
   });
 }
 
-// Oculta la opción "admin" (admin principal) del form de creación de usuarios
-// cuando el caller es admin-campus.
+// Oculta opciones de "Rol" del form de creación de usuarios según el caller.
+// Refleja exactamente lo que valida la edge function create-user:
+//   - admin           → puede crear cualquier rol
+//   - admin-campus    → puede crear user, responsable, specialist, admin-campus
+//                       (NO admin, NO rectoria)
+//   - responsable     → solo puede crear 'user'
 function _applyRoleRestrictionsToUserForm() {
   const roleSel = document.getElementById('admin-user-role');
   if (!roleSel) return;
   Array.from(roleSel.options).forEach(opt => {
+    let allowed = true;
     if (opt.value === 'admin') {
       // Solo el admin PRINCIPAL puede crear otros admins principales
-      opt.hidden = !isAdminRole();
-      opt.disabled = !isAdminRole();
+      allowed = isAdminRole();
+    } else if (opt.value === 'rectoria') {
+      // Solo el admin PRINCIPAL puede crear rol 'rectoria' (lo valida también la edge)
+      allowed = isAdminRole();
+    } else if (opt.value === 'admin-campus') {
+      allowed = isAdminRole() || isAdminCampusRole();
+    } else if (opt.value === 'specialist' || opt.value === 'responsable') {
+      // admin y admin-campus pueden crear specialist/responsable;
+      // responsable NO
+      allowed = isAdminRole() || isAdminCampusRole();
+    } else if (opt.value === 'user') {
+      // Todos los que pueden crear users pueden crear 'user'
+      allowed = isAdminRole() || isAdminCampusRole() || isResponsableRole();
     }
-    if (opt.value === 'admin-campus') {
-      // admin principal y admin-campus pueden crear admin-campus
-      const allowed = isAdminRole() || isAdminCampusRole();
-      opt.hidden = !allowed;
-      opt.disabled = !allowed;
-    }
+    opt.hidden = !allowed;
+    opt.disabled = !allowed;
   });
-  // Si el valor actual es uno oculto, resetear a 'user'
-  if (roleSel.selectedOptions[0]?.hidden) roleSel.value = 'user';
+  // Si el valor actual quedó oculto, resetear al primero visible (normalmente 'user')
+  if (roleSel.selectedOptions[0]?.hidden) {
+    const firstVisible = Array.from(roleSel.options).find(o => !o.hidden);
+    roleSel.value = firstVisible ? firstVisible.value : 'user';
+  }
 }
 
 // Oculta el bloque "Asignar Jardín" + "Asignaciones de Jardines" + el form
