@@ -3811,8 +3811,13 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
     render(input.value);
   };
   const onFocus = () => render(input.value);
-  const onBlur = () => {
-    setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+  // Cerrar el dropdown al hacer click FUERA del input/dropdown
+  // (en vez de usar blur, que peleaba contra el mousedown del item).
+  const onDocClick = (e) => {
+    if (dropdown.style.display === 'none') return;
+    if (e.target === input) return;
+    if (dropdown.contains(e.target)) return;
+    dropdown.style.display = 'none';
   };
   const onKeydown = (e) => {
     const els = getActiveEls();
@@ -3832,24 +3837,29 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
       dropdown.style.display = 'none';
     }
   };
+  // FIX clave jun-2026: e.preventDefault() en mousedown del dropdown EVITA
+  // que el input pierda focus (= no se dispara blur), lo cual evita el race
+  // condition donde el blur cerraba el dropdown antes de que el click llegara
+  // al item. Sin esto, el user veía "como que no selecciona nada".
   const onDropdownMousedown = (e) => {
+    e.preventDefault();  // ← clave: el input NO pierde focus
     const item = e.target.closest('.combobox-item');
     if (item) selectEl(item);
   };
 
   input.addEventListener('input', onInput);
   input.addEventListener('focus', onFocus);
-  input.addEventListener('blur', onBlur);
   input.addEventListener('keydown', onKeydown);
   dropdown.addEventListener('mousedown', onDropdownMousedown);
+  document.addEventListener('mousedown', onDocClick, true);  // capture phase para detectar clicks fuera
 
   // Guardar cleanup en el propio input para que la próxima llamada lo invoque
   input._comboboxCleanup = function () {
     input.removeEventListener('input', onInput);
     input.removeEventListener('focus', onFocus);
-    input.removeEventListener('blur', onBlur);
     input.removeEventListener('keydown', onKeydown);
     dropdown.removeEventListener('mousedown', onDropdownMousedown);
+    document.removeEventListener('mousedown', onDocClick, true);
   };
 }
 
