@@ -3731,7 +3731,15 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
   const input = document.getElementById(inputId);
   if (!input) return;
 
-  // Reset estado previo (idempotente — esta función se re-llama al recargar tab)
+  // FIX jun-2026: NO clonamos el input — usamos cleanup explícito de listeners
+  // para soportar re-inicialización idempotente. Antes el clone reemplazaba el
+  // DOM node y selectEl() seteaba dataset.value en el nodo VIEJO huérfano, lo
+  // que hacía que getComboboxValue() siempre regresara '' después de seleccionar.
+  if (input._comboboxCleanup) {
+    input._comboboxCleanup();
+  }
+
+  // Reset estado previo (idempotente)
   input.dataset.value = '';
   if (!opts.keepValue) input.value = '';
   input.autocomplete = 'off';
@@ -3745,7 +3753,6 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
     dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:#fff;' +
       'border:1px solid #ddd;border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,.12);' +
       'max-height:280px;overflow-y:auto;z-index:1000;display:none;font-size:0.85rem;margin-top:2px;';
-    // Asegurar position:relative en el padre para que absolute funcione
     if (getComputedStyle(input.parentNode).position === 'static') {
       input.parentNode.style.position = 'relative';
     }
@@ -3767,7 +3774,7 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
       highlighted = -1;
       return;
     }
-    const shown = matches.slice(0, 100);  // cap a 100 items renderizados
+    const shown = matches.slice(0, 100);
     dropdown.innerHTML = shown.map((item) => {
       const label = String(getLabel(item) || '');
       const val   = String(getValue(item));
@@ -3798,26 +3805,20 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
     if (opts.onSelect) opts.onSelect(el.dataset.value, el.dataset.label);
   }
 
-  // Listeners — limpiamos clones previos para idempotencia
-  const newInput = input.cloneNode(true);
-  input.parentNode.replaceChild(newInput, input);
-  // ⚠ después de cloneNode, el dropdown sigue como hijo del parent. Re-asignar refs.
-  const _input = document.getElementById(inputId);
-
-  _input.addEventListener('input', () => {
-    _input.dataset.value = '';
-    render(_input.value);
-  });
-  _input.addEventListener('focus', () => render(_input.value));
-  _input.addEventListener('blur', () => {
-    // delay para permitir que el click en dropdown registre primero
+  // Handlers nombrados (para poder removerlos en cleanup)
+  const onInput = () => {
+    input.dataset.value = '';
+    render(input.value);
+  };
+  const onFocus = () => render(input.value);
+  const onBlur = () => {
     setTimeout(() => { dropdown.style.display = 'none'; }, 200);
-  });
-  _input.addEventListener('keydown', (e) => {
+  };
+  const onKeydown = (e) => {
     const els = getActiveEls();
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (dropdown.style.display === 'none') render(_input.value);
+      if (dropdown.style.display === 'none') render(input.value);
       highlighted = Math.min(highlighted + 1, els.length - 1);
       setHighlight(highlighted);
     } else if (e.key === 'ArrowUp') {
@@ -3830,11 +3831,26 @@ function setupCombobox(inputId, items, getLabel, getValue, opts) {
     } else if (e.key === 'Escape') {
       dropdown.style.display = 'none';
     }
-  });
-  dropdown.addEventListener('mousedown', (e) => {
+  };
+  const onDropdownMousedown = (e) => {
     const item = e.target.closest('.combobox-item');
     if (item) selectEl(item);
-  });
+  };
+
+  input.addEventListener('input', onInput);
+  input.addEventListener('focus', onFocus);
+  input.addEventListener('blur', onBlur);
+  input.addEventListener('keydown', onKeydown);
+  dropdown.addEventListener('mousedown', onDropdownMousedown);
+
+  // Guardar cleanup en el propio input para que la próxima llamada lo invoque
+  input._comboboxCleanup = function () {
+    input.removeEventListener('input', onInput);
+    input.removeEventListener('focus', onFocus);
+    input.removeEventListener('blur', onBlur);
+    input.removeEventListener('keydown', onKeydown);
+    dropdown.removeEventListener('mousedown', onDropdownMousedown);
+  };
 }
 
 /** Lee el value seleccionado del combobox */
