@@ -1493,6 +1493,54 @@
 
                             <!-- REPORTES CIUDADANOS TAB -->
                             <div id="reportsTab" class="tab-pane">
+                                <!-- =========== REPORTE DE SEGUIMIENTO (PDF + XLSX) =========== -->
+                                <div class="admin-form" style="border-left:4px solid #2E7D32;background:linear-gradient(135deg,rgba(46,125,50,0.10),rgba(102,153,204,0.06));margin-bottom:1.5rem;">
+                                    <h4 style="display:flex;align-items:center;gap:0.5rem;color:#1a4480;margin-top:0;">
+                                        <i class="fas fa-file-invoice" style="color:#2E7D32;"></i>
+                                        Reporte de Seguimiento
+                                    </h4>
+                                    <p class="text-muted text-small" style="margin:0 0 1rem;">
+                                        Genera un reporte estructurado (PDF y/o XLSX) del estado y seguimientos del per&iacute;odo elegido.
+                                        Incluye: resumen por campus, top 10 &aacute;rboles cr&iacute;ticos, mediciones, reportes ciudadanos y asignaciones.
+                                    </p>
+                                    <form id="form-followup-report" onsubmit="return false;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label for="fr-from">Desde</label>
+                                                <input type="date" id="fr-from">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="fr-to">Hasta</label>
+                                                <input type="date" id="fr-to">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="fr-campus">Campus</label>
+                                                <select id="fr-campus">
+                                                    <option value="">&mdash; Todos &mdash;</option>
+                                                    <option value="Iztacala">FES Iztacala</option>
+                                                    <option value="Acatlan">FES Acatl&aacute;n</option>
+                                                    <option value="Aragon">FES Arag&oacute;n</option>
+                                                    <option value="Cuautitlan">FES Cuautitl&aacute;n</option>
+                                                    <option value="Zaragoza">FES Zaragoza</option>
+                                                    <option value="CU">CU</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;">
+                                            <button type="button" class="btn btn-outline" onclick="generateFollowupReport('pdf')">
+                                                <i class="fas fa-file-pdf" style="color:#c62828;"></i> Descargar PDF
+                                            </button>
+                                            <button type="button" class="btn btn-outline" onclick="generateFollowupReport('xlsx')">
+                                                <i class="fas fa-file-excel" style="color:#2E7D32;"></i> Descargar XLSX
+                                            </button>
+                                            <button type="button" class="btn" style="background:#1a4480;color:#fff;" onclick="generateFollowupReport('both')">
+                                                <i class="fas fa-download"></i> Descargar Ambos
+                                            </button>
+                                            <span id="fr-status" style="font-size:0.85rem;color:#555;align-self:center;"></span>
+                                        </div>
+                                    </form>
+                                </div>
+
                                 <h4 style="margin-bottom:1rem;"><i class="fas fa-flag"></i> Reportes Ciudadanos</h4>
                                 <p class="text-muted text-small" style="margin-bottom:1rem;">
                                     Reportes enviados por usuarios v&iacute;a QR. Cambia su estado a medida que los atiendes.

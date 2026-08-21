@@ -1174,6 +1174,22 @@ async function showPublicReportScreen(treeCode) {
           <label for="pr-description">Descripción del problema <span style="color:var(--danger);">*</span></label>
           <textarea id="pr-description" required rows="4" style="width:100%;padding:0.85rem 1rem;border:1.5px solid var(--border-light);border-radius:12px;background:rgba(255,253,247,0.7);font-size:0.95rem;font-family:inherit;" placeholder="Describe lo que observaste…"></textarea>
         </div>
+        <div class="login-form-group">
+          <label for="pr-photo"><i class="fas fa-camera"></i> Anexar foto (opcional)</label>
+          <input type="file" id="pr-photo" accept="image/*" capture="environment"
+                 onchange="_onPublicReportPhotoChange(this)"
+                 style="width:100%;padding:0.6rem;border:1.5px dashed var(--primary,#2E7D32);border-radius:12px;background:rgba(46,125,50,0.05);font-size:0.9rem;">
+          <div id="pr-photo-preview" style="display:none;margin-top:0.6rem;text-align:center;">
+            <img id="pr-photo-img" src="" style="max-width:100%;max-height:180px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+            <button type="button" onclick="_clearPublicReportPhoto()"
+                    style="display:block;margin:0.4rem auto 0;background:transparent;border:none;color:var(--danger,#c62828);font-size:0.8rem;cursor:pointer;text-decoration:underline;">
+              Quitar foto
+            </button>
+          </div>
+          <small style="display:block;color:var(--text-light);font-size:0.72rem;margin-top:0.3rem;">
+            JPG/PNG/WebP · máx 5MB. Se comprime automáticamente antes de enviar.
+          </small>
+        </div>
         <button type="submit" class="login-btn">
           <i class="fas fa-paper-plane"></i> Enviar reporte
         </button>
@@ -1216,6 +1232,80 @@ async function showPublicReportScreen(treeCode) {
     if (info) info.innerHTML = `<div style="background:rgba(74,124,42,0.10);padding:0.85rem 1rem;border-radius:12px;border-left:3px solid var(--primary);"><strong>Código: ${escapeHtml(treeCode)}</strong></div>`;
   }
 }
+
+// ========== HELPERS PARA FOTO DEL REPORTE PÚBLICO ==========
+// Estado: guardamos la foto ya comprimida (data URL) en un módulo-scope.
+let _prPhotoDataUrl = null;
+
+function _clearPublicReportPhoto() {
+  _prPhotoDataUrl = null;
+  const inp = document.getElementById('pr-photo');
+  const prev = document.getElementById('pr-photo-preview');
+  const img = document.getElementById('pr-photo-img');
+  if (inp) inp.value = '';
+  if (prev) prev.style.display = 'none';
+  if (img) img.src = '';
+}
+window._clearPublicReportPhoto = _clearPublicReportPhoto;
+
+// Comprime imagen a maxW x maxH manteniendo aspect ratio, calidad 0.8, JPEG.
+// Devuelve data URL. Usa canvas nativo — no depende de librerías externas.
+async function _compressPublicReportPhoto(file, maxW = 1200, maxH = 1200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxW || h > maxH) {
+          const ratio = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        } catch (err) { reject(err); }
+      };
+      img.onerror = () => reject(new Error('No se pudo decodificar la imagen'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function _onPublicReportPhotoChange(input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  // Cliente-side: validar MIME y tamaño ANTES de subir (server también valida)
+  if (!/^image\/(jpe?g|png|webp)$/i.test(file.type)) {
+    alert('Formato no soportado. Solo JPG, PNG o WebP.');
+    input.value = '';
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {  // 8MB antes de comprimir, edge acepta 5MB post-compresión
+    alert('Foto demasiado grande (máx 8MB). Prueba con una foto de menor calidad.');
+    input.value = '';
+    return;
+  }
+  try {
+    _prPhotoDataUrl = await _compressPublicReportPhoto(file);
+    // Mostrar preview
+    const prev = document.getElementById('pr-photo-preview');
+    const img = document.getElementById('pr-photo-img');
+    if (img) img.src = _prPhotoDataUrl;
+    if (prev) prev.style.display = 'block';
+  } catch (err) {
+    alert('No se pudo procesar la foto: ' + (err.message || err));
+    _clearPublicReportPhoto();
+  }
+}
+window._onPublicReportPhotoChange = _onPublicReportPhotoChange;
 
 async function submitPublicReport(e) {
   if (e) e.preventDefault();
@@ -1286,15 +1376,22 @@ async function submitPublicReport(e) {
         tree_id: treeId, tree_code: treeCode,
         title, description, urgency,
         reporter_name: reporterName || null,
-        reporter_contact: reporterContact || null
+        reporter_contact: reporterContact || null,
+        // v18: la foto ya viene comprimida como data URL desde _compressPublicReportPhoto.
+        // El edge fn valida MIME y tamaño (≤5MB) y sube al bucket public-reports.
+        photo_base64: _prPhotoDataUrl || null
       })
     });
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error || 'Error ' + r.status);
     if (status) {
       status.style.color = 'var(--success)';
-      status.innerHTML = '✓ Reporte enviado. Gracias por cuidar el bosque UNAM.';
+      const photoNote = data.photo_stored
+        ? '<br><small style="color:var(--text-light);">Foto anexada correctamente.</small>'
+        : (_prPhotoDataUrl ? '<br><small style="color:#c68b00;">La foto no se guardó (se enviará el reporte igual).</small>' : '');
+      status.innerHTML = '✓ Reporte enviado. Gracias por cuidar el bosque UNAM.' + photoNote;
     }
+    _prPhotoDataUrl = null;  // limpiar estado post-envío
     form.querySelectorAll('input, select, textarea, button').forEach(el => el.disabled = true);
     setTimeout(() => {
       window.location.href = window.location.pathname;  // limpia URL params

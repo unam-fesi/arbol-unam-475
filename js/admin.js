@@ -7328,7 +7328,411 @@ async function loadWeatherWidget() {
 // =============================================================
 // INNOVACIÓN #12 — Reportes ciudadanos en panel admin
 // =============================================================
+// ============================================================================
+// REPORTE DE SEGUIMIENTO (PDF + XLSX)
+// ----------------------------------------------------------------------------
+// Botón dentro de reportsTab. Genera un reporte estructurado del período
+// elegido con: resumen por campus, top 10 críticos, mediciones, reportes
+// ciudadanos y asignaciones. Respeta RLS (queries desde el frontend con
+// permisos del user actual). Solo admin global o admin-campus (su campus).
+// ============================================================================
+function initFollowupReportForm() {
+  const from = document.getElementById('fr-from');
+  const to = document.getElementById('fr-to');
+  const campus = document.getElementById('fr-campus');
+  if (!from || !to || !campus) return;
+
+  // Defaults: últimos 30 días
+  const now = new Date();
+  const past = new Date(Date.now() - 30 * 86400000);
+  if (!from.value) from.value = past.toISOString().slice(0, 10);
+  if (!to.value)   to.value   = now.toISOString().slice(0, 10);
+
+  // admin-campus: forzar su campus (mismo patrón que el resto de admin)
+  if (typeof isAdminCampusRole === 'function' && isAdminCampusRole()) {
+    Array.from(campus.options).forEach(opt => {
+      const allowed = opt.value === '' || opt.value === _userCampus();
+      opt.hidden = !allowed && opt.value !== '';
+      opt.disabled = opt.hidden;
+    });
+    campus.value = _userCampus();
+    campus.disabled = true;
+  }
+}
+window.initFollowupReportForm = initFollowupReportForm;
+
+function _fr_bucketByField(arr, field) {
+  const out = {};
+  (arr || []).forEach(r => {
+    const k = r[field] || '(sin dato)';
+    out[k] = (out[k] || 0) + 1;
+  });
+  return out;
+}
+function _fr_avg(nums) {
+  if (!nums || !nums.length) return null;
+  return Math.round(nums.reduce((s, n) => s + n, 0) / nums.length);
+}
+function _fr_fmtDate(d) {
+  if (!d) return '';
+  const dt = typeof d === 'string' ? new Date(d) : d;
+  return dt.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+async function generateFollowupReport(format) {
+  if (!(isAdminRole() || isAdminCampusRole())) {
+    showToast('Solo administradores pueden generar reportes', 'error');
+    return;
+  }
+  const fromStr = document.getElementById('fr-from')?.value;
+  const toStr   = document.getElementById('fr-to')?.value;
+  let campus    = document.getElementById('fr-campus')?.value || '';
+  if (isAdminCampusRole()) campus = _userCampus();
+
+  if (!fromStr || !toStr) { showToast('Elige rango de fechas', 'warning'); return; }
+  const fromDt = new Date(fromStr + 'T00:00:00');
+  const toDt   = new Date(toStr   + 'T23:59:59');
+  if (fromDt > toDt) { showToast('Rango de fechas inválido', 'warning'); return; }
+
+  const status = document.getElementById('fr-status');
+  if (status) { status.style.color = '#555'; status.textContent = 'Consultando datos…'; }
+
+  try {
+    // 1) Árboles (base para lookups y filtro por campus)
+    let treeQ = sb.from('trees_catalog')
+      .select('id, tree_code, common_name, species, campus, status, health_score, garden_id, planting_date, quantity, location_in_garden, tree_type');
+    if (campus) treeQ = treeQ.eq('campus', campus);
+    const { data: trees, error: treeErr } = await treeQ;
+    if (treeErr) throw treeErr;
+
+    const treeIds = (trees || []).map(t => t.id);
+    const treeMap = {};
+    (trees || []).forEach(t => { treeMap[t.id] = t; });
+
+    // 2) Mediciones del período (filtradas por campus si aplica)
+    let measQ = sb.from('tree_measurements')
+      .select('id, tree_id, user_id, measurement_date, health_score, observations')
+      .gte('measurement_date', fromDt.toISOString())
+      .lte('measurement_date', toDt.toISOString())
+      .order('measurement_date', { ascending: false });
+    if (campus && treeIds.length) measQ = measQ.in('tree_id', treeIds);
+    const { data: measurements } = await measQ;
+
+    // 3) Reportes ciudadanos del período
+    let repQ = sb.from('problem_reports')
+      .select('id, tree_id, title, urgency, status, created_at')
+      .gte('created_at', fromDt.toISOString())
+      .lte('created_at', toDt.toISOString())
+      .order('created_at', { ascending: false });
+    if (campus && treeIds.length) repQ = repQ.in('tree_id', treeIds);
+    const { data: reports } = await repQ;
+
+    // 4) Asignaciones del período
+    let assQ = sb.from('tree_assignments')
+      .select('id, tree_id, user_id, assigned_at, notes')
+      .gte('assigned_at', fromDt.toISOString())
+      .lte('assigned_at', toDt.toISOString())
+      .order('assigned_at', { ascending: false });
+    if (campus && treeIds.length) assQ = assQ.in('tree_id', treeIds);
+    const { data: assignments } = await assQ;
+
+    // 5) User lookup para nombres en mediciones + asignaciones
+    const userIds = [...new Set([
+      ...((measurements || []).map(m => m.user_id).filter(Boolean)),
+      ...((assignments || []).map(a => a.user_id).filter(Boolean))
+    ])];
+    const userMap = {};
+    if (userIds.length) {
+      const { data: users } = await sb.from('user_profiles').select('id, full_name, role, campus').in('id', userIds);
+      (users || []).forEach(u => { userMap[u.id] = u; });
+    }
+
+    // Métricas resumidas
+    const byStatus = _fr_bucketByField(trees, 'status');
+    const byCampus = _fr_bucketByField(trees, 'campus');
+    const healthAvg = _fr_avg((trees || []).map(t => t.health_score).filter(x => x != null));
+    const top10Critical = (trees || [])
+      .filter(t => t.health_score != null && t.status !== 'retirado')
+      .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
+      .slice(0, 10);
+
+    const meta = {
+      generated_at: new Date(),
+      from: fromStr, to: toStr,
+      campus: campus || 'Todos los campus',
+      caller: currentUserProfile?.full_name || currentUser?.email || 'Admin',
+      trees_total: (trees || []).length,
+      measurements_total: (measurements || []).length,
+      reports_total: (reports || []).length,
+      assignments_total: (assignments || []).length,
+      health_avg: healthAvg,
+    };
+
+    if (status) status.textContent = 'Generando archivo…';
+
+    const ts = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 15);
+    const fname = `reporte-seguimiento-${(campus || 'todos').replace(/\s+/g, '_')}-${ts}`;
+
+    if (format === 'pdf' || format === 'both') {
+      _fr_generatePDF(fname, meta, byStatus, byCampus, top10Critical, measurements, reports, assignments, treeMap, userMap);
+    }
+    if (format === 'xlsx' || format === 'both') {
+      _fr_generateXLSX(fname, meta, trees, byStatus, byCampus, measurements, reports, assignments, treeMap, userMap);
+    }
+
+    if (status) {
+      status.style.color = 'var(--success,#2e7d32)';
+      status.innerHTML = `✓ Reporte generado — <b>${meta.trees_total}</b> árboles · <b>${meta.measurements_total}</b> mediciones · <b>${meta.reports_total}</b> reportes ciudadanos`;
+    }
+  } catch (err) {
+    if (status) { status.style.color = 'var(--danger,#c62828)'; status.textContent = 'Error: ' + (err.message || err); }
+    if (typeof logError === 'function') logError({ action: 'generateFollowupReport', error: err });
+  }
+}
+window.generateFollowupReport = generateFollowupReport;
+
+function _fr_generatePDF(fname, meta, byStatus, byCampus, top10, measurements, reports, assignments, treeMap, userMap) {
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (!jsPDF) { showToast('jsPDF no está cargado', 'error'); return; }
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth();
+  let y = 60;
+
+  // ── Encabezado ─────────────────────────────────────────────────────────
+  doc.setFillColor(46, 125, 50); doc.rect(0, 0, W, 44, 'F');
+  doc.setTextColor(255); doc.setFontSize(18); doc.setFont(undefined, 'bold');
+  doc.text('Reporte de Seguimiento — Proyecto Árbol UNAM 475', 40, 28);
+  doc.setTextColor(0);
+
+  doc.setFontSize(10); doc.setFont(undefined, 'normal');
+  y = 70;
+  doc.text(`Campus: ${meta.campus}   |   Período: ${_fr_fmtDate(meta.from)} → ${_fr_fmtDate(meta.to)}`, 40, y); y += 14;
+  doc.text(`Generado por: ${meta.caller}   |   Fecha: ${_fr_fmtDate(meta.generated_at)} ${meta.generated_at.toLocaleTimeString('es-MX')}`, 40, y); y += 20;
+
+  // ── Resumen ────────────────────────────────────────────────────────────
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+  doc.text('Resumen', 40, y); y += 6;
+  doc.autoTable({
+    startY: y + 4,
+    theme: 'grid',
+    head: [['Métrica', 'Valor']],
+    body: [
+      ['Total de árboles/plantas', String(meta.trees_total)],
+      ['Salud promedio', meta.health_avg != null ? meta.health_avg + ' / 100' : '—'],
+      ['Mediciones en el período', String(meta.measurements_total)],
+      ['Reportes ciudadanos', String(meta.reports_total)],
+      ['Asignaciones nuevas', String(meta.assignments_total)],
+    ],
+    headStyles: { fillColor: [26, 68, 128], textColor: 255 },
+    styles: { fontSize: 10 },
+    margin: { left: 40, right: 40 },
+  });
+  y = doc.lastAutoTable.finalY + 20;
+
+  // ── Distribución por estado ────────────────────────────────────────────
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+  doc.text('Distribución por estado', 40, y);
+  doc.autoTable({
+    startY: y + 8, theme: 'striped',
+    head: [['Estado', 'Cantidad']],
+    body: Object.entries(byStatus).map(([k, v]) => [k, String(v)]),
+    headStyles: { fillColor: [46, 125, 50], textColor: 255 },
+    styles: { fontSize: 10 },
+    margin: { left: 40, right: 40 },
+  });
+  y = doc.lastAutoTable.finalY + 20;
+
+  // ── Distribución por campus ───────────────────────────────────────────
+  if (Object.keys(byCampus).length > 1) {
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+    doc.text('Distribución por campus', 40, y);
+    doc.autoTable({
+      startY: y + 8, theme: 'striped',
+      head: [['Campus', 'Cantidad']],
+      body: Object.entries(byCampus).map(([k, v]) => [k, String(v)]),
+      headStyles: { fillColor: [46, 125, 50], textColor: 255 },
+      styles: { fontSize: 10 },
+      margin: { left: 40, right: 40 },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
+
+  // ── Top 10 árboles críticos ─────────────────────────────────────────────
+  doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+  doc.text('Top 10 árboles con menor salud', 40, y);
+  doc.autoTable({
+    startY: y + 8, theme: 'grid',
+    head: [['Código', 'Nombre', 'Campus', 'Estado', 'Salud']],
+    body: top10.map(t => [
+      t.tree_code || '', t.common_name || t.species || '', t.campus || '',
+      t.status || '', String(t.health_score ?? '—'),
+    ]),
+    headStyles: { fillColor: [198, 40, 40], textColor: 255 },
+    styles: { fontSize: 9 },
+    margin: { left: 40, right: 40 },
+  });
+  y = doc.lastAutoTable.finalY + 20;
+
+  // ── Mediciones (cap 50 filas para PDF) ─────────────────────────────────
+  const measRows = (measurements || []).slice(0, 50).map(m => {
+    const t = treeMap[m.tree_id] || {};
+    const u = userMap[m.user_id] || {};
+    return [
+      _fr_fmtDate(m.measurement_date), t.tree_code || m.tree_id,
+      u.full_name || '—', String(m.health_score ?? '—'),
+    ];
+  });
+  if (measRows.length) {
+    if (y > 700) { doc.addPage(); y = 60; }
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+    doc.text(`Mediciones del período (mostrando ${measRows.length} de ${(measurements||[]).length})`, 40, y);
+    doc.autoTable({
+      startY: y + 8, theme: 'striped',
+      head: [['Fecha', 'Código árbol', 'Usuario', 'Salud']],
+      body: measRows,
+      headStyles: { fillColor: [26, 68, 128], textColor: 255 },
+      styles: { fontSize: 9 },
+      margin: { left: 40, right: 40 },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
+
+  // ── Reportes ciudadanos ────────────────────────────────────────────────
+  if ((reports || []).length) {
+    if (y > 700) { doc.addPage(); y = 60; }
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+    doc.text('Reportes ciudadanos', 40, y);
+    doc.autoTable({
+      startY: y + 8, theme: 'striped',
+      head: [['Fecha', 'Código árbol', 'Título', 'Urgencia', 'Estado']],
+      body: (reports || []).slice(0, 30).map(r => {
+        const t = treeMap[r.tree_id] || {};
+        return [
+          _fr_fmtDate(r.created_at), t.tree_code || r.tree_id,
+          (r.title || '').slice(0, 60), r.urgency || '', r.status || '',
+        ];
+      }),
+      headStyles: { fillColor: [198, 40, 40], textColor: 255 },
+      styles: { fontSize: 9 },
+      margin: { left: 40, right: 40 },
+    });
+    y = doc.lastAutoTable.finalY + 20;
+  }
+
+  // ── Asignaciones ────────────────────────────────────────────────────────
+  if ((assignments || []).length) {
+    if (y > 700) { doc.addPage(); y = 60; }
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13);
+    doc.text('Asignaciones del período', 40, y);
+    doc.autoTable({
+      startY: y + 8, theme: 'striped',
+      head: [['Fecha', 'Código árbol', 'Asignado a']],
+      body: (assignments || []).slice(0, 30).map(a => {
+        const t = treeMap[a.tree_id] || {};
+        const u = userMap[a.user_id] || {};
+        return [_fr_fmtDate(a.assigned_at), t.tree_code || a.tree_id, u.full_name || '—'];
+      }),
+      headStyles: { fillColor: [26, 68, 128], textColor: 255 },
+      styles: { fontSize: 9 },
+      margin: { left: 40, right: 40 },
+    });
+  }
+
+  // Footer numérico de páginas
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(120);
+    doc.text(`Página ${i} de ${pageCount} — Proyecto Árbol UNAM 475`, W - 40, doc.internal.pageSize.getHeight() - 20, { align: 'right' });
+  }
+
+  doc.save(fname + '.pdf');
+}
+
+function _fr_generateXLSX(fname, meta, trees, byStatus, byCampus, measurements, reports, assignments, treeMap, userMap) {
+  if (!window.XLSX) { showToast('XLSX no está cargado', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+
+  // Hoja 1: Resumen
+  const wsResumen = XLSX.utils.aoa_to_sheet([
+    ['Reporte de Seguimiento — Proyecto Árbol UNAM 475'],
+    [],
+    ['Campus', meta.campus],
+    ['Período', `${meta.from} → ${meta.to}`],
+    ['Generado por', meta.caller],
+    ['Fecha de generación', meta.generated_at.toISOString()],
+    [],
+    ['Métrica', 'Valor'],
+    ['Total árboles/plantas', meta.trees_total],
+    ['Salud promedio', meta.health_avg ?? '—'],
+    ['Mediciones del período', meta.measurements_total],
+    ['Reportes ciudadanos', meta.reports_total],
+    ['Asignaciones nuevas', meta.assignments_total],
+    [],
+    ['Distribución por estado'],
+    ['Estado', 'Cantidad'],
+    ...Object.entries(byStatus),
+    [],
+    ['Distribución por campus'],
+    ['Campus', 'Cantidad'],
+    ...Object.entries(byCampus),
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+
+  // Hoja 2: Árboles/plantas
+  const treeHeader = ['id','tree_code','common_name','species','campus','status','health_score','tree_type','quantity','location_in_garden','garden_id','planting_date'];
+  const wsTrees = XLSX.utils.aoa_to_sheet([
+    treeHeader,
+    ...(trees || []).map(t => treeHeader.map(k => t[k] ?? '')),
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsTrees, 'Arboles');
+
+  // Hoja 3: Mediciones (con lookups)
+  const measHeader = ['fecha','tree_code','common_name','usuario','rol','campus','health_score','observaciones'];
+  const wsMeas = XLSX.utils.aoa_to_sheet([
+    measHeader,
+    ...(measurements || []).map(m => {
+      const t = treeMap[m.tree_id] || {}; const u = userMap[m.user_id] || {};
+      return [
+        m.measurement_date || '', t.tree_code || m.tree_id, t.common_name || '',
+        u.full_name || '', u.role || '', t.campus || '',
+        m.health_score ?? '', (m.observations || '').slice(0, 500),
+      ];
+    }),
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsMeas, 'Mediciones');
+
+  // Hoja 4: Reportes ciudadanos
+  const repHeader = ['fecha','tree_code','common_name','titulo','urgencia','estado'];
+  const wsRep = XLSX.utils.aoa_to_sheet([
+    repHeader,
+    ...(reports || []).map(r => {
+      const t = treeMap[r.tree_id] || {};
+      return [r.created_at || '', t.tree_code || r.tree_id, t.common_name || '',
+              r.title || '', r.urgency || '', r.status || ''];
+    }),
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsRep, 'ReportesCiudadanos');
+
+  // Hoja 5: Asignaciones
+  const assHeader = ['fecha','tree_code','asignado_a','rol','campus','notas'];
+  const wsAss = XLSX.utils.aoa_to_sheet([
+    assHeader,
+    ...(assignments || []).map(a => {
+      const t = treeMap[a.tree_id] || {}; const u = userMap[a.user_id] || {};
+      return [a.assigned_at || '', t.tree_code || a.tree_id, u.full_name || '',
+              u.role || '', t.campus || '', (a.notes || '').slice(0, 200)];
+    }),
+  ]);
+  XLSX.utils.book_append_sheet(wb, wsAss, 'Asignaciones');
+
+  XLSX.writeFile(wb, fname + '.xlsx');
+}
+
 async function loadCitizenReports() {
+  // Inicializar el form del reporte de seguimiento (defaults de fecha + restricción campus)
+  initFollowupReportForm();
+
   const container = document.getElementById('citizen-reports-container');
   if (!container) return;
   try {
