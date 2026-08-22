@@ -89,7 +89,7 @@ const TABS_ADMIN_ONLY = new Set(['gardens', 'audit', 'kpis', 'security', 'quotas
 const TAB_GROUP = {
   users: 'gestion', trees: 'gestion', gardens: 'gestion', groups: 'gestion',
   assignments: 'gestion', coordinacion: 'gestion',
-  dashboard: 'monitoreo', kpis: 'monitoreo',
+  dashboard: 'monitoreo', kpis: 'monitoreo', 'followup-report': 'monitoreo',
   notifications: 'comunicacion', reports: 'comunicacion',
   audit: 'seguridad', security: 'seguridad', quotas: 'seguridad',
 };
@@ -167,6 +167,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'notifications') loadAdminNotifications();
     else if (tabName === 'assignments') loadAssignments();
     else if (tabName === 'dashboard') { loadAdminDashboard(true); loadWeatherWidget(); }
+    else if (tabName === 'followup-report') initFollowupReportForm();
     else if (tabName === 'reports') loadCitizenReports();
     else if (tabName === 'audit') loadAuditLog();
     else if (tabName === 'kpis') loadKpis();
@@ -488,6 +489,7 @@ function onAdminCampusFilterChange(value) {
   else if (id === 'assignmentsTab') loadAssignments();
   else if (id === 'dashboardTab') loadAdminDashboard(true);
   else if (id === 'reportsTab') loadCitizenReports();
+  else if (id === 'followup-reportTab') initFollowupReportForm();
   else if (id === 'auditTab') loadAuditLog();
 }
 window.onAdminCampusFilterChange = onAdminCampusFilterChange;
@@ -7730,9 +7732,6 @@ function _fr_generateXLSX(fname, meta, trees, byStatus, byCampus, measurements, 
 }
 
 async function loadCitizenReports() {
-  // Inicializar el form del reporte de seguimiento (defaults de fecha + restricción campus)
-  initFollowupReportForm();
-
   const container = document.getElementById('citizen-reports-container');
   if (!container) return;
   try {
@@ -7757,6 +7756,13 @@ async function loadCitizenReports() {
       const user = uMap[r.reported_by] || {};
       const ucolor = r.urgency === 'critical' ? '#f44336' : r.urgency === 'high' ? '#FF9800' : r.urgency === 'normal' ? '#4CAF50' : '#9e9e9e';
       const scolor = r.status === 'resolved' ? '#4CAF50' : r.status === 'in_progress' ? '#2196F3' : r.status === 'closed' ? '#9e9e9e' : '#FFC107';
+      // FIX jun-2026: r.id es UUID (text) — antes se interpolaba sin comillas
+      // resultando en resolveCitizenReport(abc-def-123) que es sintaxis JS inválida.
+      // También agrego botón "🌳 Ver árbol" que abre el editor con el árbol reportado.
+      const rid = String(r.id).replace(/'/g, "\\'");
+      const treeBtn = r.tree_id
+        ? `<button class="btn btn-sm" style="background:#2E7D32;color:#fff;margin-right:4px;" onclick="openTreeFromReport(${r.tree_id})" title="Abrir árbol"><i class="fas fa-tree"></i> Ver árbol</button>`
+        : '';
       html += `<tr>
         <td>${formatDate(r.created_at)}</td>
         <td>${escapeHtml(tree.tree_code || r.tree_id)}<br><span class="text-muted text-small">${escapeHtml(tree.common_name || '')}</span></td>
@@ -7764,7 +7770,10 @@ async function loadCitizenReports() {
         <td><span style="background:${ucolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.urgency || '-'}</span></td>
         <td><span style="background:${scolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.status || '-'}</span></td>
         <td style="max-width:300px;">${escapeHtml((r.description || '').slice(0,150))}</td>
-        <td><button class="btn btn-sm btn-secondary" onclick="resolveCitizenReport(${r.id})">Cambiar estado</button></td>
+        <td style="white-space:nowrap;">
+          ${treeBtn}
+          <button class="btn btn-sm btn-secondary" onclick="resolveCitizenReport('${rid}')">Cambiar estado</button>
+        </td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -7792,6 +7801,19 @@ async function resolveCitizenReport(id) {
   showToast('Reporte actualizado', 'success');
   loadCitizenReports();
 }
+window.resolveCitizenReport = resolveCitizenReport;
+
+// Abre el modal de edición del árbol asociado a un reporte ciudadano.
+// Reutiliza editAdminTree() que ya existe (mismo modal que Admin → Árboles).
+function openTreeFromReport(treeId) {
+  if (!treeId) { showToast('Este reporte no tiene árbol asociado', 'warning'); return; }
+  if (typeof editAdminTree !== 'function') {
+    showToast('No se puede abrir el árbol (editAdminTree no cargó)', 'error');
+    return;
+  }
+  editAdminTree(parseInt(treeId, 10));
+}
+window.openTreeFromReport = openTreeFromReport;
 
 // =============================================================
 // INNOVACIÓN #4 — Disparar manualmente notification-cron
