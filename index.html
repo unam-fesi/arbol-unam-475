@@ -1567,6 +1567,10 @@
                                     </p>
                                     <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.6rem;flex-wrap:wrap;">
                                         <input type="search" id="fw-with-search" placeholder="🔍 Buscar código / nombre…" oninput="_filterFwWith()" style="padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;flex:1;min-width:200px;">
+                                        <label style="font-size:0.78rem;color:#555;">Última medición:</label>
+                                        <input type="date" id="fw-with-from" onchange="_filterFwWith()" title="Desde" style="padding:0.35rem;font-size:0.82rem;">
+                                        <input type="date" id="fw-with-to"   onchange="_filterFwWith()" title="Hasta" style="padding:0.35rem;font-size:0.82rem;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="_clearFwWithFilters()" title="Limpiar filtros" style="padding:0.3rem 0.6rem;">✕</button>
                                         <button type="button" class="btn btn-sm btn-outline" onclick="loadTreesFollowupSummary()"><i class="fas fa-refresh"></i> Recargar</button>
                                     </div>
                                     <div id="fw-with-container" style="max-height:400px;overflow-y:auto;border:1px solid #eee;border-radius:6px;">Cargando…</div>
@@ -1584,6 +1588,10 @@
                                     </p>
                                     <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.6rem;flex-wrap:wrap;">
                                         <input type="search" id="fw-without-search" placeholder="🔍 Buscar código / nombre…" oninput="_filterFwWithout()" style="padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;flex:1;min-width:200px;">
+                                        <label style="font-size:0.78rem;color:#555;">Alta del árbol:</label>
+                                        <input type="date" id="fw-without-from" onchange="_filterFwWithout()" title="Desde" style="padding:0.35rem;font-size:0.82rem;">
+                                        <input type="date" id="fw-without-to"   onchange="_filterFwWithout()" title="Hasta" style="padding:0.35rem;font-size:0.82rem;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="_clearFwWithoutFilters()" title="Limpiar filtros" style="padding:0.3rem 0.6rem;">✕</button>
                                     </div>
                                     <div id="fw-without-container" style="max-height:400px;overflow-y:auto;border:1px solid #eee;border-radius:6px;">Cargando…</div>
                                 </div>

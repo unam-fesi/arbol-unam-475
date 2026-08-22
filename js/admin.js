@@ -7752,7 +7752,7 @@ async function loadTreesFollowupSummary() {
   try {
     // 1) Árboles (respeta filtro global campus y RLS)
     let treeQ = sb.from('trees_catalog')
-      .select('id, tree_code, common_name, campus, status, health_score, tree_type')
+      .select('id, tree_code, common_name, campus, status, health_score, tree_type, created_at')
       .neq('status', 'retirado');
     const cf = effectiveCampusFilter();
     if (cf) treeQ = treeQ.eq('campus', cf);
@@ -7865,24 +7865,67 @@ function _renderFwWithout(rows) {
   c.innerHTML = html;
 }
 
+// Helper: parsea date input a boundary UTC (inclusive)
+function _fwDateBound(id, isEnd) {
+  const v = document.getElementById(id)?.value;
+  if (!v) return null;
+  return isEnd ? v + 'T23:59:59.999Z' : v + 'T00:00:00.000Z';
+}
+
 function _filterFwWith() {
   const q = (document.getElementById('fw-with-search')?.value || '').trim().toLowerCase();
-  if (!q) return _renderFwWith(_fwWithCache);
-  _renderFwWith(_fwWithCache.filter(t =>
-    (t.tree_code || '').toLowerCase().includes(q) ||
-    (t.common_name || '').toLowerCase().includes(q) ||
-    (t.campus || '').toLowerCase().includes(q)));
+  const from = _fwDateBound('fw-with-from', false);
+  const to   = _fwDateBound('fw-with-to',   true);
+  _renderFwWith(_fwWithCache.filter(t => {
+    if (q && !((t.tree_code || '').toLowerCase().includes(q) ||
+               (t.common_name || '').toLowerCase().includes(q) ||
+               (t.campus || '').toLowerCase().includes(q))) return false;
+    // Filtro por rango de última medición
+    if (from && (!t.last_meas || t.last_meas < from)) return false;
+    if (to   && (!t.last_meas || t.last_meas > to))   return false;
+    return true;
+  }));
 }
+function _clearFwWithFilters() {
+  const s = document.getElementById('fw-with-search'); if (s) s.value = '';
+  const f = document.getElementById('fw-with-from');   if (f) f.value = '';
+  const t = document.getElementById('fw-with-to');     if (t) t.value = '';
+  _renderFwWith(_fwWithCache);
+}
+
 function _filterFwWithout() {
   const q = (document.getElementById('fw-without-search')?.value || '').trim().toLowerCase();
-  if (!q) return _renderFwWithout(_fwWithoutCache);
-  _renderFwWithout(_fwWithoutCache.filter(t =>
-    (t.tree_code || '').toLowerCase().includes(q) ||
-    (t.common_name || '').toLowerCase().includes(q) ||
-    (t.campus || '').toLowerCase().includes(q)));
+  const from = _fwDateBound('fw-without-from', false);
+  const to   = _fwDateBound('fw-without-to',   true);
+  _renderFwWithout(_fwWithoutCache.filter(t => {
+    if (q && !((t.tree_code || '').toLowerCase().includes(q) ||
+               (t.common_name || '').toLowerCase().includes(q) ||
+               (t.campus || '').toLowerCase().includes(q))) return false;
+    // Filtro por rango de created_at (alta del árbol)
+    if (from && (!t.created_at || t.created_at < from)) return false;
+    if (to   && (!t.created_at || t.created_at > to))   return false;
+    return true;
+  }));
 }
+function _clearFwWithoutFilters() {
+  const s = document.getElementById('fw-without-search'); if (s) s.value = '';
+  const f = document.getElementById('fw-without-from');   if (f) f.value = '';
+  const t = document.getElementById('fw-without-to');     if (t) t.value = '';
+  _renderFwWithout(_fwWithoutCache);
+}
+
 window._filterFwWith = _filterFwWith;
 window._filterFwWithout = _filterFwWithout;
+window._clearFwWithFilters = _clearFwWithFilters;
+window._clearFwWithoutFilters = _clearFwWithoutFilters;
+
+// Estado de ordenación para la tabla de reportes ciudadanos
+let _crCache = [];       // rows enriquecidos con tree/user info
+let _crSortField = 'created_at';
+let _crSortDir = 'desc';  // 'asc' | 'desc'
+// Rangos custom para ordenar urgencia y estado (críticos primero)
+const _CR_URGENCY_RANK = { critical: 4, high: 3, normal: 2, low: 1 };
+const _CR_STATUS_RANK  = { open: 4, in_progress: 3, resolved: 2, closed: 1 };
 
 async function loadCitizenReports() {
   const container = document.getElementById('citizen-reports-container');
@@ -7892,6 +7935,7 @@ async function loadCitizenReports() {
       .select('*').order('created_at', { ascending: false }).limit(50);
     if (error) throw error;
     if (!data || data.length === 0) {
+      _crCache = [];
       container.innerHTML = '<p class="text-muted">Sin reportes ciudadanos aún.</p>';
       return;
     }
@@ -7903,37 +7947,77 @@ async function loadCitizenReports() {
     ]);
     const tMap = Object.fromEntries((trees || []).map(t => [t.id, t]));
     const uMap = Object.fromEntries((users || []).map(u => [u.id, u]));
-    let html = '<table class="admin-table"><thead><tr><th>Fecha</th><th>Árbol</th><th>Reportado por</th><th>Urgencia</th><th>Estado</th><th>Descripción</th><th>Acciones</th></tr></thead><tbody>';
-    data.forEach(r => {
-      const tree = tMap[r.tree_id] || {};
-      const user = uMap[r.reported_by] || {};
-      const ucolor = r.urgency === 'critical' ? '#f44336' : r.urgency === 'high' ? '#FF9800' : r.urgency === 'normal' ? '#4CAF50' : '#9e9e9e';
-      const scolor = r.status === 'resolved' ? '#4CAF50' : r.status === 'in_progress' ? '#2196F3' : r.status === 'closed' ? '#9e9e9e' : '#FFC107';
-      // FIX jun-2026: r.id es UUID (text) — antes se interpolaba sin comillas
-      // resultando en resolveCitizenReport(abc-def-123) que es sintaxis JS inválida.
-      // También agrego botón "🌳 Ver árbol" que abre el editor con el árbol reportado.
-      const rid = String(r.id).replace(/'/g, "\\'");
-      const treeBtn = r.tree_id
-        ? `<button class="btn btn-sm" style="background:#2E7D32;color:#fff;margin-right:4px;" onclick="openTreeFromReport(${r.tree_id})" title="Abrir árbol"><i class="fas fa-tree"></i> Ver árbol</button>`
-        : '';
-      html += `<tr>
-        <td>${formatDate(r.created_at)}</td>
-        <td>${escapeHtml(tree.tree_code || r.tree_id)}<br><span class="text-muted text-small">${escapeHtml(tree.common_name || '')}</span></td>
-        <td>${escapeHtml(user.full_name || '—')}</td>
-        <td><span style="background:${ucolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.urgency || '-'}</span></td>
-        <td><span style="background:${scolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.status || '-'}</span></td>
-        <td style="max-width:300px;">${escapeHtml((r.description || '').slice(0,150))}</td>
-        <td style="white-space:nowrap;">
-          ${treeBtn}
-          <button class="btn btn-sm btn-secondary" onclick="resolveCitizenReport('${rid}')">Cambiar estado</button>
-        </td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    container.innerHTML = html;
+    // Enriquecer y cachear para poder re-render al cambiar orden sin re-fetch
+    _crCache = data.map(r => ({ ...r, _tree: tMap[r.tree_id] || {}, _user: uMap[r.reported_by] || {} }));
+    _renderCitizenReports();
   } catch (err) {
     container.innerHTML = `<p class="text-danger">Error: ${escapeHtml(err.message)}</p>`;
   }
+}
+
+// Ordena _crCache según _crSortField y _crSortDir. Fecha se compara ISO string.
+// Urgencia y estado usan ranks fijos. Se re-renderiza después.
+function _crSort(field) {
+  if (_crSortField === field) {
+    _crSortDir = (_crSortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    _crSortField = field;
+    _crSortDir = 'desc';  // default: más importante/reciente primero
+  }
+  _renderCitizenReports();
+}
+window._crSort = _crSort;
+
+function _renderCitizenReports() {
+  const container = document.getElementById('citizen-reports-container');
+  if (!container) return;
+  const rows = [..._crCache];
+  const dir = _crSortDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    let av, bv;
+    if (_crSortField === 'urgency') {
+      av = _CR_URGENCY_RANK[a.urgency] || 0; bv = _CR_URGENCY_RANK[b.urgency] || 0;
+    } else if (_crSortField === 'status') {
+      av = _CR_STATUS_RANK[a.status] || 0; bv = _CR_STATUS_RANK[b.status] || 0;
+    } else {
+      // created_at ISO string
+      av = a.created_at || ''; bv = b.created_at || '';
+    }
+    return av < bv ? -dir : av > bv ? dir : 0;
+  });
+
+  const arrow = (f) => _crSortField === f ? (_crSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const thStyle = 'cursor:pointer;user-select:none;';
+  let html = '<table class="admin-table"><thead><tr>' +
+    `<th style="${thStyle}" onclick="_crSort('created_at')" title="Ordenar por fecha">Fecha${arrow('created_at')}</th>` +
+    '<th>Árbol</th><th>Reportado por</th>' +
+    `<th style="${thStyle}" onclick="_crSort('urgency')" title="Ordenar por urgencia">Urgencia${arrow('urgency')}</th>` +
+    `<th style="${thStyle}" onclick="_crSort('status')" title="Ordenar por estado">Estado${arrow('status')}</th>` +
+    '<th>Descripción</th><th>Acciones</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    const tree = r._tree || {};
+    const user = r._user || {};
+    const ucolor = r.urgency === 'critical' ? '#f44336' : r.urgency === 'high' ? '#FF9800' : r.urgency === 'normal' ? '#4CAF50' : '#9e9e9e';
+    const scolor = r.status === 'resolved' ? '#4CAF50' : r.status === 'in_progress' ? '#2196F3' : r.status === 'closed' ? '#9e9e9e' : '#FFC107';
+    const rid = String(r.id).replace(/'/g, "\\'");
+    const treeBtn = r.tree_id
+      ? `<button class="btn btn-sm" style="background:#2E7D32;color:#fff;margin-right:4px;" onclick="openTreeFromReport(${r.tree_id})" title="Abrir árbol"><i class="fas fa-tree"></i> Ver árbol</button>`
+      : '';
+    html += `<tr>
+      <td>${formatDate(r.created_at)}</td>
+      <td>${escapeHtml(tree.tree_code || r.tree_id)}<br><span class="text-muted text-small">${escapeHtml(tree.common_name || '')}</span></td>
+      <td>${escapeHtml(user.full_name || '—')}</td>
+      <td><span style="background:${ucolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.urgency || '-'}</span></td>
+      <td><span style="background:${scolor};color:white;padding:2px 8px;border-radius:4px;font-size:0.8rem;">${r.status || '-'}</span></td>
+      <td style="max-width:300px;">${escapeHtml((r.description || '').slice(0,150))}</td>
+      <td style="white-space:nowrap;">
+        ${treeBtn}
+        <button class="btn btn-sm btn-secondary" onclick="resolveCitizenReport('${rid}')">Cambiar estado</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
 }
 
 async function resolveCitizenReport(id) {
