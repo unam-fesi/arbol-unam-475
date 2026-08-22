@@ -407,12 +407,12 @@
                         </div>
                         <div class="admin-tabs" id="admin-subtabs-monitoreo" style="display:none;">
                             <button class="admin-tab" data-tab="dashboard" data-group="monitoreo" onclick="switchAdminTab('dashboard')"><i class="fas fa-chart-bar"></i> Dashboard</button>
-                            <button class="admin-tab" data-tab="followup-report" data-group="monitoreo" onclick="switchAdminTab('followup-report')"><i class="fas fa-file-invoice"></i> Reporte Seguimiento</button>
+                            <button class="admin-tab" data-tab="followup-report" data-group="monitoreo" onclick="switchAdminTab('followup-report')"><i class="fas fa-clipboard-check"></i> Seguimiento</button>
                             <button class="admin-tab" data-tab="kpis" data-group="monitoreo" onclick="switchAdminTab('kpis')"><i class="fas fa-chart-line"></i> KPIs Multi-Campus</button>
                         </div>
                         <div class="admin-tabs" id="admin-subtabs-comunicacion" style="display:none;">
                             <button class="admin-tab" data-tab="notifications" data-group="comunicacion" onclick="switchAdminTab('notifications')"><i class="fas fa-bell"></i> Notificaciones</button>
-                            <button class="admin-tab" data-tab="reports" data-group="comunicacion" onclick="switchAdminTab('reports')"><i class="fas fa-flag"></i> Reportes Ciudadanos</button>
+                            <!-- 'Reportes Ciudadanos' MOVIDO a Monitoreo → Seguimiento (jun-2026) -->
                         </div>
                         <div class="admin-tabs" id="admin-subtabs-seguridad" style="display:none;">
                             <button class="admin-tab" data-tab="audit" data-group="seguridad" onclick="switchAdminTab('audit')"><i class="fas fa-history"></i> Auditoría</button>
@@ -1493,24 +1493,29 @@
                             </div>
 
                             <!-- REPORTES CIUDADANOS TAB -->
-                            <div id="reportsTab" class="tab-pane">
-                                <h4 style="margin-bottom:1rem;"><i class="fas fa-flag"></i> Reportes Ciudadanos</h4>
-                                <p class="text-muted text-small" style="margin-bottom:1rem;">
-                                    Reportes enviados por usuarios v&iacute;a QR. Cambia su estado a medida que los atiendes.
-                                </p>
-                                <div id="citizen-reports-container">Cargando...</div>
+                            <!-- reportsTab QUEDA VACÍO: su contenido se movió a followup-reportTab (jun-2026).
+                                 No lo elimino para preservar compatibilidad con cualquier link/deeplink existente. -->
+                            <div id="reportsTab" class="tab-pane" style="display:none;">
+                                <p class="text-muted">Los reportes ciudadanos ahora están en <b>Monitoreo → Seguimiento</b>.</p>
                             </div>
 
-                            <!-- REPORTE DE SEGUIMIENTO (Monitoreo) -->
+                            <!-- ═══════════════════════════════════════════════════════════════
+                                 TAB SEGUIMIENTO (Monitoreo) — consolidado:
+                                 1. Reporte descargable (PDF/XLSX)
+                                 2. Árboles CON seguimiento (última medición por árbol)
+                                 3. Árboles SIN seguimiento (nunca medidos)
+                                 4. Reportes ciudadanos (movido desde Comunicación)
+                                 ═══════════════════════════════════════════════════════════════ -->
                             <div id="followup-reportTab" class="tab-pane">
+                                <!-- 1. Reporte descargable -->
                                 <div class="admin-form" style="border-left:4px solid #2E7D32;background:linear-gradient(135deg,rgba(46,125,50,0.10),rgba(102,153,204,0.06));">
                                     <h4 style="display:flex;align-items:center;gap:0.5rem;color:#1a4480;margin-top:0;">
                                         <i class="fas fa-file-invoice" style="color:#2E7D32;"></i>
-                                        Reporte de Seguimiento
+                                        Reporte de Seguimiento (PDF / XLSX)
                                     </h4>
                                     <p class="text-muted text-small" style="margin:0 0 1rem;">
-                                        Genera un reporte estructurado (PDF y/o XLSX) del estado y seguimientos del per&iacute;odo elegido.
-                                        Incluye: resumen por campus, top 10 &aacute;rboles cr&iacute;ticos, mediciones, reportes ciudadanos y asignaciones.
+                                        Genera un reporte estructurado del per&iacute;odo. Incluye resumen por campus,
+                                        top 10 &aacute;rboles cr&iacute;ticos, mediciones, reportes ciudadanos y asignaciones.
                                     </p>
                                     <form id="form-followup-report" onsubmit="return false;">
                                         <div class="form-row">
@@ -1548,6 +1553,51 @@
                                             <span id="fr-status" style="font-size:0.85rem;color:#555;align-self:center;"></span>
                                         </div>
                                     </form>
+                                </div>
+
+                                <!-- 2. Árboles CON seguimiento -->
+                                <div style="margin-top:1.5rem;">
+                                    <h4 style="display:flex;align-items:center;gap:0.5rem;">
+                                        <i class="fas fa-check-circle" style="color:#2E7D32;"></i>
+                                        &Aacute;rboles con seguimiento
+                                        <small id="fw-with-count" style="color:#888;font-weight:normal;font-size:0.78rem;"></small>
+                                    </h4>
+                                    <p class="text-muted text-small" style="margin:0 0 0.6rem;">
+                                        &Aacute;rboles que ya tienen al menos una medici&oacute;n registrada. Ordenados por fecha de la &uacute;ltima.
+                                    </p>
+                                    <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.6rem;flex-wrap:wrap;">
+                                        <input type="search" id="fw-with-search" placeholder="🔍 Buscar código / nombre…" oninput="_filterFwWith()" style="padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;flex:1;min-width:200px;">
+                                        <button type="button" class="btn btn-sm btn-outline" onclick="loadTreesFollowupSummary()"><i class="fas fa-refresh"></i> Recargar</button>
+                                    </div>
+                                    <div id="fw-with-container" style="max-height:400px;overflow-y:auto;border:1px solid #eee;border-radius:6px;">Cargando…</div>
+                                </div>
+
+                                <!-- 3. Árboles SIN seguimiento -->
+                                <div style="margin-top:1.5rem;">
+                                    <h4 style="display:flex;align-items:center;gap:0.5rem;">
+                                        <i class="fas fa-exclamation-circle" style="color:#c68b00;"></i>
+                                        &Aacute;rboles sin seguimiento
+                                        <small id="fw-without-count" style="color:#888;font-weight:normal;font-size:0.78rem;"></small>
+                                    </h4>
+                                    <p class="text-muted text-small" style="margin:0 0 0.6rem;">
+                                        &Aacute;rboles que nunca han sido medidos. Requieren atenci&oacute;n prioritaria.
+                                    </p>
+                                    <div style="display:flex;gap:0.6rem;align-items:center;margin-bottom:0.6rem;flex-wrap:wrap;">
+                                        <input type="search" id="fw-without-search" placeholder="🔍 Buscar código / nombre…" oninput="_filterFwWithout()" style="padding:0.4rem 0.6rem;border:1px solid #ddd;border-radius:6px;flex:1;min-width:200px;">
+                                    </div>
+                                    <div id="fw-without-container" style="max-height:400px;overflow-y:auto;border:1px solid #eee;border-radius:6px;">Cargando…</div>
+                                </div>
+
+                                <!-- 4. Reportes ciudadanos (movidos desde Comunicación) -->
+                                <div style="margin-top:1.5rem;">
+                                    <h4 style="display:flex;align-items:center;gap:0.5rem;">
+                                        <i class="fas fa-flag" style="color:#c62828;"></i>
+                                        Reportes ciudadanos
+                                    </h4>
+                                    <p class="text-muted text-small" style="margin:0 0 0.6rem;">
+                                        Reportes v&iacute;a QR. Usa "Ver &aacute;rbol" para abrir el registro y "Cambiar estado" para atender.
+                                    </p>
+                                    <div id="citizen-reports-container">Cargando…</div>
                                 </div>
                             </div>
 

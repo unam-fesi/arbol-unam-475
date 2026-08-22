@@ -167,7 +167,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'notifications') loadAdminNotifications();
     else if (tabName === 'assignments') loadAssignments();
     else if (tabName === 'dashboard') { loadAdminDashboard(true); loadWeatherWidget(); }
-    else if (tabName === 'followup-report') initFollowupReportForm();
+    else if (tabName === 'followup-report') { initFollowupReportForm(); loadTreesFollowupSummary(); loadCitizenReports(); }
     else if (tabName === 'reports') loadCitizenReports();
     else if (tabName === 'audit') loadAuditLog();
     else if (tabName === 'kpis') loadKpis();
@@ -489,7 +489,7 @@ function onAdminCampusFilterChange(value) {
   else if (id === 'assignmentsTab') loadAssignments();
   else if (id === 'dashboardTab') loadAdminDashboard(true);
   else if (id === 'reportsTab') loadCitizenReports();
-  else if (id === 'followup-reportTab') initFollowupReportForm();
+  else if (id === 'followup-reportTab') { initFollowupReportForm(); loadTreesFollowupSummary(); loadCitizenReports(); }
   else if (id === 'auditTab') loadAuditLog();
 }
 window.onAdminCampusFilterChange = onAdminCampusFilterChange;
@@ -7730,6 +7730,159 @@ function _fr_generateXLSX(fname, meta, trees, byStatus, byCampus, measurements, 
 
   XLSX.writeFile(wb, fname + '.xlsx');
 }
+
+// ============================================================================
+// Árboles CON / SIN seguimiento (dentro del tab Seguimiento)
+// ----------------------------------------------------------------------------
+// Consulta trees_catalog + máx(measurement_date) por tree_id.
+// Respeta filtro global de campus (effectiveCampusFilter) y RLS del user.
+// ============================================================================
+let _fwWithCache = [];      // { tree_code, common_name, campus, status, health_score, last_meas, meas_count }
+let _fwWithoutCache = [];   // { tree_code, common_name, campus, status, health_score }
+
+async function loadTreesFollowupSummary() {
+  const withC = document.getElementById('fw-with-container');
+  const withoutC = document.getElementById('fw-without-container');
+  const withCount = document.getElementById('fw-with-count');
+  const withoutCount = document.getElementById('fw-without-count');
+  if (!withC || !withoutC) return;
+  withC.innerHTML = '<p class="text-muted" style="padding:1rem;">Cargando…</p>';
+  withoutC.innerHTML = '<p class="text-muted" style="padding:1rem;">Cargando…</p>';
+
+  try {
+    // 1) Árboles (respeta filtro global campus y RLS)
+    let treeQ = sb.from('trees_catalog')
+      .select('id, tree_code, common_name, campus, status, health_score, tree_type')
+      .neq('status', 'retirado');
+    const cf = effectiveCampusFilter();
+    if (cf) treeQ = treeQ.eq('campus', cf);
+    const { data: trees, error: treeErr } = await treeQ;
+    if (treeErr) throw treeErr;
+
+    if (!trees || trees.length === 0) {
+      withC.innerHTML = '<p class="text-muted" style="padding:1rem;">Sin árboles.</p>';
+      withoutC.innerHTML = '<p class="text-muted" style="padding:1rem;">Sin árboles.</p>';
+      if (withCount) withCount.textContent = '(0)';
+      if (withoutCount) withoutCount.textContent = '(0)';
+      return;
+    }
+
+    // 2) Mediciones de esos árboles (traemos solo fecha para agrupar en JS)
+    const treeIds = trees.map(t => t.id);
+    const { data: measurements } = await sb.from('tree_measurements')
+      .select('tree_id, measurement_date')
+      .in('tree_id', treeIds);
+
+    // Agrupar: por tree_id → {count, lastDate}
+    const lastByTree = {};
+    (measurements || []).forEach(m => {
+      const cur = lastByTree[m.tree_id];
+      if (!cur) {
+        lastByTree[m.tree_id] = { count: 1, last: m.measurement_date };
+      } else {
+        cur.count++;
+        if (m.measurement_date > cur.last) cur.last = m.measurement_date;
+      }
+    });
+
+    // 3) Split
+    const withRows = [];
+    const withoutRows = [];
+    trees.forEach(t => {
+      const info = lastByTree[t.id];
+      if (info) {
+        withRows.push({ ...t, last_meas: info.last, meas_count: info.count });
+      } else {
+        withoutRows.push(t);
+      }
+    });
+    // Sort: con seguimiento por fecha desc; sin seguimiento por tree_code natural
+    withRows.sort((a, b) => (b.last_meas || '').localeCompare(a.last_meas || ''));
+    withoutRows.sort((a, b) => String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true }));
+
+    _fwWithCache = withRows;
+    _fwWithoutCache = withoutRows;
+    if (withCount) withCount.textContent = `(${withRows.length})`;
+    if (withoutCount) withoutCount.textContent = `(${withoutRows.length})`;
+    _renderFwWith(withRows);
+    _renderFwWithout(withoutRows);
+  } catch (err) {
+    withC.innerHTML = '<p class="text-danger" style="padding:1rem;">Error: ' + escapeHtml(err.message || String(err)) + '</p>';
+    withoutC.innerHTML = '';
+  }
+}
+window.loadTreesFollowupSummary = loadTreesFollowupSummary;
+
+function _fwDaysSince(iso) {
+  if (!iso) return null;
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86400000));
+}
+
+function _renderFwWith(rows) {
+  const c = document.getElementById('fw-with-container');
+  if (!c) return;
+  if (!rows.length) { c.innerHTML = '<p class="text-muted" style="padding:1rem;">Ninguno.</p>'; return; }
+  const esc = window.escapeHtml || (s => String(s ?? ''));
+  const safe = window.safeJsAttr || (s => String(s ?? '').replace(/'/g, "\\'"));
+  let html = '<table class="admin-table" style="margin:0;"><thead><tr>' +
+    '<th>Código</th><th>Nombre</th><th>Campus</th><th>Salud</th><th>Última medición</th><th>Total</th><th></th></tr></thead><tbody>';
+  rows.forEach(t => {
+    const days = _fwDaysSince(t.last_meas);
+    const dayColor = days == null ? '#888' : (days > 60 ? '#c62828' : days > 30 ? '#c68b00' : '#2e7d32');
+    const healthColor = t.health_score == null ? '#888' : (t.health_score >= 70 ? '#2e7d32' : t.health_score >= 40 ? '#c68b00' : '#c62828');
+    html += `<tr>
+      <td><b>${esc(t.tree_code || '')}</b></td>
+      <td>${esc(t.common_name || '')}</td>
+      <td><small>${esc(t.campus || '')}</small></td>
+      <td><span style="color:${healthColor};font-weight:600;">${t.health_score ?? '—'}</span></td>
+      <td><small>${esc(new Date(t.last_meas).toLocaleDateString('es-MX'))}</small>
+          <br><small style="color:${dayColor};">hace ${days} d</small></td>
+      <td>${t.meas_count}</td>
+      <td><button class="btn btn-sm" style="background:#2E7D32;color:#fff;padding:3px 10px;" onclick="editAdminTree(${parseInt(t.id,10)})"><i class="fas fa-tree"></i></button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+function _renderFwWithout(rows) {
+  const c = document.getElementById('fw-without-container');
+  if (!c) return;
+  if (!rows.length) { c.innerHTML = '<p class="text-muted" style="padding:1rem;">Ninguno — todos tienen medición.</p>'; return; }
+  const esc = window.escapeHtml || (s => String(s ?? ''));
+  let html = '<table class="admin-table" style="margin:0;"><thead><tr>' +
+    '<th>Código</th><th>Nombre</th><th>Campus</th><th>Estado</th><th></th></tr></thead><tbody>';
+  rows.forEach(t => {
+    html += `<tr>
+      <td><b>${esc(t.tree_code || '')}</b></td>
+      <td>${esc(t.common_name || '')}</td>
+      <td><small>${esc(t.campus || '')}</small></td>
+      <td><small>${esc(t.status || '')}</small></td>
+      <td><button class="btn btn-sm" style="background:#c68b00;color:#fff;padding:3px 10px;" onclick="editAdminTree(${parseInt(t.id,10)})" title="Abrir árbol"><i class="fas fa-tree"></i></button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+function _filterFwWith() {
+  const q = (document.getElementById('fw-with-search')?.value || '').trim().toLowerCase();
+  if (!q) return _renderFwWith(_fwWithCache);
+  _renderFwWith(_fwWithCache.filter(t =>
+    (t.tree_code || '').toLowerCase().includes(q) ||
+    (t.common_name || '').toLowerCase().includes(q) ||
+    (t.campus || '').toLowerCase().includes(q)));
+}
+function _filterFwWithout() {
+  const q = (document.getElementById('fw-without-search')?.value || '').trim().toLowerCase();
+  if (!q) return _renderFwWithout(_fwWithoutCache);
+  _renderFwWithout(_fwWithoutCache.filter(t =>
+    (t.tree_code || '').toLowerCase().includes(q) ||
+    (t.common_name || '').toLowerCase().includes(q) ||
+    (t.campus || '').toLowerCase().includes(q)));
+}
+window._filterFwWith = _filterFwWith;
+window._filterFwWithout = _filterFwWithout;
 
 async function loadCitizenReports() {
   const container = document.getElementById('citizen-reports-container');
