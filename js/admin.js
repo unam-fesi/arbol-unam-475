@@ -5735,13 +5735,30 @@ function openLocationMapEditor(opts) {
     const closeModal = () => modal.remove();
     document.getElementById('tree-loc-close-x').addEventListener('click', closeModal);
     document.getElementById('tree-loc-cancel').addEventListener('click', closeModal);
-    document.getElementById('tree-loc-save').addEventListener('click', async () => {
-      const pos = pin.getLatLng();
+    // Guard contra doble-click en "Guardar ubicación". Detectado en audit_log
+    // ago-27 que un user disparó 15 UPDATE idénticos del mismo tree en 90s,
+    // porque al no cerrarse el modal instantáneamente pulsó Guardar varias veces.
+    let _saveBusy = false;
+    const saveBtn = document.getElementById('tree-loc-save');
+    const originalBtnHtml = saveBtn?.innerHTML;
+    saveBtn.addEventListener('click', async () => {
+      if (_saveBusy) return;
+      _saveBusy = true;
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+      }
       try {
+        const pos = pin.getLatLng();
         if (typeof onSave === 'function') await onSave(pos.lat, pos.lng);
         closeModal();
       } catch (err) {
         showToast('Error: ' + (err.message || err), 'error');
+        _saveBusy = false;
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          if (originalBtnHtml) saveBtn.innerHTML = originalBtnHtml;
+        }
       }
     });
 
