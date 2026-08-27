@@ -1236,7 +1236,11 @@ async function loadAdminTrees() {
   // Populate the garden dropdown for the create form
   populateGardenDropdown('admin-tree-garden');
   try {
-    let q = sb.from('trees_catalog').select('*');
+    // FIX ago-2026: sin .limit() explícito, PostgREST/supabase-js corta a 1000
+    // filas por default. Con 1194 árboles totales, admin global con filtro
+    // "Todos los campus" perdía los últimos ~194 (entre ellos FESC 12 TRUENO
+    // reportado 27-ago). Ordenamos por id para determinismo y subimos limit.
+    let q = sb.from('trees_catalog').select('*').order('id').limit(10000);
     const campusFilter = effectiveCampusFilter();
     if (campusFilter) q = q.eq('campus', campusFilter);
     const { data, error } = await q;
@@ -6236,7 +6240,7 @@ async function generateAndDownloadPost(type) {
 
     else if (type === 'monthly-recap') {
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-      const { data: trees } = await sb.from('trees_catalog').select('*');
+      const { data: trees } = await sb.from('trees_catalog').select('*').limit(10000);
       const { data: meas } = await sb.from('tree_measurements').select('id').gte('measurement_date', monthStart.toISOString());
       const { count: usersCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
       const co2Total = window.CO2Calculator?.totalCO2Stored(trees || []) || 0;
@@ -6293,7 +6297,7 @@ async function generateAndDownloadPost(type) {
     }
 
     else if (type === 'co2-impact') {
-      const { data: trees } = await sb.from('trees_catalog').select('*');
+      const { data: trees } = await sb.from('trees_catalog').select('*').limit(10000);
       const total = window.CO2Calculator?.totalCO2Stored(trees || []) || 0;
       canvas = window.SocialPoster.generateCO2Impact(total, (trees || []).length);
       caption = window.SocialPoster.suggestedCaption('co2-impact', { co2: Math.round(total) });
@@ -6460,7 +6464,7 @@ async function exportTreesToExcel() {
   if (typeof XLSX === 'undefined') { showToast('SheetJS no cargada', 'error'); return; }
   showToast('Generando Excel...', 'info');
   try {
-    const { data: treesRaw } = await sb.from('trees_catalog').select('*');
+    const { data: treesRaw } = await sb.from('trees_catalog').select('*').limit(10000);
     const trees = (treesRaw || []).sort((a, b) =>
       String(a.tree_code || '').localeCompare(String(b.tree_code || ''), 'es-MX', { numeric: true, sensitivity: 'base' })
     );
@@ -6512,7 +6516,7 @@ async function exportDashboardToPDF() {
   try {
     const { count: userCount } = await sb.from('user_profiles').select('*', { count: 'exact', head: true });
     const { count: treeCount } = await sb.from('trees_catalog').select('*', { count: 'exact', head: true });
-    const { data: trees } = await sb.from('trees_catalog').select('*');
+    const { data: trees } = await sb.from('trees_catalog').select('*').limit(10000);
     const avgHealth = trees && trees.length ? Math.round(trees.reduce((s,t)=>s+(t.health_score||0),0) / trees.length) : 0;
 
     const doc = new jsPDF();
