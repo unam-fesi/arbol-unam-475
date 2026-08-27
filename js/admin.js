@@ -1723,7 +1723,33 @@ async function populateGardenDropdown(selectId, currentValue) {
   }
 }
 
+// FIX ago-2026: guard contra doble-submit. Ago-27 se observó que el user pulsó
+// "Guardar" 2 veces (o el btn no reflejó estado de carga), disparando 2 INSERTs
+// paralelos: el primero pasaba y el segundo daba "duplicate key" → user confuso
+// creía que no se guardó y creaba un tree_code alternativo. Ahora bloqueamos
+// re-entradas y también deshabilitamos el botón durante la operación.
+let _saveAdminTreeBusy = false;
 async function saveAdminTree(e) {
+  if (_saveAdminTreeBusy) return;
+  _saveAdminTreeBusy = true;
+  // Deshabilitar submit del form para feedback visual y prevenir doble-click
+  const _submitBtn = document.querySelector('#form-admin-tree button[type="submit"]');
+  const _submitOriginal = _submitBtn?.innerHTML;
+  if (_submitBtn) {
+    _submitBtn.disabled = true;
+    _submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+  }
+  try {
+    return await _saveAdminTreeInner(e);
+  } finally {
+    _saveAdminTreeBusy = false;
+    if (_submitBtn) {
+      _submitBtn.disabled = false;
+      if (_submitOriginal) _submitBtn.innerHTML = _submitOriginal;
+    }
+  }
+}
+async function _saveAdminTreeInner(e) {
   if (e) e.preventDefault();
   // SEGURIDAD: admin global (cualquier campus) o admin-campus (solo de SU campus)
   // pueden crear/editar árboles. La policy RLS de trees_catalog ya hace cumplir
@@ -1835,7 +1861,18 @@ async function saveAdminTree(e) {
     loadAdminTrees();
     populateGardenDropdown('admin-tree-garden');
   } catch (err) {
-    showToast('Error: ' + err.message, 'error');
+    // Mensaje amigable si es duplicate key (probable doble-click o retry humano)
+    const msg = err?.message || String(err);
+    if (/duplicate key.*tree_code|already exists|violates unique.*tree_code/i.test(msg)) {
+      showToast(
+        `El código "${tree.tree_code}" ya existe. Si fuiste tú quien lo acaba de crear, revisa la lista de árboles — probablemente ya se guardó. Si es otro árbol distinto, usa un código diferente.`,
+        'warning', 6000
+      );
+      // Refrescar la lista por si acabó de crearse en un submit paralelo
+      loadAdminTrees();
+    } else {
+      showToast('Error: ' + msg, 'error');
+    }
   }
 }
 
