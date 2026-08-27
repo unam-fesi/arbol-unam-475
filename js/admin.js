@@ -2157,6 +2157,12 @@ async function editAdminTree(treeId) {
         <div class="form-group"><label>Tronco (cm)</label><input type="number" step="0.1" id="edit-tree-trunk" value="${tree.initial_trunk_diameter_cm || ''}" style="width:100%;padding:0.5rem;"></div>
         <div class="form-group"><label>Copa (cm)</label><input type="number" step="0.1" id="edit-tree-crown" value="${tree.initial_crown_diameter_cm || ''}" style="width:100%;padding:0.5rem;"></div>
       </div>
+      <div class="form-group" style="margin-bottom:0.75rem;border-top:1px solid #eee;padding-top:0.75rem;">
+        <label for="edit-tree-photo"><i class="fas fa-camera"></i> Actualizar foto (opcional)</label>
+        <input type="file" id="edit-tree-photo" accept="image/*" capture="environment"
+               style="width:100%;padding:0.5rem;border:1.5px dashed #2E7D32;border-radius:8px;background:rgba(46,125,50,0.05);">
+        <small style="color:#666;font-size:0.75rem;">Si no eliges foto, la actual se conserva.</small>
+      </div>
       <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Guardar</button>
     </form>
   `);
@@ -2190,7 +2196,22 @@ async function editAdminTree(treeId) {
     const campusToSave = isAdminCampusRole()
       ? tree.campus
       : document.getElementById('edit-tree-campus').value;
-    const { error } = await sb.from('trees_catalog').update({
+
+    // FIX ago-2026: los inputs numéricos usan `parseFloat(val) || null` que
+    // convierte inputs vacíos (o inválidos) en `null`, BORRANDO coordenadas
+    // ya existentes al guardar (audit_log 09-jun: 3 UPDATEs de tree 703,717,735
+    // por planificacion@aragon dejaron lat/lng en null pese a que el user solo
+    // quería editar otros campos). Solución: parsear con Number, y si es NaN
+    // OMITIR el campo del payload en vez de enviarlo como null.
+    const _num = (id) => {
+      const v = document.getElementById(id)?.value;
+      if (v === undefined || v === null || String(v).trim() === '') return NaN;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : NaN;
+    };
+    const _pushIfNum = (obj, key, val) => { if (Number.isFinite(val)) obj[key] = val; };
+
+    const payload = {
       tree_code: document.getElementById('edit-tree-code').value.trim(),
       species: document.getElementById('edit-tree-species').value.trim(),
       common_name: document.getElementById('edit-tree-common').value.trim() || null,
@@ -2198,16 +2219,46 @@ async function editAdminTree(treeId) {
       size: document.getElementById('edit-tree-size').value,
       campus: campusToSave,
       garden_id: document.getElementById('edit-tree-garden')?.value || null,
-      location_lat: parseFloat(document.getElementById('edit-tree-lat').value) || null,
-      location_lng: parseFloat(document.getElementById('edit-tree-lng').value) || null,
-      health_score: parseInt(document.getElementById('edit-tree-health').value) || 0,
       status: document.getElementById('edit-tree-status').value,
-      initial_height_cm: parseFloat(document.getElementById('edit-tree-height').value) || null,
-      initial_trunk_diameter_cm: parseFloat(document.getElementById('edit-tree-trunk').value) || null,
-      initial_crown_diameter_cm: parseFloat(document.getElementById('edit-tree-crown').value) || null,
-      updated_at: new Date().toISOString()
-    }).eq('id', treeId);
+      updated_at: new Date().toISOString(),
+    };
+    // Coordenadas: SOLO si el user las capturó. Vacío = no tocar el valor actual.
+    _pushIfNum(payload, 'location_lat', _num('edit-tree-lat'));
+    _pushIfNum(payload, 'location_lng', _num('edit-tree-lng'));
+    // Health y medidas iniciales: igual — no borrar si el input está vacío.
+    _pushIfNum(payload, 'health_score',              _num('edit-tree-health'));
+    _pushIfNum(payload, 'initial_height_cm',         _num('edit-tree-height'));
+    _pushIfNum(payload, 'initial_trunk_diameter_cm', _num('edit-tree-trunk'));
+    _pushIfNum(payload, 'initial_crown_diameter_cm', _num('edit-tree-crown'));
+
+    const { error } = await sb.from('trees_catalog').update(payload).eq('id', treeId);
     if (error) { showToast('Error: ' + error.message, 'error'); return; }
+
+    // Subir foto opcional (nueva jun-2026 nota, ago-2026 en editor). Si el user
+    // eligió archivo, subir al bucket tree-photos y actualizar photo_url.
+    // Path: <tree_id>/<timestamp>.jpg (mismo patrón que saveAdminTree).
+    const photoFile = document.getElementById('edit-tree-photo')?.files?.[0];
+    if (photoFile) {
+      try {
+        const baseFileName = `${treeId}/${Date.now()}`;
+        if (typeof uploadPhotoWithThumb === 'function') {
+          const { fullPath } = await uploadPhotoWithThumb(photoFile, 'tree-photos', baseFileName);
+          await sb.from('trees_catalog').update({ photo_url: fullPath }).eq('id', treeId);
+          showToast('Foto actualizada ✓', 'success');
+        } else {
+          // Fallback si no está el helper
+          const fullPath = baseFileName + '.jpg';
+          const { error: upErr } = await sb.storage.from('tree-photos')
+            .upload(fullPath, photoFile, { contentType: photoFile.type || 'image/jpeg', upsert: true });
+          if (upErr) throw upErr;
+          await sb.from('trees_catalog').update({ photo_url: fullPath }).eq('id', treeId);
+        }
+      } catch (photoErr) {
+        console.warn('[edit-tree] photo upload failed:', photoErr.message || photoErr);
+        showToast('Árbol actualizado pero la foto no se pudo subir: ' + (photoErr.message || photoErr), 'warning');
+      }
+    }
+
     showToast('Árbol actualizado', 'success');
     closeModal();
     loadAdminTrees();
