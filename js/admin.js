@@ -1764,13 +1764,20 @@ async function saveAdminTree(e) {
     initial_notes: document.getElementById('admin-tree-notes')?.value.trim() || null,
     goals: goals,
     created_by: currentUser?.id,
-    // GPS si admin lo capturó:
-    location_lat: _hasGps ? _lat : null,
-    location_lng: _hasGps ? _lng : null,
     // Soporte para plantas en jardines (Feature 2 jun-2026):
     quantity: Math.max(1, parseInt(document.getElementById('admin-tree-quantity')?.value || '1') || 1),
     location_in_garden: document.getElementById('admin-tree-location-in-garden')?.value.trim() || null,
   };
+
+  // FIX ago-2026: SOLO agregar location_lat/lng al payload si admin global las
+  // capturó explícitamente. Antes se enviaba `location_lat: null` cuando el
+  // caller no era admin global, lo cual BORRABA las coords existentes al
+  // guardar (audit_log 09-jun evidencia 3 casos con lat/lng=null en after_data).
+  // Ahora si admin-campus edita otras columnas, las coords quedan intactas.
+  if (currentUserProfile?.role === 'admin' && _hasGps) {
+    tree.location_lat = _lat;
+    tree.location_lng = _lng;
+  }
   if (!tree.tree_code || !tree.species) { showToast('Código y especie son requeridos', 'error'); return; }
   if (!TREE_STATUS_VALUES.includes(tree.status)) { showToast('Estado inválido', 'error'); return; }
   if (!TREE_TYPE_VALUES.includes(tree.tree_type)) { showToast('Tipo inválido', 'error'); return; }
