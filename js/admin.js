@@ -1597,17 +1597,21 @@ window._clearAdminTreesFilters = _clearAdminTreesFilters;
 // Muestra/oculta la sección #admin-tree-gps-section según rol del caller.
 // Llamado al cargar el tab "Árboles" del panel admin.
 // ============================================================================
+// FIX ago-2026: admin-campus también necesita capturar GPS al alta.
+// Antes solo admin global veía la sección → los admins de otros campus no
+// podían georreferenciar en el primer registro. Ahora ambos ven la sección.
 function initAdminTreeGpsSection() {
   const section = document.getElementById('admin-tree-gps-section');
   if (!section) return;
-  const isAdminGlobal = (currentUserProfile?.role || '') === 'admin';
-  section.style.display = isAdminGlobal ? '' : 'none';
+  const canGps = ['admin','admin-campus'].includes(currentUserProfile?.role || '');
+  section.style.display = canGps ? '' : 'none';
 }
 window.initAdminTreeGpsSection = initAdminTreeGpsSection;
 
 function captureAdminTreeGPS() {
-  if ((currentUserProfile?.role || '') !== 'admin') {
-    showToast('Solo admin global (Iztacala) puede capturar GPS al alta', 'error');
+  const role = currentUserProfile?.role || '';
+  if (!['admin','admin-campus'].includes(role)) {
+    showToast('Solo admin global o admin-campus pueden capturar GPS al alta', 'error');
     return;
   }
   const status = document.getElementById('admin-tree-gps-status');
@@ -1732,12 +1736,10 @@ async function saveAdminTree(e) {
   // Recoger metas del árbol (sección "Metas del árbol")
   const goals = _readTreeGoalsFromForm('admin-tree');
 
-  // GPS opcional al alta — solo admin global lo puede usar (la UI lo esconde
-  // para no-admin, pero validamos también aquí por defensa).
-  const _lat = (currentUserProfile?.role === 'admin')
-    ? parseFloat(document.getElementById('admin-tree-lat')?.value) : NaN;
-  const _lng = (currentUserProfile?.role === 'admin')
-    ? parseFloat(document.getElementById('admin-tree-lng')?.value) : NaN;
+  // GPS opcional al alta — admin global y admin-campus pueden capturarlo.
+  const _canCaptureGps = ['admin','admin-campus'].includes(currentUserProfile?.role || '');
+  const _lat = _canCaptureGps ? parseFloat(document.getElementById('admin-tree-lat')?.value) : NaN;
+  const _lng = _canCaptureGps ? parseFloat(document.getElementById('admin-tree-lng')?.value) : NaN;
   const _hasGps = Number.isFinite(_lat) && Number.isFinite(_lng);
   if (currentUserProfile?.role === 'admin' && _hasGps) {
     // Validar rango (México aprox.)
@@ -1774,7 +1776,7 @@ async function saveAdminTree(e) {
   // caller no era admin global, lo cual BORRABA las coords existentes al
   // guardar (audit_log 09-jun evidencia 3 casos con lat/lng=null en after_data).
   // Ahora si admin-campus edita otras columnas, las coords quedan intactas.
-  if (currentUserProfile?.role === 'admin' && _hasGps) {
+  if (['admin','admin-campus'].includes(currentUserProfile?.role || '') && _hasGps) {
     tree.location_lat = _lat;
     tree.location_lng = _lng;
   }
@@ -2178,6 +2180,7 @@ async function editAdminTree(treeId) {
         initialLng: isFinite(curLng) ? curLng : null,
         treeCode: tree.tree_code,
         treeName: tree.common_name || tree.species || 'Árbol',
+        campus: tree.campus,  // ← fallback al centro del campus del árbol si no tiene coords
         onSave: (lat, lng) => {
           document.getElementById('edit-tree-lat').value = lat.toFixed(6);
           document.getElementById('edit-tree-lng').value = lng.toFixed(6);
@@ -5597,16 +5600,32 @@ window.editAdminTree = editAdminTree;
 // Implementación reusable. Acepta callback onSave para que pueda usarse
 // tanto desde el botón de la fila (guarda directo a BD) como desde el form
 // de edición (solo actualiza los inputs lat/lng).
+// Centros representativos de cada campus (mismos que weather-sync).
+// Usados como fallback en openLocationMapEditor cuando el árbol NO tiene coords aún.
+const CAMPUS_COORDS = {
+  Iztacala:   [19.4880, -99.2074],
+  Acatlan:    [19.4856, -99.2417],
+  Aragon:     [19.4683, -99.0731],
+  Cuautitlan: [19.6856, -99.2017],
+  Zaragoza:   [19.3656, -99.0625],
+  CU:         [19.3245, -99.1903],
+};
+
 function openLocationMapEditor(opts) {
-  const { initialLat, initialLng, treeCode, treeName, onSave } = opts;
+  const { initialLat, initialLng, treeCode, treeName, campus, onSave } = opts;
   if (typeof L === 'undefined') {
     showToast('Leaflet no está cargado', 'error');
     return;
   }
 
-  // Coord inicial: la del árbol o el centro de FES Iztacala como fallback
-  const lat0 = (initialLat != null && isFinite(initialLat)) ? initialLat : 19.52552345;
-  const lng0 = (initialLng != null && isFinite(initialLng)) ? initialLng : -99.1881276;
+  // FIX ago-2026: el fallback antes era SIEMPRE Iztacala. Ahora si el árbol
+  // aún no tiene coords, arrancamos en el centro de SU campus (o del campus
+  // del user si el árbol no lo tiene). Aragón/Acatlán/etc. ya no aparecen
+  // "en Iztacala" al abrir el mapa.
+  const campusOfTree = campus || _userCampus() || 'Iztacala';
+  const fallback = CAMPUS_COORDS[campusOfTree] || CAMPUS_COORDS.Iztacala;
+  const lat0 = (initialLat != null && isFinite(initialLat)) ? initialLat : fallback[0];
+  const lng0 = (initialLng != null && isFinite(initialLng)) ? initialLng : fallback[1];
   const hadCoord = (initialLat != null && initialLng != null);
 
   const existing = document.getElementById('tree-location-editor-modal');
@@ -5703,7 +5722,7 @@ function openLocationMapEditor(opts) {
 async function editAdminTreeLocation(treeId) {
   const { data: tree, error } = await sb
     .from('trees_catalog')
-    .select('id, tree_code, common_name, species, location_lat, location_lng')
+    .select('id, tree_code, common_name, species, location_lat, location_lng, campus')
     .eq('id', treeId)
     .single();
   if (error || !tree) {
@@ -5715,6 +5734,7 @@ async function editAdminTreeLocation(treeId) {
     initialLng: tree.location_lng,
     treeCode: tree.tree_code,
     treeName: tree.common_name || tree.species || 'Árbol',
+    campus: tree.campus,  // ← fallback al centro del campus si no tiene coords
     onSave: async (lat, lng) => {
       const { error: upErr } = await sb.from('trees_catalog').update({
         location_lat: lat,
